@@ -13,6 +13,13 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const orgPlanEnum = pgEnum("org_plan", [
+  "free",
+  "individual",
+  "small_business",
+  "enterprise",
+]);
+
 export const membershipRoleEnum = pgEnum("membership_role", [
   "owner",
   "admin",
@@ -52,6 +59,7 @@ export const users = pgTable("users", {
   fullName: text("full_name").notNull().default(""),
   phone: text("phone").default(""),
   email: text("email").default(""),
+  isSuperAdmin: boolean("is_super_admin").default(false).notNull(),
 });
 
 export const orgs = pgTable("orgs", {
@@ -61,6 +69,11 @@ export const orgs = pgTable("orgs", {
   phone: text("phone").default(""),
   email: text("email").default(""),
   address: text("address").default(""),
+  plan: orgPlanEnum("plan").notNull().default("free"),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  subscriptionStatus: text("subscription_status"),
+  currentPeriodEnd: timestamp("current_period_end"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -314,6 +327,27 @@ export function calcTotalWithTaxDiscount(
     total: subtotal + taxAmt - discountAmt,
   };
 }
+
+export const PLAN_LIMITS: Record<string, { customers: number; jobs: number; quotes: number; invoices: number; teamMembers: number; canInvite: boolean }> = {
+  free: { customers: 5, jobs: 5, quotes: 5, invoices: 5, teamMembers: 1, canInvite: false },
+  individual: { customers: -1, jobs: -1, quotes: -1, invoices: -1, teamMembers: 1, canInvite: false },
+  small_business: { customers: -1, jobs: -1, quotes: -1, invoices: -1, teamMembers: 25, canInvite: true },
+  enterprise: { customers: -1, jobs: -1, quotes: -1, invoices: -1, teamMembers: -1, canInvite: true },
+};
+
+export const PLAN_LABELS: Record<string, string> = {
+  free: "Free",
+  individual: "Individual",
+  small_business: "Small Business",
+  enterprise: "Enterprise",
+};
+
+export const PLAN_PRICES: Record<string, number> = {
+  free: 0,
+  individual: 20,
+  small_business: 100,
+  enterprise: 200,
+};
 
 export const JOB_STATUS_LABELS: Record<string, string> = {
   lead: "Lead",

@@ -20,6 +20,8 @@ import {
   LogOut,
   Building2,
   ChevronDown,
+  CreditCard,
+  Shield,
 } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -41,6 +43,7 @@ const mainNav = [
 
 const settingsNav = [
   { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Subscription", url: "/subscription", icon: CreditCard },
 ];
 
 export function AppSidebar() {
@@ -137,6 +140,27 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        {user?.isSuperAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Admin</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    data-active={isActive("/admin")}
+                    className="data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium"
+                  >
+                    <Link href="/admin" data-testid="nav-admin">
+                      <Shield className="h-4 w-4" />
+                      <span>Master Admin</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarFooter className="p-4">
         {user && (

@@ -21,6 +21,8 @@ import InvoicesPage from "@/pages/invoices";
 import InvoiceForm from "@/pages/invoice-form";
 import InvoiceDetail from "@/pages/invoice-detail";
 import SettingsPage from "@/pages/settings";
+import SubscriptionPage from "@/pages/subscription";
+import AdminPage from "@/pages/admin";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function AppContent() {
@@ -71,6 +73,8 @@ function AppContent() {
             <Route path="/invoices/:id/edit" component={InvoiceForm} />
             <Route path="/invoices/:id" component={InvoiceDetail} />
             <Route path="/settings" component={SettingsPage} />
+            <Route path="/subscription" component={SubscriptionPage} />
+            <Route path="/admin" component={AdminPage} />
             <Route component={NotFound} />
           </Switch>
         </main>

@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, count } from "drizzle-orm";
 import { db } from "./db";
 import {
   users,
@@ -35,15 +35,20 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>;
 
   createOrg(org: InsertOrg): Promise<Org>;
   getOrg(id: string): Promise<Org | undefined>;
   updateOrg(id: string, data: Partial<Org>): Promise<Org | undefined>;
   getUserOrgs(userId: string): Promise<Org[]>;
+  getAllOrgs(): Promise<Org[]>;
+  deleteOrg(id: string): Promise<void>;
+  getOrgByStripeCustomerId(stripeCustomerId: string): Promise<Org | undefined>;
 
   createMembership(orgId: string, userId: string, role: string): Promise<Membership>;
   getMembership(orgId: string, userId: string): Promise<Membership | undefined>;
   getOrgMemberships(orgId: string): Promise<Membership[]>;
+  deleteMembership(orgId: string, userId: string): Promise<void>;
 
   createInviteCode(orgId: string, role: string, createdBy: string): Promise<InviteCode>;
   getInviteCodeByCode(code: string): Promise<InviteCode | undefined>;
@@ -79,6 +84,8 @@ export interface IStorage {
   deleteInvoice(orgId: string, id: string): Promise<void>;
 
   getDashboardStats(orgId: string): Promise<any>;
+
+  getOrgCounts(orgId: string): Promise<{ customers: number; jobs: number; quotes: number; invoices: number; members: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -102,6 +109,10 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getAllUsers(): Promise<User[]> {
+    return db.select().from(users).orderBy(desc(users.username));
+  }
+
   async createOrg(data: InsertOrg): Promise<Org> {
     const [org] = await db.insert(orgs).values(data).returning();
     return org;
@@ -122,6 +133,32 @@ export class DatabaseStorage implements IStorage {
     if (mems.length === 0) return [];
     const orgIds = mems.map((m) => m.orgId);
     return db.select().from(orgs).where(inArray(orgs.id, orgIds));
+  }
+
+  async getAllOrgs(): Promise<Org[]> {
+    return db.select().from(orgs).orderBy(desc(orgs.createdAt));
+  }
+
+  async deleteOrg(id: string): Promise<void> {
+    await db.delete(inviteCodes).where(eq(inviteCodes.orgId, id));
+    await db.delete(memberships).where(eq(memberships.orgId, id));
+    await db.delete(quoteItems).where(eq(quoteItems.orgId, id));
+    await db.delete(quotes).where(eq(quotes.orgId, id));
+    await db.delete(invoiceItems).where(eq(invoiceItems.orgId, id));
+    await db.delete(invoices).where(eq(invoices.orgId, id));
+    await db.delete(jobEvents).where(eq(jobEvents.orgId, id));
+    await db.delete(jobs).where(eq(jobs.orgId, id));
+    await db.delete(customers).where(eq(customers.orgId, id));
+    await db.delete(orgs).where(eq(orgs.id, id));
+  }
+
+  async getOrgByStripeCustomerId(stripeCustomerId: string): Promise<Org | undefined> {
+    const [org] = await db.select().from(orgs).where(eq(orgs.stripeCustomerId, stripeCustomerId));
+    return org;
+  }
+
+  async deleteMembership(orgId: string, userId: string): Promise<void> {
+    await db.delete(memberships).where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId)));
   }
 
   async createMembership(orgId: string, userId: string, role: string): Promise<Membership> {
@@ -564,6 +601,21 @@ export class DatabaseStorage implements IStorage {
       outstanding,
       recentJobs,
       recentInvoices,
+    };
+  }
+
+  async getOrgCounts(orgId: string): Promise<{ customers: number; jobs: number; quotes: number; invoices: number; members: number }> {
+    const [custCount] = await db.select({ c: count() }).from(customers).where(eq(customers.orgId, orgId));
+    const [jobCount] = await db.select({ c: count() }).from(jobs).where(eq(jobs.orgId, orgId));
+    const [quoteCount] = await db.select({ c: count() }).from(quotes).where(eq(quotes.orgId, orgId));
+    const [invoiceCount] = await db.select({ c: count() }).from(invoices).where(eq(invoices.orgId, orgId));
+    const [memberCount] = await db.select({ c: count() }).from(memberships).where(eq(memberships.orgId, orgId));
+    return {
+      customers: custCount.c,
+      jobs: jobCount.c,
+      quotes: quoteCount.c,
+      invoices: invoiceCount.c,
+      members: memberCount.c,
     };
   }
 }
