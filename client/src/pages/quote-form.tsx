@@ -177,7 +177,8 @@ export default function QuoteForm() {
                     {i === 0 && <Label className="text-xs">Qty</Label>}
                     <Input
                       type="number"
-                      step="0.01"
+                      step="1"
+                      min="0"
                       value={item.qty}
                       onChange={(e) => updateItem(i, "qty", e.target.value)}
                       data-testid={`input-item-qty-${i}`}

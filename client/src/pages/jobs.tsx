@@ -34,6 +34,7 @@ export default function JobsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [customerFilter, setCustomerFilter] = useState("all");
   const { toast } = useToast();
 
   const { data: jobs = [], isLoading } = useQuery<(Job & { customerName?: string })[]>({
@@ -64,7 +65,8 @@ export default function JobsPage() {
       j.title.toLowerCase().includes(search.toLowerCase()) ||
       (j.customerName || "").toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === "all" || j.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesCustomer = customerFilter === "all" || j.customerId === customerFilter;
+    return matchesSearch && matchesStatus && matchesCustomer;
   });
 
   const columns = [
@@ -155,6 +157,17 @@ export default function JobsPage() {
                 <SelectItem key={value} value={value}>
                   {label}
                 </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={customerFilter} onValueChange={setCustomerFilter}>
+            <SelectTrigger className="w-[180px]" data-testid="select-job-customer-filter">
+              <SelectValue placeholder="Customer" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Customers</SelectItem>
+              {customers.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>

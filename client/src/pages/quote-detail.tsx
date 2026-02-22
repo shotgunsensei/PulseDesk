@@ -1,7 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { PageHeader } from "@/components/page-header";
-import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,19 +19,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Edit, Wrench, Trash2 } from "lucide-react";
+import { ArrowLeft, Edit, Wrench, Trash2, Printer, Mail } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { calcLineItemsTotal, calcTotalWithTaxDiscount } from "@shared/schema";
 import { format } from "date-fns";
-import type { Quote, QuoteItem } from "@shared/schema";
+import type { Quote, QuoteItem, Customer, Org } from "@shared/schema";
 
 export default function QuoteDetail() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  const { data: quote, isLoading } = useQuery<Quote & { items?: QuoteItem[]; customerName?: string }>({
+  const { data: quote, isLoading } = useQuery<Quote & { items?: QuoteItem[]; customerName?: string; customer?: Customer; org?: Org }>({
     queryKey: ["/api/quotes", id],
   });
 
@@ -74,6 +73,31 @@ export default function QuoteDetail() {
     },
   });
 
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleEmail = () => {
+    if (!quote) return;
+    const customer = quote.customer;
+    const items = quote.items || [];
+    const subtotal = calcLineItemsTotal(items);
+    const totals = calcTotalWithTaxDiscount(subtotal, quote.taxRate || "0", quote.discount || "0");
+
+    const subject = encodeURIComponent(`Quote #${quote.id.slice(0, 8)} from ${quote.org?.name || "Our Company"}`);
+    const body = encodeURIComponent(
+      `Dear ${customer?.name || "Customer"},\n\n` +
+      `Please find below your quote #${quote.id.slice(0, 8)}.\n\n` +
+      `Total: $${totals.total.toFixed(2)}\n\n` +
+      `Items:\n${items.map(it => `- ${it.description}: ${it.qty} x $${Number(it.unitPrice).toFixed(2)}`).join("\n")}\n\n` +
+      `${quote.notes ? `Notes: ${quote.notes}\n\n` : ""}` +
+      `Thank you for your business.\n\n` +
+      `${quote.org?.name || ""}\n${quote.org?.phone || ""}\n${quote.org?.email || ""}`
+    );
+    const email = customer?.email || "";
+    window.open(`mailto:${email}?subject=${subject}&body=${body}`);
+  };
+
   if (isLoading) {
     return (
       <div className="p-6 space-y-4">
@@ -90,6 +114,8 @@ export default function QuoteDetail() {
   const items = quote.items || [];
   const subtotal = calcLineItemsTotal(items);
   const totals = calcTotalWithTaxDiscount(subtotal, quote.taxRate || "0", quote.discount || "0");
+  const customer = quote.customer;
+  const org = quote.org;
 
   return (
     <div className="flex flex-col h-full">
@@ -97,9 +123,15 @@ export default function QuoteDetail() {
         title={`Quote #${quote.id.slice(0, 8)}`}
         description={quote.customerName || undefined}
         actions={
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap print:hidden">
             <Button variant="outline" size="sm" onClick={() => navigate("/quotes")} data-testid="button-back-quotes">
               <ArrowLeft className="h-4 w-4 mr-1" /> Back
+            </Button>
+            <Button variant="outline" size="sm" onClick={handlePrint} data-testid="button-print-quote">
+              <Printer className="h-4 w-4 mr-1" /> Print
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleEmail} data-testid="button-email-quote">
+              <Mail className="h-4 w-4 mr-1" /> Email
             </Button>
             {!quote.jobId && quote.status !== "declined" && (
               <Button
@@ -128,7 +160,7 @@ export default function QuoteDetail() {
       />
 
       <div className="flex-1 overflow-auto p-6 space-y-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 print:hidden">
           <div>
             <p className="text-xs text-muted-foreground mb-1">Status</p>
             <Select value={quote.status} onValueChange={(v) => statusMutation.mutate(v)}>
@@ -149,6 +181,36 @@ export default function QuoteDetail() {
           </div>
         </div>
 
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {org && (
+            <Card data-testid="card-org-info">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">From</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-1">
+                <p className="font-medium">{org.name}</p>
+                {org.address && <p className="text-muted-foreground">{org.address}</p>}
+                {org.phone && <p className="text-muted-foreground">{org.phone}</p>}
+                {org.email && <p className="text-muted-foreground">{org.email}</p>}
+              </CardContent>
+            </Card>
+          )}
+
+          {customer && (
+            <Card data-testid="card-customer-info">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Bill To</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-1">
+                <p className="font-medium">{customer.name}</p>
+                {customer.address && <p className="text-muted-foreground">{customer.address}</p>}
+                {customer.phone && <p className="text-muted-foreground">{customer.phone}</p>}
+                {customer.email && <p className="text-muted-foreground">{customer.email}</p>}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Line Items</CardTitle>
@@ -167,7 +229,7 @@ export default function QuoteDetail() {
                 {items.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell>{item.description}</TableCell>
-                    <TableCell className="text-right">{item.qty}</TableCell>
+                    <TableCell className="text-right">{Number(item.qty).toFixed(0)}</TableCell>
                     <TableCell className="text-right">${Number(item.unitPrice).toFixed(2)}</TableCell>
                     <TableCell className="text-right font-medium">
                       ${(Number(item.qty) * Number(item.unitPrice)).toFixed(2)}

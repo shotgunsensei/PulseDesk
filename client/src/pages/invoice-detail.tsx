@@ -1,7 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { PageHeader } from "@/components/page-header";
-import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,19 +19,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Edit, Trash2 } from "lucide-react";
+import { ArrowLeft, Edit, Trash2, Printer, Mail } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { calcLineItemsTotal, calcTotalWithTaxDiscount } from "@shared/schema";
 import { format } from "date-fns";
-import type { Invoice, InvoiceItem } from "@shared/schema";
+import type { Invoice, InvoiceItem, Customer, Org } from "@shared/schema";
 
 export default function InvoiceDetail() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  const { data: invoice, isLoading } = useQuery<Invoice & { items?: InvoiceItem[]; customerName?: string }>({
+  const { data: invoice, isLoading } = useQuery<Invoice & { items?: InvoiceItem[]; customerName?: string; customer?: Customer; org?: Org }>({
     queryKey: ["/api/invoices", id],
   });
 
@@ -60,6 +59,32 @@ export default function InvoiceDetail() {
     },
   });
 
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleEmail = () => {
+    if (!invoice) return;
+    const customer = invoice.customer;
+    const items = invoice.items || [];
+    const subtotal = calcLineItemsTotal(items);
+    const totals = calcTotalWithTaxDiscount(subtotal, invoice.taxRate || "0", invoice.discount || "0");
+
+    const subject = encodeURIComponent(`Invoice #${invoice.id.slice(0, 8)} from ${invoice.org?.name || "Our Company"}`);
+    const body = encodeURIComponent(
+      `Dear ${customer?.name || "Customer"},\n\n` +
+      `Please find below your invoice #${invoice.id.slice(0, 8)}.\n\n` +
+      `Total Due: $${totals.total.toFixed(2)}\n` +
+      `${invoice.dueDate ? `Due Date: ${format(new Date(invoice.dueDate), "MMM d, yyyy")}\n` : ""}` +
+      `\nItems:\n${items.map(it => `- ${it.description}: ${it.qty} x $${Number(it.unitPrice).toFixed(2)}`).join("\n")}\n\n` +
+      `${invoice.notes ? `Notes: ${invoice.notes}\n\n` : ""}` +
+      `Thank you for your business.\n\n` +
+      `${invoice.org?.name || ""}\n${invoice.org?.phone || ""}\n${invoice.org?.email || ""}`
+    );
+    const email = customer?.email || "";
+    window.open(`mailto:${email}?subject=${subject}&body=${body}`);
+  };
+
   if (isLoading) {
     return (
       <div className="p-6 space-y-4">
@@ -76,6 +101,8 @@ export default function InvoiceDetail() {
   const items = invoice.items || [];
   const subtotal = calcLineItemsTotal(items);
   const totals = calcTotalWithTaxDiscount(subtotal, invoice.taxRate || "0", invoice.discount || "0");
+  const customer = invoice.customer;
+  const org = invoice.org;
 
   return (
     <div className="flex flex-col h-full">
@@ -83,9 +110,15 @@ export default function InvoiceDetail() {
         title={`Invoice #${invoice.id.slice(0, 8)}`}
         description={invoice.customerName || undefined}
         actions={
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap print:hidden">
             <Button variant="outline" size="sm" onClick={() => navigate("/invoices")} data-testid="button-back-invoices">
               <ArrowLeft className="h-4 w-4 mr-1" /> Back
+            </Button>
+            <Button variant="outline" size="sm" onClick={handlePrint} data-testid="button-print-invoice">
+              <Printer className="h-4 w-4 mr-1" /> Print
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleEmail} data-testid="button-email-invoice">
+              <Mail className="h-4 w-4 mr-1" /> Email
             </Button>
             <Button variant="outline" size="sm" onClick={() => navigate(`/invoices/${id}/edit`)} data-testid="button-edit-invoice">
               <Edit className="h-4 w-4 mr-1" /> Edit
@@ -103,7 +136,7 @@ export default function InvoiceDetail() {
       />
 
       <div className="flex-1 overflow-auto p-6 space-y-6">
-        <div className="flex items-center gap-6 flex-wrap">
+        <div className="flex items-center gap-6 flex-wrap print:hidden">
           <div>
             <p className="text-xs text-muted-foreground mb-1">Status</p>
             <Select value={invoice.status} onValueChange={(v) => statusMutation.mutate(v)}>
@@ -136,6 +169,42 @@ export default function InvoiceDetail() {
           )}
         </div>
 
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {org && (
+            <Card data-testid="card-org-info">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">From</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-1">
+                <p className="font-medium">{org.name}</p>
+                {org.address && <p className="text-muted-foreground">{org.address}</p>}
+                {org.phone && <p className="text-muted-foreground">{org.phone}</p>}
+                {org.email && <p className="text-muted-foreground">{org.email}</p>}
+              </CardContent>
+            </Card>
+          )}
+
+          {customer && (
+            <Card data-testid="card-customer-info">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Bill To</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-1">
+                <p className="font-medium">{customer.name}</p>
+                {customer.address && <p className="text-muted-foreground">{customer.address}</p>}
+                {customer.phone && <p className="text-muted-foreground">{customer.phone}</p>}
+                {customer.email && <p className="text-muted-foreground">{customer.email}</p>}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {invoice.dueDate && (
+          <div className="hidden print:block text-sm">
+            <p><span className="font-medium">Due Date:</span> {format(new Date(invoice.dueDate), "MMM d, yyyy")}</p>
+          </div>
+        )}
+
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Line Items</CardTitle>
@@ -154,7 +223,7 @@ export default function InvoiceDetail() {
                 {items.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell>{item.description}</TableCell>
-                    <TableCell className="text-right">{item.qty}</TableCell>
+                    <TableCell className="text-right">{Number(item.qty).toFixed(0)}</TableCell>
                     <TableCell className="text-right">${Number(item.unitPrice).toFixed(2)}</TableCell>
                     <TableCell className="text-right font-medium">
                       ${(Number(item.qty) * Number(item.unitPrice)).toFixed(2)}

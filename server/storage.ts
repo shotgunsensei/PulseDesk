@@ -321,7 +321,7 @@ export class DatabaseStorage implements IStorage {
     return results;
   }
 
-  async getQuote(orgId: string, id: string): Promise<(Quote & { items?: QuoteItem[]; customerName?: string }) | undefined> {
+  async getQuote(orgId: string, id: string): Promise<(Quote & { items?: QuoteItem[]; customerName?: string; customer?: Customer }) | undefined> {
     const [q] = await db
       .select()
       .from(quotes)
@@ -330,11 +330,13 @@ export class DatabaseStorage implements IStorage {
 
     const items = await db.select().from(quoteItems).where(eq(quoteItems.quoteId, id));
     let customerName: string | undefined;
+    let customer: Customer | undefined;
     if (q.customerId) {
-      const [c] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, q.customerId));
+      const [c] = await db.select().from(customers).where(eq(customers.id, q.customerId));
       customerName = c?.name;
+      customer = c;
     }
-    return { ...q, items, customerName };
+    return { ...q, items, customerName, customer };
   }
 
   async createQuote(orgId: string, data: any, createdBy: string): Promise<Quote> {
@@ -412,7 +414,7 @@ export class DatabaseStorage implements IStorage {
     return results;
   }
 
-  async getInvoice(orgId: string, id: string): Promise<(Invoice & { items?: InvoiceItem[]; customerName?: string }) | undefined> {
+  async getInvoice(orgId: string, id: string): Promise<(Invoice & { items?: InvoiceItem[]; customerName?: string; customer?: Customer }) | undefined> {
     const [inv] = await db
       .select()
       .from(invoices)
@@ -421,11 +423,13 @@ export class DatabaseStorage implements IStorage {
 
     const items = await db.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, id));
     let customerName: string | undefined;
+    let customer: Customer | undefined;
     if (inv.customerId) {
-      const [c] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, inv.customerId));
+      const [c] = await db.select().from(customers).where(eq(customers.id, inv.customerId));
       customerName = c?.name;
+      customer = c;
     }
-    return { ...inv, items, customerName };
+    return { ...inv, items, customerName, customer };
   }
 
   async getCustomerInvoices(orgId: string, customerId: string): Promise<Invoice[]> {

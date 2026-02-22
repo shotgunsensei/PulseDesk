@@ -334,7 +334,11 @@ export async function registerRoutes(
 
   app.post("/api/jobs", requireAuth, requireOrg, async (req: Request, res: Response) => {
     try {
-      const j = await storage.createJob(req.session.orgId!, req.body, req.session.userId!);
+      const data = { ...req.body };
+      data.customerId = data.customerId || null;
+      data.scheduledStart = data.scheduledStart ? new Date(data.scheduledStart) : null;
+      data.scheduledEnd = data.scheduledEnd ? new Date(data.scheduledEnd) : null;
+      const j = await storage.createJob(req.session.orgId!, data, req.session.userId!);
       res.json(j);
     } catch (err: any) {
       res.status(500).send(err.message);
@@ -343,7 +347,11 @@ export async function registerRoutes(
 
   app.patch("/api/jobs/:id", requireAuth, requireOrg, async (req: Request, res: Response) => {
     try {
-      const j = await storage.updateJob(req.session.orgId!, req.params.id, req.body);
+      const data = { ...req.body };
+      if ("scheduledStart" in data) data.scheduledStart = data.scheduledStart ? new Date(data.scheduledStart) : null;
+      if ("scheduledEnd" in data) data.scheduledEnd = data.scheduledEnd ? new Date(data.scheduledEnd) : null;
+      if ("customerId" in data) data.customerId = data.customerId || null;
+      const j = await storage.updateJob(req.session.orgId!, req.params.id, data);
       if (!j) return res.status(404).send("Job not found");
       res.json(j);
     } catch (err: any) {
@@ -373,7 +381,8 @@ export async function registerRoutes(
     try {
       const q = await storage.getQuote(req.session.orgId!, req.params.id);
       if (!q) return res.status(404).send("Quote not found");
-      res.json(q);
+      const org = await storage.getOrg(req.session.orgId!);
+      res.json({ ...q, org });
     } catch (err: any) {
       res.status(500).send(err.message);
     }
@@ -447,7 +456,8 @@ export async function registerRoutes(
     try {
       const inv = await storage.getInvoice(req.session.orgId!, req.params.id);
       if (!inv) return res.status(404).send("Invoice not found");
-      res.json(inv);
+      const org = await storage.getOrg(req.session.orgId!);
+      res.json({ ...inv, org });
     } catch (err: any) {
       res.status(500).send(err.message);
     }
