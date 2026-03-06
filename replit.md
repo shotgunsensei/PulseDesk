@@ -19,6 +19,9 @@ The application follows a monolithic full-stack architecture with a React fronte
 - Stripe payment integration for subscription checkout and billing portal
 - Plan limit enforcement (resource limits on Free tier, team size limits per plan)
 - Master admin panel for super admins to manage all tenants, change plans, and view users
+- Progressive Web App (PWA) with service worker, installable on mobile devices
+- Privacy policy page at /privacy (accessible without login)
+- Digital Asset Links for Google Play Store TWA publishing
 
 ## User Preferences
 

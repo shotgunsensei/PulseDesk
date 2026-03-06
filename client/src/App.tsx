@@ -23,6 +23,7 @@ import InvoiceDetail from "@/pages/invoice-detail";
 import SettingsPage from "@/pages/settings";
 import SubscriptionPage from "@/pages/subscription";
 import AdminPage from "@/pages/admin";
+import PrivacyPage from "@/pages/privacy";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function AppContent() {
@@ -41,7 +42,12 @@ function AppContent() {
   }
 
   if (!user) {
-    return <AuthPage />;
+    return (
+      <Switch>
+        <Route path="/privacy" component={PrivacyPage} />
+        <Route><AuthPage /></Route>
+      </Switch>
+    );
   }
 
   if (!org) {
@@ -75,6 +81,7 @@ function AppContent() {
             <Route path="/settings" component={SettingsPage} />
             <Route path="/subscription" component={SubscriptionPage} />
             <Route path="/admin" component={AdminPage} />
+            <Route path="/privacy" component={PrivacyPage} />
             <Route component={NotFound} />
           </Switch>
         </main>
