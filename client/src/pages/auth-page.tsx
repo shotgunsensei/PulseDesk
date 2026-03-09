@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import tradeflowLogo from "@assets/tradeflowlogo_1771743836671.png";
+import tradeflowLogo from "@assets/tradeflow512_1773073035241.png";
 import tradeflowCover from "@assets/tradeflowcover_1771743836670.png";
 
 export default function AuthPage() {

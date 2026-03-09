@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/lib/auth";
-import tradeflowLogo from "@assets/tradeflowlogo_1771743836671.png";
+import tradeflowLogo from "@assets/tradeflow512_1773073035241.png";
 import {
   DropdownMenu,
   DropdownMenuContent,
