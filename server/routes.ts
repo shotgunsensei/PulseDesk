@@ -934,12 +934,68 @@ export async function registerRoutes(
         payment_method_types: ['card'],
         line_items: [{ price: priceId, quantity: 1 }],
         mode: 'subscription',
-        success_url: `${baseUrl}/call-recovery?subscription=success`,
+        success_url: `${baseUrl}/call-recovery?subscription=success&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/call-recovery?subscription=cancelled`,
         metadata: { orgId: org.id, feature: 'call_recovery', callRecoveryPlan: plan },
+        subscription_data: {
+          metadata: { orgId: org.id, feature: 'call_recovery', callRecoveryPlan: plan },
+        },
       });
 
       res.json({ url: session.url });
+    } catch (err: any) {
+      res.status(500).send(err.message);
+    }
+  });
+
+  app.get("/api/call-recovery/verify-checkout", requireAuth, requireOrg, async (req: Request, res: Response) => {
+    try {
+      const { session_id } = req.query;
+      if (!session_id || typeof session_id !== 'string') {
+        return res.status(400).send("session_id required");
+      }
+
+      const stripe = await getUncachableStripeClient();
+      const session = await stripe.checkout.sessions.retrieve(session_id);
+
+      if (session.payment_status !== 'paid' && session.status !== 'complete') {
+        return res.status(400).send("Checkout session not completed");
+      }
+
+      const { orgId, callRecoveryPlan } = session.metadata || {};
+      if (!orgId || !callRecoveryPlan || orgId !== req.session.orgId) {
+        return res.status(400).send("Invalid session metadata");
+      }
+
+      if (session.metadata?.feature !== 'call_recovery') {
+        return res.status(400).send("Not a call recovery session");
+      }
+
+      await storage.updateOrg(orgId, {
+        callRecoveryPlan: callRecoveryPlan as any,
+        callRecoveryStatus: 'active',
+        callRecoveryStripeSubId: session.subscription as string || null,
+      });
+
+      const existingSub = await storage.getCallRecoverySubscription(orgId);
+      if (existingSub) {
+        await storage.updateCallRecoverySubscription(existingSub.id, {
+          plan: callRecoveryPlan as any,
+          status: 'active',
+          stripeSubscriptionId: session.subscription as string,
+          stripeCustomerId: session.customer as string,
+          usageCount: 0,
+        });
+      } else {
+        await storage.createCallRecoverySubscription({
+          orgId,
+          plan: callRecoveryPlan,
+          stripeSubscriptionId: session.subscription as string,
+          stripeCustomerId: session.customer as string,
+        });
+      }
+
+      res.json({ ok: true, plan: callRecoveryPlan });
     } catch (err: any) {
       res.status(500).send(err.message);
     }
@@ -1014,6 +1070,16 @@ export async function registerRoutes(
         return res.status(400).send("Missing required Twilio parameters");
       }
 
+      const twilioSig = req.headers['x-twilio-signature'] as string | undefined;
+      const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0];
+      const webhookUrl = replitDomain
+        ? `https://${replitDomain}/api/call-recovery/webhook/missed-call`
+        : '';
+      const isValid = await validateTwilioWebhook(twilioSig, webhookUrl, req.body as Record<string, string>);
+      if (!isValid) {
+        return res.status(403).send("Invalid Twilio signature");
+      }
+
       if (CallStatus && !["no-answer", "busy", "failed", "canceled"].includes(CallStatus)) {
         return res.status(200).send("Call not missed, ignoring");
       }
@@ -1073,6 +1139,16 @@ export async function registerRoutes(
         return res.status(400).send("Missing required SMS parameters");
       }
 
+      const twilioSig = req.headers['x-twilio-signature'] as string | undefined;
+      const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0];
+      const webhookUrl = replitDomain
+        ? `https://${replitDomain}/api/call-recovery/webhook/sms`
+        : '';
+      const isValid = await validateTwilioWebhook(twilioSig, webhookUrl, req.body as Record<string, string>);
+      if (!isValid) {
+        return res.status(403).send("Invalid Twilio signature");
+      }
+
       const org = await storage.getOrgByCallRecoveryPhone(To);
       if (!org) {
         return res.status(404).send("No organization found for this phone number");
@@ -1111,6 +1187,12 @@ export async function registerRoutes(
 
   app.post("/api/call-recovery/handle-subscription-change", async (req: Request, res: Response) => {
     try {
+      const authHeader = req.headers.authorization;
+      const expectedToken = process.env.SESSION_SECRET || 'internal-secret';
+      if (!authHeader || authHeader !== `Bearer ${expectedToken}`) {
+        return res.status(401).send("Unauthorized");
+      }
+
       const { customerId, subscriptionId, status, callRecoveryPlan, periodStart, periodEnd } = req.body;
       if (!customerId) return res.status(400).send("Customer ID required");
 

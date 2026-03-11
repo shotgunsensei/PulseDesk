@@ -712,10 +712,21 @@ export default function CallRecoveryPage() {
   useEffect(() => {
     const params = new URLSearchParams(search);
     if (params.get("subscription") === "success") {
-      toast({ title: "Call Recovery activated!", description: "Your add-on subscription is now active." });
-      refreshAuth();
-      refetchSub();
-      setLocation("/call-recovery", { replace: true });
+      const sessionId = params.get("session_id");
+      const activate = async () => {
+        if (sessionId) {
+          try {
+            await apiRequest("GET", `/api/call-recovery/verify-checkout?session_id=${encodeURIComponent(sessionId)}`);
+          } catch (e) {
+            console.warn("Checkout verification failed, webhook will handle it:", e);
+          }
+        }
+        await refreshAuth();
+        await refetchSub();
+        toast({ title: "Call Recovery activated!", description: "Your add-on subscription is now active." });
+        setLocation("/call-recovery", { replace: true });
+      };
+      activate();
     } else if (params.get("subscription") === "cancelled") {
       toast({ title: "Checkout cancelled", description: "You can subscribe anytime.", variant: "destructive" });
       setLocation("/call-recovery", { replace: true });
