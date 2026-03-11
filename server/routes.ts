@@ -1128,6 +1128,8 @@ export async function registerRoutes(
         twilioCallSid: CallSid,
       });
 
+      await storage.incrementCallRecoveryUsage(org.id);
+
       const initialMessage = generateInitialMessage(org.name);
       await storage.createAiMessage(missedCall.id, "assistant", initialMessage);
       await storage.updateMissedCall(missedCall.id, { status: "in_progress" });

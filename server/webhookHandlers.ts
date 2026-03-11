@@ -13,28 +13,27 @@ export class WebhookHandlers {
       );
     }
 
+    const sync = await getStripeSync();
+
+    await sync.processWebhook(payload, signature);
+
     let event: any;
     try {
       event = JSON.parse(payload.toString());
     } catch {
-      event = null;
+      return;
     }
 
-    if (event) {
-      const type = event.type as string;
-      const obj = event.data?.object;
+    const type = event.type as string;
+    const obj = event.data?.object;
 
-      if (type === 'checkout.session.completed' && obj?.metadata?.feature === 'call_recovery') {
-        await WebhookHandlers.handleCallRecoveryCheckout(obj);
-      } else if ((type === 'customer.subscription.updated' || type === 'customer.subscription.created') && obj?.metadata?.feature === 'call_recovery') {
-        await WebhookHandlers.handleCallRecoverySubscription(obj, 'updated');
-      } else if (type === 'customer.subscription.deleted' && obj?.metadata?.feature === 'call_recovery') {
-        await WebhookHandlers.handleCallRecoverySubscription(obj, 'canceled');
-      }
+    if (type === 'checkout.session.completed' && obj?.metadata?.feature === 'call_recovery') {
+      await WebhookHandlers.handleCallRecoveryCheckout(obj);
+    } else if ((type === 'customer.subscription.updated' || type === 'customer.subscription.created') && obj?.metadata?.feature === 'call_recovery') {
+      await WebhookHandlers.handleCallRecoverySubscription(obj, 'updated');
+    } else if (type === 'customer.subscription.deleted' && obj?.metadata?.feature === 'call_recovery') {
+      await WebhookHandlers.handleCallRecoverySubscription(obj, 'canceled');
     }
-
-    const sync = await getStripeSync();
-    await sync.processWebhook(payload, signature);
   }
 
   private static async handleCallRecoveryCheckout(session: any): Promise<void> {
@@ -87,12 +86,6 @@ export class WebhookHandlers {
       const status = action === 'canceled' ? 'canceled' : (sub.status as string);
       const isActive = status === 'active' || status === 'trialing';
 
-      await storage.updateOrg(orgId, {
-        callRecoveryPlan: isActive ? callRecoveryPlan as CallRecoveryPlan : null,
-        callRecoveryStatus: status,
-        callRecoveryStripeSubId: isActive ? sub.id : null,
-      });
-
       const existingSub = await storage.getCallRecoverySubscription(orgId);
       if (existingSub) {
         const periodStart = sub.current_period_start ? new Date(sub.current_period_start * 1000) : undefined;
@@ -108,6 +101,12 @@ export class WebhookHandlers {
           usageCount: isNewPeriod ? 0 : existingSub.usageCount,
         });
       }
+
+      await storage.updateOrg(orgId, {
+        callRecoveryPlan: isActive ? callRecoveryPlan as CallRecoveryPlan : null,
+        callRecoveryStatus: status,
+        callRecoveryStripeSubId: isActive ? sub.id : null,
+      });
 
       console.log(`Call recovery subscription ${action} for org ${orgId}`);
     } catch (err: any) {
