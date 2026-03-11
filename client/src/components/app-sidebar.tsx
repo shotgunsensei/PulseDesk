@@ -22,6 +22,8 @@ import {
   ChevronDown,
   CreditCard,
   Shield,
+  PhoneMissed,
+  Lock,
 } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -50,6 +52,7 @@ const settingsNav = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { user, org, orgs, logout, switchOrg } = useAuth();
+  const hasCallRecovery = !!(org as any)?.callRecoveryPlan;
 
   const isActive = (url: string) => {
     if (url === "/") return location === "/";
@@ -136,6 +139,28 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Add-ons</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  data-active={isActive("/call-recovery")}
+                  className="data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium"
+                >
+                  <Link href="/call-recovery" data-testid="nav-call-recovery">
+                    <PhoneMissed className="h-4 w-4" />
+                    <span>Call Recovery AI</span>
+                    {!hasCallRecovery && (
+                      <Lock className="h-3 w-3 ml-auto text-muted-foreground" />
+                    )}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

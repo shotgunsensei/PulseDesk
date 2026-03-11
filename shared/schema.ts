@@ -52,6 +52,26 @@ export const invoiceStatusEnum = pgEnum("invoice_status", [
   "void",
 ]);
 
+export const callRecoveryPlanEnum = pgEnum("call_recovery_plan", [
+  "starter",
+  "growth",
+  "pro",
+]);
+
+export const missedCallStatusEnum = pgEnum("missed_call_status", [
+  "new",
+  "in_progress",
+  "recovered",
+  "failed",
+  "expired",
+]);
+
+export const aiMessageRoleEnum = pgEnum("ai_message_role", [
+  "system",
+  "assistant",
+  "user",
+]);
+
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
@@ -74,6 +94,10 @@ export const orgs = pgTable("orgs", {
   stripeSubscriptionId: text("stripe_subscription_id"),
   subscriptionStatus: text("subscription_status"),
   currentPeriodEnd: timestamp("current_period_end"),
+  callRecoveryPlan: callRecoveryPlanEnum("call_recovery_plan"),
+  callRecoveryStripeSubId: text("call_recovery_stripe_sub_id"),
+  callRecoveryStatus: text("call_recovery_status"),
+  callRecoveryPhone: text("call_recovery_phone"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -210,6 +234,51 @@ export const invoiceItems = pgTable("invoice_items", {
     .notNull()
     .default("0"),
 });
+
+export const missedCalls = pgTable("missed_calls", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id),
+  callerPhone: text("caller_phone").notNull(),
+  callerName: text("caller_name"),
+  status: missedCallStatusEnum("status").notNull().default("new"),
+  serviceType: text("service_type"),
+  location: text("location"),
+  urgency: text("urgency"),
+  customerId: varchar("customer_id").references(() => customers.id),
+  jobId: varchar("job_id").references(() => jobs.id),
+  twilioCallSid: text("twilio_call_sid"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const aiMessages = pgTable("ai_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  missedCallId: varchar("missed_call_id")
+    .notNull()
+    .references(() => missedCalls.id, { onDelete: "cascade" }),
+  role: aiMessageRoleEnum("role").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMissedCallSchema = createInsertSchema(missedCalls).pick({
+  callerPhone: true,
+  callerName: true,
+  twilioCallSid: true,
+});
+
+export const insertAiMessageSchema = createInsertSchema(aiMessages).pick({
+  missedCallId: true,
+  role: true,
+  content: true,
+});
+
+export type MissedCall = typeof missedCalls.$inferSelect;
+export type InsertMissedCall = z.infer<typeof insertMissedCallSchema>;
+export type AiMessage = typeof aiMessages.$inferSelect;
+export type InsertAiMessage = z.infer<typeof insertAiMessageSchema>;
 
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
@@ -358,6 +427,24 @@ export const JOB_STATUS_LABELS: Record<string, string> = {
   invoiced: "Invoiced",
   paid: "Paid",
   canceled: "Canceled",
+};
+
+export const CALL_RECOVERY_PLAN_LABELS: Record<string, string> = {
+  starter: "Starter",
+  growth: "Growth",
+  pro: "Pro",
+};
+
+export const CALL_RECOVERY_PLAN_PRICES: Record<string, number> = {
+  starter: 29,
+  growth: 79,
+  pro: 149,
+};
+
+export const CALL_RECOVERY_PLAN_LIMITS: Record<string, { recoveriesPerMonth: number; analytics: boolean }> = {
+  starter: { recoveriesPerMonth: 50, analytics: false },
+  growth: { recoveriesPerMonth: -1, analytics: false },
+  pro: { recoveriesPerMonth: -1, analytics: true },
 };
 
 export const JOB_STATUS_COLORS: Record<string, string> = {

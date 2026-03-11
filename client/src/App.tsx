@@ -25,6 +25,7 @@ import SubscriptionPage from "@/pages/subscription";
 import AdminPage from "@/pages/admin";
 import PrivacyPage from "@/pages/privacy";
 import DeleteAccountPage from "@/pages/delete-account";
+import CallRecoveryPage from "@/pages/call-recovery";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function AppContent() {
@@ -82,6 +83,7 @@ function AppContent() {
             <Route path="/invoices/:id" component={InvoiceDetail} />
             <Route path="/settings" component={SettingsPage} />
             <Route path="/subscription" component={SubscriptionPage} />
+            <Route path="/call-recovery" component={CallRecoveryPage} />
             <Route path="/admin" component={AdminPage} />
             <Route path="/privacy" component={PrivacyPage} />
             <Route path="/delete-account" component={DeleteAccountPage} />

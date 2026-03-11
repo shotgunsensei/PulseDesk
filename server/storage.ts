@@ -12,6 +12,8 @@ import {
   quoteItems,
   invoices,
   invoiceItems,
+  missedCalls,
+  aiMessages,
   type User,
   type InsertUser,
   type Org,
@@ -27,6 +29,8 @@ import {
   type Invoice,
   type InvoiceItem,
   type InviteCode,
+  type MissedCall,
+  type AiMessage,
 } from "@shared/schema";
 import { randomBytes } from "crypto";
 
@@ -88,6 +92,19 @@ export interface IStorage {
   getOrgCounts(orgId: string): Promise<{ customers: number; jobs: number; quotes: number; invoices: number; members: number }>;
 
   deleteUser(userId: string): Promise<void>;
+
+  createMissedCall(orgId: string, data: { callerPhone: string; callerName?: string; twilioCallSid?: string }): Promise<MissedCall>;
+  getMissedCall(id: string): Promise<MissedCall | undefined>;
+  getMissedCallByPhone(orgId: string, phone: string): Promise<MissedCall | undefined>;
+  getMissedCalls(orgId: string, limit?: number, offset?: number): Promise<MissedCall[]>;
+  updateMissedCall(id: string, data: Partial<MissedCall>): Promise<MissedCall | undefined>;
+  getMissedCallCount(orgId: string, since: Date): Promise<number>;
+
+  createAiMessage(missedCallId: string, role: string, content: string): Promise<AiMessage>;
+  getAiMessages(missedCallId: string): Promise<AiMessage[]>;
+
+  getOrgByCallRecoveryPhone(phone: string): Promise<Org | undefined>;
+  findMissedCallByCallerPhone(phone: string): Promise<(MissedCall & { orgId: string }) | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -142,6 +159,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteOrg(id: string): Promise<void> {
+    const orgMissedCalls = await db.select({ id: missedCalls.id }).from(missedCalls).where(eq(missedCalls.orgId, id));
+    for (const mc of orgMissedCalls) {
+      await db.delete(aiMessages).where(eq(aiMessages.missedCallId, mc.id));
+    }
+    await db.delete(missedCalls).where(eq(missedCalls.orgId, id));
     await db.delete(inviteCodes).where(eq(inviteCodes.orgId, id));
     await db.delete(memberships).where(eq(memberships.orgId, id));
     await db.delete(quoteItems).where(eq(quoteItems.orgId, id));
@@ -630,6 +652,11 @@ export class DatabaseStorage implements IStorage {
         const otherMembers = orgMembers.filter((m) => m.userId !== userId);
 
         if (otherMembers.length === 0) {
+          const orgMc = await tx.select({ id: missedCalls.id }).from(missedCalls).where(eq(missedCalls.orgId, mem.orgId));
+          for (const mc of orgMc) {
+            await tx.delete(aiMessages).where(eq(aiMessages.missedCallId, mc.id));
+          }
+          await tx.delete(missedCalls).where(eq(missedCalls.orgId, mem.orgId));
           await tx.delete(inviteCodes).where(eq(inviteCodes.orgId, mem.orgId));
           await tx.delete(memberships).where(eq(memberships.orgId, mem.orgId));
           await tx.delete(quoteItems).where(eq(quoteItems.orgId, mem.orgId));
@@ -653,6 +680,84 @@ export class DatabaseStorage implements IStorage {
 
       await tx.delete(users).where(eq(users.id, userId));
     });
+  }
+
+  async createMissedCall(orgId: string, data: { callerPhone: string; callerName?: string; twilioCallSid?: string }): Promise<MissedCall> {
+    const [mc] = await db.insert(missedCalls).values({
+      orgId,
+      callerPhone: data.callerPhone,
+      callerName: data.callerName || null,
+      twilioCallSid: data.twilioCallSid || null,
+    }).returning();
+    return mc;
+  }
+
+  async getMissedCall(id: string): Promise<MissedCall | undefined> {
+    const [mc] = await db.select().from(missedCalls).where(eq(missedCalls.id, id));
+    return mc;
+  }
+
+  async getMissedCallByPhone(orgId: string, phone: string): Promise<MissedCall | undefined> {
+    const [mc] = await db.select().from(missedCalls)
+      .where(and(
+        eq(missedCalls.orgId, orgId),
+        eq(missedCalls.callerPhone, phone),
+        inArray(missedCalls.status, ["new", "in_progress"] as any)
+      ))
+      .orderBy(desc(missedCalls.createdAt));
+    return mc;
+  }
+
+  async getMissedCalls(orgId: string, limit = 50, offset = 0): Promise<MissedCall[]> {
+    return db.select().from(missedCalls)
+      .where(eq(missedCalls.orgId, orgId))
+      .orderBy(desc(missedCalls.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async updateMissedCall(id: string, data: Partial<MissedCall>): Promise<MissedCall | undefined> {
+    const [mc] = await db.update(missedCalls).set(data).where(eq(missedCalls.id, id)).returning();
+    return mc;
+  }
+
+  async getMissedCallCount(orgId: string, since: Date): Promise<number> {
+    const [result] = await db.select({ c: count() }).from(missedCalls)
+      .where(and(
+        eq(missedCalls.orgId, orgId),
+        sql`${missedCalls.createdAt} >= ${since}`
+      ));
+    return result.c;
+  }
+
+  async createAiMessage(missedCallId: string, role: string, content: string): Promise<AiMessage> {
+    const [msg] = await db.insert(aiMessages).values({
+      missedCallId,
+      role: role as any,
+      content,
+    }).returning();
+    return msg;
+  }
+
+  async getAiMessages(missedCallId: string): Promise<AiMessage[]> {
+    return db.select().from(aiMessages)
+      .where(eq(aiMessages.missedCallId, missedCallId))
+      .orderBy(aiMessages.createdAt);
+  }
+
+  async getOrgByCallRecoveryPhone(phone: string): Promise<Org | undefined> {
+    const [org] = await db.select().from(orgs).where(eq(orgs.callRecoveryPhone, phone));
+    return org;
+  }
+
+  async findMissedCallByCallerPhone(phone: string): Promise<(MissedCall & { orgId: string }) | undefined> {
+    const [mc] = await db.select().from(missedCalls)
+      .where(and(
+        eq(missedCalls.callerPhone, phone),
+        inArray(missedCalls.status, ["new", "in_progress"] as any)
+      ))
+      .orderBy(desc(missedCalls.createdAt));
+    return mc;
   }
 }
 

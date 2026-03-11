@@ -52,6 +52,55 @@ export async function seedStripeProducts() {
     });
 
     console.log('Stripe products created successfully!');
+
+    const existingCrProducts = await stripe.products.search({ query: "name:'Call Recovery Starter'" });
+    if (existingCrProducts.data.length > 0) {
+      console.log('Call Recovery Stripe products already exist, skipping...');
+      return;
+    }
+
+    console.log('Creating Call Recovery Stripe products...');
+
+    const crStarter = await stripe.products.create({
+      name: 'Call Recovery Starter',
+      description: 'AI-powered missed call recovery with up to 50 recoveries per month.',
+      metadata: { feature: 'call_recovery', plan: 'starter' },
+    });
+    await stripe.prices.create({
+      product: crStarter.id,
+      unit_amount: 2900,
+      currency: 'usd',
+      recurring: { interval: 'month' },
+      metadata: { feature: 'call_recovery', plan: 'starter' },
+    });
+
+    const crGrowth = await stripe.products.create({
+      name: 'Call Recovery Growth',
+      description: 'AI-powered missed call recovery with unlimited recoveries per month.',
+      metadata: { feature: 'call_recovery', plan: 'growth' },
+    });
+    await stripe.prices.create({
+      product: crGrowth.id,
+      unit_amount: 7900,
+      currency: 'usd',
+      recurring: { interval: 'month' },
+      metadata: { feature: 'call_recovery', plan: 'growth' },
+    });
+
+    const crPro = await stripe.products.create({
+      name: 'Call Recovery Pro',
+      description: 'AI-powered missed call recovery with unlimited recoveries and analytics dashboard.',
+      metadata: { feature: 'call_recovery', plan: 'pro' },
+    });
+    await stripe.prices.create({
+      product: crPro.id,
+      unit_amount: 14900,
+      currency: 'usd',
+      recurring: { interval: 'month' },
+      metadata: { feature: 'call_recovery', plan: 'pro' },
+    });
+
+    console.log('Call Recovery Stripe products created successfully!');
   } catch (err: any) {
     console.error('Error seeding Stripe products:', err.message);
   }
