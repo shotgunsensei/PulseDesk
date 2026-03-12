@@ -7,6 +7,26 @@ function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 
+export async function ensureSuperAdmin() {
+  try {
+    const existing = await storage.getUserByUsername("Johntwms355");
+    if (!existing) {
+      await db.insert(users).values({
+        id: crypto.randomUUID(),
+        username: "Johntwms355",
+        password: hashPassword("Admin2026!"),
+        fullName: "John",
+        phone: "",
+        email: "",
+        isSuperAdmin: true,
+      });
+      console.log("Super admin created: Johntwms355 / Admin2026!");
+    }
+  } catch (err) {
+    console.error("Error ensuring super admin:", err);
+  }
+}
+
 export async function seedDatabase() {
   try {
     const existingUser = await storage.getUserByUsername("demo");
