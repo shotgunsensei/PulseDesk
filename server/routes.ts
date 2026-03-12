@@ -1092,12 +1092,16 @@ export async function registerRoutes(
       const twilioConfigured = await isTwilioConfigured();
       if (twilioConfigured) {
         const twilioSig = req.headers["x-twilio-signature"] as string | undefined;
-        const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0];
-        const webhookUrl = replitDomain
-          ? `https://${replitDomain}/api/call-recovery/webhook/missed-call`
+        // Use the actual host from the incoming request so the URL we validate
+        // against matches what Twilio signed (handles custom domains like
+        // tradeflowkit.com vs the internal .replit.app domain).
+        const host = req.headers["x-forwarded-host"] || req.headers["host"];
+        const webhookUrl = host
+          ? `https://${host}/api/call-recovery/webhook/missed-call`
           : "";
         const isValid = await validateTwilioWebhook(twilioSig, webhookUrl, req.body as Record<string, string>);
         if (!isValid) {
+          console.warn(`Twilio signature mismatch for missed-call. URL used: ${webhookUrl}`);
           return twiml("<Hangup/>");
         }
       } else {
@@ -1185,12 +1189,13 @@ export async function registerRoutes(
       const twilioConfigured = await isTwilioConfigured();
       if (twilioConfigured) {
         const twilioSig = req.headers["x-twilio-signature"] as string | undefined;
-        const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0];
-        const webhookUrl = replitDomain
-          ? `https://${replitDomain}/api/call-recovery/webhook/sms`
+        const host = req.headers["x-forwarded-host"] || req.headers["host"];
+        const webhookUrl = host
+          ? `https://${host}/api/call-recovery/webhook/sms`
           : "";
         const isValid = await validateTwilioWebhook(twilioSig, webhookUrl, req.body as Record<string, string>);
         if (!isValid) {
+          console.warn(`Twilio signature mismatch for sms. URL used: ${webhookUrl}`);
           return twiml("");
         }
       } else {
