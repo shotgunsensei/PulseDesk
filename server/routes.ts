@@ -10,7 +10,7 @@ import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClie
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { processConversation, generateInitialMessage, completeRecovery } from "./callRecoveryAI";
-import { sendSMS, validateTwilioWebhook } from "./twilioClient";
+import { sendSMS, validateTwilioWebhook, isTwilioConfigured } from "./twilioClient";
 
 const PgSession = connectPgSimple(session);
 
@@ -1072,40 +1072,57 @@ export async function registerRoutes(
   });
 
   app.post("/api/call-recovery/webhook/missed-call", async (req: Request, res: Response) => {
+    // Twilio Voice URL webhooks require TwiML XML responses — never return plain text or JSON
+    const twiml = (inner: string) => {
+      res.set("Content-Type", "text/xml");
+      return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><Response>${inner}</Response>`);
+    };
+
     try {
       const { Called, From, CallSid, CallStatus } = req.body;
 
       if (!From || !Called) {
-        return res.status(400).send("Missing required Twilio parameters");
+        return twiml("<Hangup/>");
       }
 
-      const twilioSig = req.headers['x-twilio-signature'] as string | undefined;
-      const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0];
-      const webhookUrl = replitDomain
-        ? `https://${replitDomain}/api/call-recovery/webhook/missed-call`
-        : '';
-      const isValid = await validateTwilioWebhook(twilioSig, webhookUrl, req.body as Record<string, string>);
-      if (!isValid) {
-        return res.status(403).send("Invalid Twilio signature");
+      // Validate Twilio signature only when credentials are configured.
+      // Without credentials we cannot sign outbound SMS either, so we log the
+      // warning but still respond with valid TwiML so the caller isn't greeted
+      // with Twilio's "application error" recording.
+      const twilioConfigured = await isTwilioConfigured();
+      if (twilioConfigured) {
+        const twilioSig = req.headers["x-twilio-signature"] as string | undefined;
+        const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0];
+        const webhookUrl = replitDomain
+          ? `https://${replitDomain}/api/call-recovery/webhook/missed-call`
+          : "";
+        const isValid = await validateTwilioWebhook(twilioSig, webhookUrl, req.body as Record<string, string>);
+        if (!isValid) {
+          return twiml("<Hangup/>");
+        }
+      } else {
+        console.warn("Twilio not configured — skipping webhook signature validation for missed-call");
       }
 
+      // Status callback path: only process calls that were actually missed
       if (CallStatus && !["no-answer", "busy", "failed", "canceled"].includes(CallStatus)) {
-        return res.status(200).send("Call not missed, ignoring");
+        res.set("Content-Type", "text/xml");
+        return res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>");
       }
 
       const org = await storage.getOrgByCallRecoveryPhone(Called);
       if (!org) {
-        return res.status(404).send("No organization found for this phone number");
+        return twiml("<Hangup/>");
       }
 
       if (!org.callRecoveryPlan || org.callRecoveryStatus !== "active") {
-        return res.status(403).send("Call recovery not active for this organization");
+        return twiml("<Hangup/>");
       }
 
       const crSub = await storage.getCallRecoverySubscription(org.id);
       if (!crSub) {
         console.log(`No call_recovery_subscriptions row for org ${org.id} — rejecting`);
-        return res.status(403).send("Call recovery subscription record not found");
+        return twiml("<Hangup/>");
       }
 
       const limits = CALL_RECOVERY_PLAN_LIMITS[org.callRecoveryPlan];
@@ -1114,13 +1131,13 @@ export async function registerRoutes(
         const currentUsage = await storage.getMissedCallCount(org.id, periodStart);
         if (currentUsage >= limits.recoveriesPerMonth) {
           console.log(`Call recovery limit reached for org ${org.id} (${currentUsage}/${limits.recoveriesPerMonth} since ${periodStart.toISOString()})`);
-          return res.status(429).send("Monthly recovery limit reached");
+          return twiml("<Say voice=\"alice\">We received your call. Please try again later.</Say><Hangup/>");
         }
       }
 
       const existing = await storage.getMissedCallByPhone(org.id, From);
       if (existing) {
-        return res.status(200).json({ message: "Recovery already in progress for this caller" });
+        return twiml("<Say voice=\"alice\">We received your call and will follow up with you shortly.</Say><Hangup/>");
       }
 
       const missedCall = await storage.createMissedCall(org.id, {
@@ -1139,39 +1156,55 @@ export async function registerRoutes(
         console.warn(`Failed to send initial SMS to ${From} for missed call ${missedCall.id}`);
       }
 
-      res.status(200).json({ message: "Missed call recorded, recovery initiated" });
+      // Voice URL path: return a friendly spoken message before hanging up
+      // Status callback path: just return an empty TwiML response
+      if (CallStatus) {
+        return twiml("");
+      }
+      return twiml("<Say voice=\"alice\">We just missed your call. We'll send you a text message shortly. Thank you for calling.</Say><Hangup/>");
     } catch (err: any) {
       console.error("Missed call webhook error:", err.message);
-      res.status(500).send(err.message);
+      res.set("Content-Type", "text/xml");
+      return res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Hangup/></Response>");
     }
   });
 
   app.post("/api/call-recovery/webhook/sms", async (req: Request, res: Response) => {
+    const twiml = (inner: string) => {
+      res.set("Content-Type", "text/xml");
+      return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><Response>${inner}</Response>`);
+    };
+
     try {
       const { From, Body, To } = req.body;
 
       if (!From || Body === undefined) {
-        return res.status(400).send("Missing required SMS parameters");
+        return twiml("");
       }
 
-      const twilioSig = req.headers['x-twilio-signature'] as string | undefined;
-      const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0];
-      const webhookUrl = replitDomain
-        ? `https://${replitDomain}/api/call-recovery/webhook/sms`
-        : '';
-      const isValid = await validateTwilioWebhook(twilioSig, webhookUrl, req.body as Record<string, string>);
-      if (!isValid) {
-        return res.status(403).send("Invalid Twilio signature");
+      const twilioConfigured = await isTwilioConfigured();
+      if (twilioConfigured) {
+        const twilioSig = req.headers["x-twilio-signature"] as string | undefined;
+        const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0];
+        const webhookUrl = replitDomain
+          ? `https://${replitDomain}/api/call-recovery/webhook/sms`
+          : "";
+        const isValid = await validateTwilioWebhook(twilioSig, webhookUrl, req.body as Record<string, string>);
+        if (!isValid) {
+          return twiml("");
+        }
+      } else {
+        console.warn("Twilio not configured — skipping webhook signature validation for sms");
       }
 
       const org = await storage.getOrgByCallRecoveryPhone(To);
       if (!org) {
-        return res.status(404).send("No organization found for this phone number");
+        return twiml("");
       }
 
       const missedCall = await storage.getMissedCallByPhone(org.id, From);
       if (!missedCall) {
-        return res.status(404).send("No active recovery found for this caller");
+        return twiml("");
       }
 
       const result = await processConversation(missedCall.id, Body);
@@ -1192,11 +1225,11 @@ export async function registerRoutes(
         }
       }
 
-      res.set("Content-Type", "text/xml");
-      res.status(200).send("<Response></Response>");
+      return twiml("");
     } catch (err: any) {
       console.error("SMS webhook error:", err.message);
-      res.status(500).send(err.message);
+      res.set("Content-Type", "text/xml");
+      return res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>");
     }
   });
 
