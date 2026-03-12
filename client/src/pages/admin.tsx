@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PageHeader } from "@/components/page-header";
-import { PLAN_LABELS } from "@shared/schema";
+import { PLAN_LABELS, type CallRecoveryPlan } from "@shared/schema";
 import type { Org, User, Membership } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Shield, Users, Building2, Trash2, Settings, ChevronDown, ChevronRight, UserMinus } from "lucide-react";
+
+const CR_PLAN_LABELS: Record<string, string> = {
+  none: "None",
+  starter: "Starter",
+  growth: "Growth",
+  pro: "Pro",
+};
 
 type AdminOrg = Org & {
   counts: { customers: number; jobs: number; quotes: number; invoices: number; members: number };
@@ -138,6 +145,7 @@ function OrgMembersRow({ orgId }: { orgId: string }) {
 
 function OrganizationsTab() {
   const { toast } = useToast();
+  const { refreshAuth } = useAuth();
   const [expandedOrg, setExpandedOrg] = useState<string | null>(null);
   const [deleteOrg, setDeleteOrg] = useState<AdminOrg | null>(null);
 
@@ -151,10 +159,25 @@ function OrganizationsTab() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/orgs"] });
+      refreshAuth();
       toast({ title: "Plan updated" });
     },
     onError: (err: Error) => {
       toast({ title: "Failed to update plan", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const changeCRPlanMutation = useMutation({
+    mutationFn: async ({ id, callRecoveryPlan }: { id: string; callRecoveryPlan: CallRecoveryPlan | null }) => {
+      await apiRequest("PATCH", `/api/admin/orgs/${id}`, { callRecoveryPlan, callRecoveryStatus: callRecoveryPlan ? "active" : null });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/orgs"] });
+      refreshAuth();
+      toast({ title: "Call Recovery plan updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to update CR plan", description: err.message, variant: "destructive" });
     },
   });
 
@@ -194,6 +217,7 @@ function OrganizationsTab() {
                 <TableHead className="w-8"></TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Plan</TableHead>
+                <TableHead>CR Plan</TableHead>
                 <TableHead className="text-center">Members</TableHead>
                 <TableHead className="text-center">Customers</TableHead>
                 <TableHead className="text-center">Jobs</TableHead>
@@ -204,7 +228,7 @@ function OrganizationsTab() {
             <TableBody>
               {orgs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                     No organizations found
                   </TableCell>
                 </TableRow>
@@ -237,6 +261,15 @@ function OrganizationsTab() {
                         >
                           {PLAN_LABELS[org.plan] || org.plan}
                         </Badge>
+                      </TableCell>
+                      <TableCell data-testid={`text-cr-plan-${org.id}`}>
+                        {org.callRecoveryPlan ? (
+                          <Badge variant="secondary" className="bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300 no-default-hover-elevate no-default-active-elevate">
+                            {CR_PLAN_LABELS[org.callRecoveryPlan] || org.callRecoveryPlan}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-center" data-testid={`text-members-${org.id}`}>
                         {org.memberCount}
@@ -278,6 +311,31 @@ function OrganizationsTab() {
                                   >
                                     {label}
                                     {org.plan === key && " (current)"}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger data-testid={`button-change-cr-plan-${org.id}`}>
+                                Change CR Plan
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent>
+                                <DropdownMenuItem
+                                  onClick={() => changeCRPlanMutation.mutate({ id: org.id, callRecoveryPlan: null })}
+                                  disabled={!org.callRecoveryPlan}
+                                  data-testid={`button-set-cr-none-${org.id}`}
+                                >
+                                  None {!org.callRecoveryPlan && "(current)"}
+                                </DropdownMenuItem>
+                                {(["starter", "growth", "pro"] as CallRecoveryPlan[]).map((crPlan) => (
+                                  <DropdownMenuItem
+                                    key={crPlan}
+                                    onClick={() => changeCRPlanMutation.mutate({ id: org.id, callRecoveryPlan: crPlan })}
+                                    disabled={org.callRecoveryPlan === crPlan}
+                                    data-testid={`button-set-cr-${crPlan}-${org.id}`}
+                                  >
+                                    {CR_PLAN_LABELS[crPlan]}
+                                    {org.callRecoveryPlan === crPlan && " (current)"}
                                   </DropdownMenuItem>
                                 ))}
                               </DropdownMenuSubContent>
