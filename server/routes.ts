@@ -1150,8 +1150,8 @@ export async function registerRoutes(
       }
       console.log("[missed-call webhook] AccountSid validated successfully");
 
-      // Status callback path: only process calls that were actually missed
-      if (CallStatus && !["no-answer", "busy", "failed", "canceled"].includes(CallStatus)) {
+      if (CallStatus === "in-progress" || CallStatus === "completed") {
+        console.log(`[missed-call webhook] Skipping ${CallStatus} status callback`);
         res.set("Content-Type", "text/xml");
         return res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>");
       }
@@ -1204,10 +1204,10 @@ export async function registerRoutes(
 
       // Voice URL path: return a friendly spoken message before hanging up
       // Status callback path: just return an empty TwiML response
-      if (CallStatus) {
-        return twiml("");
+      if (!CallStatus || CallStatus === "ringing") {
+        return twiml("<Say voice=\"alice\">We just missed your call. We'll send you a text message shortly. Thank you for calling.</Say><Hangup/>");
       }
-      return twiml("<Say voice=\"alice\">We just missed your call. We'll send you a text message shortly. Thank you for calling.</Say><Hangup/>");
+      return twiml("");
     } catch (err: any) {
       console.error("Missed call webhook error:", err.message);
       res.set("Content-Type", "text/xml");
