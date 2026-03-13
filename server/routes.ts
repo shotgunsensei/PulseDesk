@@ -1189,8 +1189,24 @@ export async function registerRoutes(
 
       const existing = await storage.getMissedCallByPhone(org.id, From);
       if (existing) {
+        // Check whether a real conversation has started (customer replied at least once).
+        // If no user messages exist the initial SMS likely failed — retry it so the
+        // customer actually receives the text before we tell them to expect one.
+        const existingMessages = await storage.getAiMessages(existing.id);
+        const conversationStarted = existingMessages.some(m => m.role === "user");
+        if (!conversationStarted) {
+          const retryMessage = generateInitialMessage(org.name);
+          const smsSent = await sendSMS(From, Called, retryMessage);
+          if (smsSent) {
+            console.log(`[missed-call webhook] Retried SMS for stale missed call ${existing.id}`);
+            await storage.updateMissedCall(existing.id, { status: "in_progress" });
+          } else {
+            console.warn(`[missed-call webhook] SMS retry also failed for missed call ${existing.id}`);
+            await storage.updateMissedCall(existing.id, { status: "failed" });
+          }
+        }
         if (!CallStatus || CallStatus === "ringing") {
-          return twiml("<Say voice=\"alice\">We received your call and will follow up with you shortly.</Say><Hangup/>");
+          return twiml("<Say voice=\"alice\">Sorry we missed your call. Our automated system will send you a text message shortly.</Say><Hangup/>");
         }
         return twiml("");
       }
@@ -1209,12 +1225,13 @@ export async function registerRoutes(
       const smsSent = await sendSMS(From, Called, initialMessage);
       if (!smsSent) {
         console.warn(`Failed to send initial SMS to ${From} for missed call ${missedCall.id}`);
+        await storage.updateMissedCall(missedCall.id, { status: "failed" });
       }
 
       // Voice URL path: return a friendly spoken message before hanging up
       // Status callback path: just return an empty TwiML response
       if (!CallStatus || CallStatus === "ringing") {
-        return twiml("<Say voice=\"alice\">We just missed your call. We'll send you a text message shortly. Thank you for calling.</Say><Hangup/>");
+        return twiml("<Say voice=\"alice\">Sorry we missed your call. Our automated system will send you a text message shortly.</Say><Hangup/>");
       }
       return twiml("");
     } catch (err: any) {
