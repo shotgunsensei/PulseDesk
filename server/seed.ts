@@ -1,7 +1,49 @@
 import { storage } from "./storage";
 import { db } from "./db";
-import { users } from "@shared/schema";
+import { users, memberships } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import crypto from "crypto";
+
+export async function ensureDemoAccount() {
+  try {
+    const existing = await storage.getUserByUsername("demo");
+    if (existing) {
+      const mems = await db.select().from(memberships).where(eq(memberships.userId, existing.id));
+      if (mems.length > 0) {
+        console.log("Demo account already exists with org, skipping.");
+        return;
+      }
+      const org = await storage.createOrg({
+        name: "Demo Electrical Services",
+        slug: "demo-electrical-" + Date.now(),
+        phone: "(555) 100-2000",
+        email: "demo@tradeflow.io",
+        address: "123 Demo St, Austin, TX 78701",
+      });
+      await storage.createMembership(org.id, existing.id, "owner");
+      console.log("Demo org created for existing demo user.");
+      return;
+    }
+    const demoUser = await storage.createUser({
+      username: "demo",
+      password: crypto.createHash("sha256").update("demo123").digest("hex"),
+      fullName: "Demo User",
+      phone: "(555) 234-5678",
+      email: "demo@tradeflow.io",
+    });
+    const org = await storage.createOrg({
+      name: "Demo Electrical Services",
+      slug: "demo-electrical-" + Date.now(),
+      phone: "(555) 100-2000",
+      email: "demo@tradeflow.io",
+      address: "123 Demo St, Austin, TX 78701",
+    });
+    await storage.createMembership(org.id, demoUser.id, "owner");
+    console.log("Demo account created: demo / demo123");
+  } catch (err) {
+    console.error("Error ensuring demo account:", err);
+  }
+}
 
 function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");

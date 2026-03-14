@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Receipt, Search, Filter } from "lucide-react";
+import { Plus, Receipt, Search, Filter, Download } from "lucide-react";
 import { format } from "date-fns";
 import type { Invoice, Customer } from "@shared/schema";
 
@@ -94,10 +94,21 @@ export default function InvoicesPage() {
         title="Invoices"
         description="Manage billing and payments"
         actions={
-          <Button size="sm" onClick={() => navigate("/invoices/new")} data-testid="button-add-invoice">
-            <Plus className="h-4 w-4 mr-1" />
-            New Invoice
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { window.location.href = "/api/invoices/export/quickbooks"; }}
+              data-testid="button-export-quickbooks"
+            >
+              <Download className="h-4 w-4 mr-1" />
+              Export to QuickBooks
+            </Button>
+            <Button size="sm" onClick={() => navigate("/invoices/new")} data-testid="button-add-invoice">
+              <Plus className="h-4 w-4 mr-1" />
+              New Invoice
+            </Button>
+          </div>
         }
       />
 
