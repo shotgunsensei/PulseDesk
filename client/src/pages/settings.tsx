@@ -6,16 +6,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, User, Key, Copy, Check } from "lucide-react";
+import { Building2, User, Key, Copy, Check, Plus } from "lucide-react";
 import type { InviteCode } from "@shared/schema";
 
 export default function SettingsPage() {
   const { user, org, refreshAuth } = useAuth();
   const { toast } = useToast();
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [newInviteRole, setNewInviteRole] = useState("tech");
 
   const { data: inviteCodes = [] } = useQuery<InviteCode[]>({
     queryKey: ["/api/invite-codes"],
@@ -174,17 +176,27 @@ export default function SettingsPage() {
                     <CardTitle className="text-base">Invite Codes</CardTitle>
                     <CardDescription>Share codes to invite team members</CardDescription>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      createInviteMutation.mutate({ role: "tech" })
-                    }
-                    disabled={createInviteMutation.isPending}
-                    data-testid="button-create-invite"
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Create Code
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Select value={newInviteRole} onValueChange={setNewInviteRole}>
+                      <SelectTrigger className="w-[120px] h-8 text-sm" data-testid="select-invite-role">
+                        <SelectValue placeholder="Role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="tech">Tech</SelectItem>
+                        <SelectItem value="viewer">Viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      onClick={() => createInviteMutation.mutate({ role: newInviteRole })}
+                      disabled={createInviteMutation.isPending}
+                      data-testid="button-create-invite"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Create Code
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -230,11 +242,3 @@ export default function SettingsPage() {
   );
 }
 
-function Plus(props: any) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <path d="M5 12h14"/>
-      <path d="M12 5v14"/>
-    </svg>
-  );
-}
