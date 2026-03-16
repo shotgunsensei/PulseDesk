@@ -52,7 +52,9 @@ export default function QuoteDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotes", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quotes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       toast({ title: "Job created from quote" });
       navigate("/jobs");
@@ -68,6 +70,7 @@ export default function QuoteDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       navigate("/quotes");
       toast({ title: "Quote deleted" });
     },

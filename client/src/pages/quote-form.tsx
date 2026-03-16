@@ -76,6 +76,7 @@ export default function QuoteForm() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       navigate("/quotes");
       toast({ title: isEditing ? "Quote updated" : "Quote created" });
     },

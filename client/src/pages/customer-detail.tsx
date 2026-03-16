@@ -59,6 +59,7 @@ export default function CustomerDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       navigate("/customers");
       toast({ title: "Customer deleted" });
     },

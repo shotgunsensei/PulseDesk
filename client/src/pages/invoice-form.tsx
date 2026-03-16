@@ -78,6 +78,9 @@ export default function InvoiceForm() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      if (customerId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/customers", customerId, "invoices"] });
+      }
       navigate("/invoices");
       toast({ title: isEditing ? "Invoice updated" : "Invoice created" });
     },
