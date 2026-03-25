@@ -183,6 +183,9 @@ export default function SettingsPage() {
       phone: fd.get("phone") || "",
       email: fd.get("email") || "",
       address: fd.get("address") || "",
+      website: fd.get("website") || "",
+      logoUrl: fd.get("logoUrl") || "",
+      businessHours: fd.get("businessHours") || "",
     });
   };
 
@@ -292,6 +295,26 @@ export default function SettingsPage() {
                 </CardHeader>
                 <CardContent>
                   <form onSubmit={handleOrgSubmit} className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      {org.logoUrl && (
+                        <img
+                          src={org.logoUrl}
+                          alt="Business logo"
+                          className="h-14 w-14 rounded-lg object-contain border bg-white"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      )}
+                      <div className="flex-1 space-y-2">
+                        <Label>Logo URL</Label>
+                        <Input
+                          name="logoUrl"
+                          defaultValue={org.logoUrl || ""}
+                          placeholder="https://example.com/logo.png"
+                          data-testid="input-settings-logo-url"
+                        />
+                        <p className="text-xs text-muted-foreground">Paste a link to your business logo image</p>
+                      </div>
+                    </div>
                     <div className="space-y-2">
                       <Label>Business Name</Label>
                       <Input name="name" defaultValue={org.name} data-testid="input-settings-org-name" />
@@ -309,6 +332,26 @@ export default function SettingsPage() {
                     <div className="space-y-2">
                       <Label>Address</Label>
                       <Input name="address" defaultValue={org.address || ""} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Website</Label>
+                        <Input
+                          name="website"
+                          defaultValue={org.website || ""}
+                          placeholder="https://example.com"
+                          data-testid="input-settings-website"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Business Hours</Label>
+                        <Input
+                          name="businessHours"
+                          defaultValue={org.businessHours || ""}
+                          placeholder="Mon–Fri 8am–5pm"
+                          data-testid="input-settings-business-hours"
+                        />
+                      </div>
                     </div>
                     <Button type="submit" disabled={updateOrgMutation.isPending} data-testid="button-save-org">
                       {updateOrgMutation.isPending ? "Saving..." : "Save Changes"}

@@ -108,7 +108,19 @@ interface CRStats {
   recovered: number;
   inProgress: number;
   failed: number;
+  contacted: number;
+  responded: number;
   recoveryRate: number;
+  lastMonthTotal: number;
+  lastMonthRecovered: number;
+  lastMonthRecoveryRate: number;
+  estimatedRevenue: number;
+  funnel: {
+    missed: number;
+    contacted: number;
+    responded: number;
+    recovered: number;
+  };
 }
 
 const PLAN_ORDER = ["starter", "growth", "pro"] as const;
@@ -453,6 +465,19 @@ function DashboardPage({
     },
   });
 
+  const markRecoverMutation = useMutation({
+    mutationFn: (callId: string) =>
+      apiRequest("PATCH", `/api/call-recovery/missed-calls/${callId}/recover`, {}),
+    onSuccess: () => {
+      toast({ title: "Marked as recovered" });
+      queryClient.invalidateQueries({ queryKey: ["/api/call-recovery/missed-calls"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/call-recovery/stats"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to update", variant: "destructive" });
+    },
+  });
+
   const handleManageBilling = async () => {
     setPortalLoading(true);
     try {
@@ -529,25 +554,62 @@ function DashboardPage({
               </CardTitle>
               <CardDescription>Recovery analytics for the current billing period</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="text-center p-3 rounded-lg bg-muted/40">
-                  <p className="text-2xl font-bold text-foreground">{stats.recovered}</p>
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.recovered}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">Recovered</p>
                 </div>
                 <div className="text-center p-3 rounded-lg bg-muted/40">
                   <p className="text-2xl font-bold text-foreground">{stats.recoveryRate}%</p>
                   <p className="text-xs text-muted-foreground mt-0.5">Conversion Rate</p>
+                  {stats.lastMonthRecoveryRate > 0 && (
+                    <p className={`text-[10px] mt-0.5 ${stats.recoveryRate >= stats.lastMonthRecoveryRate ? "text-green-600" : "text-red-500"}`}>
+                      {stats.recoveryRate >= stats.lastMonthRecoveryRate ? "↑" : "↓"} vs {stats.lastMonthRecoveryRate}% last mo
+                    </p>
+                  )}
                 </div>
                 <div className="text-center p-3 rounded-lg bg-muted/40">
                   <p className="text-2xl font-bold text-foreground">{stats.inProgress}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">In Progress</p>
                 </div>
-                <div className="text-center p-3 rounded-lg bg-muted/40">
-                  <p className="text-2xl font-bold text-foreground">{stats.totalThisMonth}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Total Calls</p>
-                </div>
+                {stats.estimatedRevenue > 0 && (
+                  <div className="text-center p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20">
+                    <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
+                      ${stats.estimatedRevenue.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Est. Revenue</p>
+                  </div>
+                )}
               </div>
+
+              {stats.funnel && stats.funnel.missed > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Recovery Funnel</p>
+                  <div className="space-y-1.5">
+                    {[
+                      { label: "Missed", value: stats.funnel.missed, color: "bg-slate-400" },
+                      { label: "Contacted", value: stats.funnel.contacted, color: "bg-blue-400" },
+                      { label: "Responded", value: stats.funnel.responded, color: "bg-amber-400" },
+                      { label: "Recovered", value: stats.funnel.recovered, color: "bg-green-500" },
+                    ].map((stage) => {
+                      const pct = stats.funnel.missed > 0 ? Math.round((stage.value / stats.funnel.missed) * 100) : 0;
+                      return (
+                        <div key={stage.label} className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground w-16 shrink-0">{stage.label}</span>
+                          <div className="flex-1 h-4 bg-muted rounded-sm overflow-hidden">
+                            <div
+                              className={`h-full ${stage.color} rounded-sm transition-all`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-medium w-8 text-right">{stage.value}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -614,37 +676,53 @@ function DashboardPage({
               {!callsLoading && calls && calls.length > 0 && (
                 <div className="divide-y">
                   {calls.map((call) => (
-                    <button
+                    <div
                       key={call.id}
-                      className="w-full flex items-center gap-3 py-3 px-2 hover:bg-muted/40 rounded-md transition-colors text-left group"
-                      onClick={() => openConversation(call.id)}
+                      className="flex items-center gap-2 py-3 px-2"
                       data-testid={`row-missed-call-${call.id}`}
                     >
-                      <div className="flex-shrink-0 h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium truncate">{call.callerPhone}</p>
-                          <StatusBadge status={call.status} />
+                      <button
+                        className="flex-1 flex items-center gap-3 hover:bg-muted/40 rounded-md transition-colors text-left group min-w-0 p-1"
+                        onClick={() => openConversation(call.id)}
+                      >
+                        <div className="flex-shrink-0 h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+                          <User className="h-4 w-4 text-muted-foreground" />
                         </div>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {call.serviceType || "Service type pending"}
-                          {call.location ? ` · ${call.location}` : ""}
-                        </p>
-                      </div>
-                      <div className="flex-shrink-0 text-right">
-                        <p className="text-xs text-muted-foreground">
-                          {format(new Date(call.createdAt), "MMM d, h:mm a")}
-                        </p>
-                        {call.jobId && (
-                          <p className="text-xs text-primary flex items-center gap-0.5 justify-end mt-0.5">
-                            <Briefcase className="h-3 w-3" /> Job created
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium truncate">{call.callerPhone}</p>
+                            <StatusBadge status={call.status} />
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {call.serviceType || "Service type pending"}
+                            {call.location ? ` · ${call.location}` : ""}
                           </p>
-                        )}
-                      </div>
-                      <MessageSquare className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                    </button>
+                        </div>
+                        <div className="flex-shrink-0 text-right">
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(call.createdAt), "MMM d, h:mm a")}
+                          </p>
+                          {call.jobId && (
+                            <p className="text-xs text-primary flex items-center gap-0.5 justify-end mt-0.5">
+                              <Briefcase className="h-3 w-3" /> Job created
+                            </p>
+                          )}
+                        </div>
+                        <MessageSquare className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                      </button>
+                      {call.status !== "recovered" && (
+                        <button
+                          className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors border border-green-200 dark:border-green-800"
+                          onClick={() => markRecoverMutation.mutate(call.id)}
+                          disabled={markRecoverMutation.isPending}
+                          data-testid={`button-mark-recovered-${call.id}`}
+                          title="Mark as recovered"
+                        >
+                          <CheckCircle className="h-3 w-3" />
+                          Recovered
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}

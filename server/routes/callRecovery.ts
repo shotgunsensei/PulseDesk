@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
 import { requireAuth, requireOrg } from "../middleware";
 import { getUncachableStripeClient } from "../stripeClient";
-import { processConversation, generateInitialMessage, completeRecovery } from "../callRecoveryAI";
+import { processConversation, generateInitialMessage, isQuietHours, completeRecovery } from "../callRecoveryAI";
 import { sendSMS, validateTwilioAccountSid } from "../twilioClient";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
@@ -290,12 +290,25 @@ router.post("/api/call-recovery/webhook/missed-call", async (req: Request, res: 
       }
     }
 
+    if (!org.callRecoveryEnabled) {
+      console.log(`[missed-call webhook] Call recovery disabled for org ${org.id} — not sending SMS`);
+      return twiml("<Hangup/>");
+    }
+
+    if (isQuietHours(org.callRecoveryQuietStart, org.callRecoveryQuietEnd)) {
+      console.log(`[missed-call webhook] Quiet hours active for org ${org.id} — recording call but not sending SMS`);
+      const qCall = await storage.createMissedCall(org.id, { callerPhone: From, twilioCallSid: CallSid });
+      await storage.incrementCallRecoveryUsage(org.id);
+      await storage.updateMissedCall(qCall.id, { status: "failed" });
+      return twiml("<Hangup/>");
+    }
+
     const existing = await storage.getMissedCallByPhone(org.id, From);
     if (existing) {
       const existingMessages = await storage.getAiMessages(existing.id);
       const conversationStarted = existingMessages.some((m) => m.role === "user");
       if (!conversationStarted) {
-        const retryMessage = generateInitialMessage(org.name);
+        const retryMessage = generateInitialMessage(org.name, org.callRecoveryCustomMessage);
         const smsSent = await sendSMS(From, Called, retryMessage);
         if (smsSent) {
           await storage.updateMissedCall(existing.id, { status: "in_progress" });
@@ -318,7 +331,7 @@ router.post("/api/call-recovery/webhook/missed-call", async (req: Request, res: 
 
     await storage.incrementCallRecoveryUsage(org.id);
 
-    const initialMessage = generateInitialMessage(org.name);
+    const initialMessage = generateInitialMessage(org.name, org.callRecoveryCustomMessage);
     await storage.createAiMessage(missedCall.id, "assistant", initialMessage);
     await storage.updateMissedCall(missedCall.id, { status: "in_progress" });
 

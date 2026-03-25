@@ -106,6 +106,9 @@ export const orgs = pgTable("orgs", {
   callRecoveryCustomMessage: text("call_recovery_custom_message"),
   callRecoveryQuietStart: text("call_recovery_quiet_start"),
   callRecoveryQuietEnd: text("call_recovery_quiet_end"),
+  logoUrl: text("logo_url"),
+  website: text("website"),
+  businessHours: text("business_hours"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

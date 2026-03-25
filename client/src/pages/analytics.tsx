@@ -28,6 +28,8 @@ import {
   DollarSign,
   CheckCircle,
   Clock,
+  Repeat,
+  Timer,
 } from "lucide-react";
 
 interface QuoteAnalytics {
@@ -38,6 +40,8 @@ interface QuoteAnalytics {
   declined: number;
   avgValue: number;
   acceptanceRate: number;
+  acceptanceRate30d: number;
+  total30d: number;
   byStatus: { status: string; count: number; totalValue: number }[];
   weekly: { week: string; count: number; accepted: number }[];
 }
@@ -49,6 +53,7 @@ interface InvoiceAnalytics {
   totalValue: number;
   overdueValue: number;
   collectionRate: number;
+  avgDaysToPayment: number;
   weekly: { week: string; revenue: number }[];
   aging: { bucket: string; count: number; value: number }[];
 }
@@ -57,12 +62,17 @@ interface JobAnalytics {
   byStatus: { status: string; count: number }[];
   weekly: { week: string; created: number; completed: number }[];
   byPriority: { priority: string; count: number }[];
+  completionRate: number;
+  busiestDays: { day: string; count: number }[];
 }
 
 interface CustomerAnalytics {
   total: number;
   monthly: { month: string; count: number }[];
   topByValue: { id: string; name: string; jobCount: number; lifetimeValue: number }[];
+  repeatRatio: number;
+  repeatCustomers: number;
+  oneTimeCustomers: number;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -87,8 +97,6 @@ const PRIORITY_COLORS: Record<string, string> = {
   urgent: "#ef4444",
 };
 
-const CHART_COLORS = ["#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ef4444", "#06b6d4"];
-
 const AGING_LABELS: Record<string, string> = {
   current: "Current",
   "1_30": "1–30 days",
@@ -109,7 +117,7 @@ function StatCard({
   sub,
   color = "text-foreground",
 }: {
-  icon: any;
+  icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: string | number;
   sub?: string;
@@ -136,7 +144,7 @@ function QuotesTab() {
   if (!data) return null;
 
   const weeklyData = data.weekly.map((w) => ({
-    week: format(parseISO(w.week as any), "MMM d"),
+    week: format(parseISO(String(w.week)), "MMM d"),
     Quotes: w.count,
     Accepted: w.accepted,
   }));
@@ -151,9 +159,21 @@ function QuotesTab() {
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard icon={FileText} label="Total Quotes" value={data.total} />
-        <StatCard icon={CheckCircle} label="Acceptance Rate" value={`${data.acceptanceRate}%`} color={data.acceptanceRate >= 50 ? "text-green-600" : "text-amber-600"} />
+        <StatCard
+          icon={CheckCircle}
+          label="Acceptance Rate"
+          value={`${data.acceptanceRate}%`}
+          sub="all-time"
+          color={data.acceptanceRate >= 50 ? "text-green-600" : "text-amber-600"}
+        />
+        <StatCard
+          icon={TrendingUp}
+          label="30-Day Acceptance"
+          value={`${data.acceptanceRate30d}%`}
+          sub={`${data.total30d} quotes`}
+          color={data.acceptanceRate30d >= 50 ? "text-green-600" : "text-amber-600"}
+        />
         <StatCard icon={DollarSign} label="Avg. Quote Value" value={fmt(data.avgValue)} />
-        <StatCard icon={TrendingUp} label="Accepted" value={data.accepted} sub={`of ${data.total} total`} />
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -196,7 +216,7 @@ function QuotesTab() {
                         <Cell key={i} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v: any) => [v, "Quotes"]} />
+                    <Tooltip formatter={(v: number) => [v, "Quotes"]} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="space-y-1.5 flex-1">
@@ -226,7 +246,7 @@ function InvoicesTab() {
   if (!data) return null;
 
   const weeklyData = data.weekly.map((w) => ({
-    week: format(parseISO(w.week as any), "MMM d"),
+    week: format(parseISO(String(w.week)), "MMM d"),
     Revenue: w.revenue,
   }));
 
@@ -242,10 +262,30 @@ function InvoicesTab() {
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard icon={Receipt} label="Total Invoices" value={data.total} />
-        <StatCard icon={CheckCircle} label="Collection Rate" value={`${data.collectionRate}%`} color={data.collectionRate >= 70 ? "text-green-600" : "text-amber-600"} />
+        <StatCard
+          icon={CheckCircle}
+          label="Collection Rate"
+          value={`${data.collectionRate}%`}
+          color={data.collectionRate >= 70 ? "text-green-600" : "text-amber-600"}
+        />
         <StatCard icon={DollarSign} label="Revenue Collected" value={fmt(data.collected)} />
-        <StatCard icon={Clock} label="Overdue" value={fmt(data.overdueValue)} color={data.overdueValue > 0 ? "text-red-600" : "text-foreground"} />
+        <StatCard
+          icon={Timer}
+          label="Avg. Days to Payment"
+          value={data.avgDaysToPayment > 0 ? `${data.avgDaysToPayment}d` : "—"}
+          sub="for paid invoices"
+          color={data.avgDaysToPayment > 0 && data.avgDaysToPayment <= 30 ? "text-green-600" : data.avgDaysToPayment > 60 ? "text-red-600" : "text-foreground"}
+        />
       </div>
+
+      {data.overdueValue > 0 && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
+          <Clock className="h-4 w-4 text-red-600 shrink-0" />
+          <p className="text-sm text-red-700 dark:text-red-400">
+            <strong>{fmt(data.overdueValue)}</strong> overdue across unpaid invoices
+          </p>
+        </div>
+      )}
 
       <div className="grid md:grid-cols-2 gap-6">
         <Card>
@@ -261,7 +301,7 @@ function InvoicesTab() {
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="week" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(v: any) => [fmt(v), "Revenue"]} />
+                  <Tooltip formatter={(v: number) => [fmt(v), "Revenue"]} />
                   <Line type="monotone" dataKey="Revenue" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
                 </LineChart>
               </ResponsiveContainer>
@@ -283,7 +323,7 @@ function InvoicesTab() {
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip formatter={(v: any, name) => [name === "Value" ? fmt(v) : v, name]} />
+                  <Tooltip formatter={(v: number, name) => [name === "Value" ? fmt(v) : v, name]} />
                   <Legend />
                   <Bar dataKey="Count" fill="#ef4444" radius={[2, 2, 0, 0]} />
                 </BarChart>
@@ -307,7 +347,7 @@ function JobsTab() {
   const active = data.byStatus.filter((s) => ["in_progress", "scheduled"].includes(s.status)).reduce((sum, s) => sum + s.count, 0);
 
   const weeklyData = data.weekly.map((w) => ({
-    week: format(parseISO(w.week as any), "MMM d"),
+    week: format(parseISO(String(w.week)), "MMM d"),
     Created: w.created,
     Completed: w.completed,
   }));
@@ -318,12 +358,27 @@ function JobsTab() {
     color: STATUS_COLORS[s.status] || "#94a3b8",
   }));
 
+  const busiestDay = data.busiestDays?.length > 0
+    ? data.busiestDays.reduce((a, b) => (a.count > b.count ? a : b))
+    : null;
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard icon={Wrench} label="Total Jobs" value={total} />
         <StatCard icon={TrendingUp} label="Active" value={active} color="text-amber-600" />
-        <StatCard icon={CheckCircle} label="Completed" value={completed} color="text-green-600" />
+        <StatCard
+          icon={CheckCircle}
+          label="Completion Rate"
+          value={`${data.completionRate ?? 0}%`}
+          color={(data.completionRate ?? 0) >= 70 ? "text-green-600" : "text-amber-600"}
+        />
+        <StatCard
+          icon={Clock}
+          label="Busiest Day"
+          value={busiestDay ? busiestDay.day : "—"}
+          sub={busiestDay ? `${busiestDay.count} jobs` : "no data yet"}
+        />
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -352,35 +407,22 @@ function JobsTab() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Status Breakdown</CardTitle>
+            <CardTitle className="text-base">Jobs by Day of Week</CardTitle>
+            <CardDescription>Which days are busiest</CardDescription>
           </CardHeader>
           <CardContent>
-            {statusPie.length === 0 ? (
+            {!data.busiestDays || data.busiestDays.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">No data yet</p>
             ) : (
-              <div className="flex items-center gap-6">
-                <ResponsiveContainer width={140} height={140}>
-                  <PieChart>
-                    <Pie data={statusPie} cx="50%" cy="50%" innerRadius={40} outerRadius={65} dataKey="value" paddingAngle={2}>
-                      {statusPie.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v: any) => [v, "Jobs"]} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-1.5 flex-1">
-                  {statusPie.map((entry) => (
-                    <div key={entry.name} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="h-2.5 w-2.5 rounded-full" style={{ background: entry.color }} />
-                        <span className="text-muted-foreground">{entry.name}</span>
-                      </div>
-                      <span className="font-medium">{entry.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={data.busiestDays} barSize={24}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" name="Jobs" fill="#a855f7" radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
@@ -396,13 +438,13 @@ function CustomersTab() {
   if (!data) return null;
 
   const monthlyData = data.monthly.map((m) => ({
-    month: format(parseISO(m.month as any), "MMM yy"),
+    month: format(parseISO(String(m.month)), "MMM yy"),
     New: m.count,
   }));
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard icon={Users} label="Total Customers" value={data.total} />
         <StatCard
           icon={TrendingUp}
@@ -412,6 +454,19 @@ function CustomersTab() {
               ? Math.round(data.monthly.reduce((s, m) => s + m.count, 0) / data.monthly.length)
               : 0
           }
+        />
+        <StatCard
+          icon={Repeat}
+          label="Repeat Rate"
+          value={`${data.repeatRatio ?? 0}%`}
+          sub={`${data.repeatCustomers ?? 0} repeat customers`}
+          color={(data.repeatRatio ?? 0) >= 30 ? "text-green-600" : "text-foreground"}
+        />
+        <StatCard
+          icon={CheckCircle}
+          label="One-Time Customers"
+          value={data.oneTimeCustomers ?? 0}
+          sub="single job only"
         />
       </div>
 

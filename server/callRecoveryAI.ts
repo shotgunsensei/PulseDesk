@@ -83,8 +83,27 @@ export async function processConversation(
   };
 }
 
-export function generateInitialMessage(orgName: string): string {
+export function generateInitialMessage(orgName: string, customTemplate?: string | null): string {
+  if (customTemplate && customTemplate.trim()) {
+    return customTemplate
+      .replace(/\{business_name\}/gi, orgName)
+      .replace(/\{org_name\}/gi, orgName);
+  }
   return `Hi! This is an automated assistant for ${orgName}. We noticed you tried to reach us. How can we help? What service do you need today?`;
+}
+
+export function isQuietHours(quietStart: string | null, quietEnd: string | null): boolean {
+  if (!quietStart || !quietEnd) return false;
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const [startH, startM] = quietStart.split(":").map(Number);
+  const [endH, endM] = quietEnd.split(":").map(Number);
+  const startMinutes = (startH || 0) * 60 + (startM || 0);
+  const endMinutes = (endH || 0) * 60 + (endM || 0);
+  if (startMinutes <= endMinutes) {
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  }
+  return currentMinutes >= startMinutes || currentMinutes < endMinutes;
 }
 
 async function callOpenAI(
