@@ -102,6 +102,10 @@ export const orgs = pgTable("orgs", {
   callRecoverySubscriptionId: varchar("call_recovery_subscription_id"),
   callRecoveryStatus: text("call_recovery_status"),
   callRecoveryPhone: text("call_recovery_phone"),
+  callRecoveryEnabled: boolean("call_recovery_enabled").default(true).notNull(),
+  callRecoveryCustomMessage: text("call_recovery_custom_message"),
+  callRecoveryQuietStart: text("call_recovery_quiet_start"),
+  callRecoveryQuietEnd: text("call_recovery_quiet_end"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

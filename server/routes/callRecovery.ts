@@ -446,6 +446,45 @@ router.post("/api/call-recovery/handle-subscription-change", async (req: Request
   }
 });
 
+router.patch("/api/call-recovery/settings", requireAuth, requireOrg, async (req: Request, res: Response) => {
+  try {
+    const org = await storage.getOrg(req.session.orgId!);
+    if (!org) return res.status(404).send("Organization not found");
+
+    const { enabled, customMessage, quietStart, quietEnd } = req.body;
+    const updateData: Record<string, unknown> = {};
+    if (typeof enabled === "boolean") updateData.callRecoveryEnabled = enabled;
+    if (customMessage !== undefined) updateData.callRecoveryCustomMessage = customMessage || null;
+    if (quietStart !== undefined) updateData.callRecoveryQuietStart = quietStart || null;
+    if (quietEnd !== undefined) updateData.callRecoveryQuietEnd = quietEnd || null;
+
+    const updated = await storage.updateOrg(org.id, updateData);
+    res.json({
+      enabled: updated?.callRecoveryEnabled,
+      customMessage: updated?.callRecoveryCustomMessage,
+      quietStart: updated?.callRecoveryQuietStart,
+      quietEnd: updated?.callRecoveryQuietEnd,
+    });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.get("/api/call-recovery/settings", requireAuth, requireOrg, async (req: Request, res: Response) => {
+  try {
+    const org = await storage.getOrg(req.session.orgId!);
+    if (!org) return res.status(404).send("Organization not found");
+    res.json({
+      enabled: org.callRecoveryEnabled,
+      customMessage: org.callRecoveryCustomMessage,
+      quietStart: org.callRecoveryQuietStart,
+      quietEnd: org.callRecoveryQuietEnd,
+    });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
 router.get("/api/call-recovery/stats", requireAuth, requireOrg, async (req: Request, res: Response) => {
   try {
     const org = await storage.getOrg(req.session.orgId!);

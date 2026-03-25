@@ -15,6 +15,7 @@ import subscriptionsRouter from "./subscriptions";
 import callRecoveryRouter from "./callRecovery";
 import adminRouter from "./admin";
 import wellKnownRouter from "./wellKnown";
+import analyticsRouter from "./analytics";
 
 declare module "express-session" {
   interface SessionData {
@@ -55,6 +56,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use(invoicesRouter);
   app.use(subscriptionsRouter);
   app.use(callRecoveryRouter);
+  app.use(analyticsRouter);
   app.use(adminRouter);
 
   return httpServer;

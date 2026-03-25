@@ -27,6 +27,7 @@ import AdminPage from "@/pages/admin";
 import PrivacyPage from "@/pages/privacy";
 import DeleteAccountPage from "@/pages/delete-account";
 import CallRecoveryPage from "@/pages/call-recovery";
+import AnalyticsPage from "@/pages/analytics";
 import SmsConsentPage from "@/pages/sms-consent";
 import GuidePage from "@/pages/guide";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -91,6 +92,7 @@ function AppContent() {
             <Route path="/invoices/:id" component={InvoiceDetail} />
             <Route path="/settings" component={SettingsPage} />
             <Route path="/subscription" component={SubscriptionPage} />
+            <Route path="/analytics" component={AnalyticsPage} />
             <Route path="/call-recovery" component={CallRecoveryPage} />
             <Route path="/admin" component={AdminPage} />
             <Route path="/guide" component={GuidePage} />

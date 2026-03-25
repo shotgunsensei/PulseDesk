@@ -56,6 +56,7 @@ export interface IStorage {
   getMembership(orgId: string, userId: string): Promise<Membership | undefined>;
   getOrgMemberships(orgId: string): Promise<Membership[]>;
   deleteMembership(orgId: string, userId: string): Promise<void>;
+  updateMembershipRole(orgId: string, userId: string, role: string): Promise<void>;
 
   createInviteCode(orgId: string, role: string, createdBy: string): Promise<InviteCode>;
   getInviteCodeByCode(code: string): Promise<InviteCode | undefined>;
@@ -200,6 +201,13 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMembership(orgId: string, userId: string): Promise<void> {
     await db.delete(memberships).where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId)));
+  }
+
+  async updateMembershipRole(orgId: string, userId: string, role: string): Promise<void> {
+    await db
+      .update(memberships)
+      .set({ role: role as any })
+      .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId)));
   }
 
   async createMembership(orgId: string, userId: string, role: string): Promise<Membership> {

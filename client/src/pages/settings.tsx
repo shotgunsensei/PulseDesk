@@ -7,20 +7,87 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, User, Key, Copy, Check, Plus } from "lucide-react";
+import {
+  Building2,
+  User,
+  Key,
+  Copy,
+  Check,
+  Plus,
+  Lock,
+  CreditCard,
+  Users,
+  Trash2,
+  ExternalLink,
+  Shield,
+} from "lucide-react";
+import { PLAN_LABELS, PLAN_LIMITS } from "@shared/schema";
 import type { InviteCode } from "@shared/schema";
+
+interface Member {
+  id: string;
+  orgId: string;
+  userId: string;
+  role: string;
+  user: {
+    id: string;
+    username: string;
+    fullName: string | null;
+    email: string | null;
+  } | null;
+}
+
+interface PlanInfo {
+  plan: string;
+  limits: { customers: number; jobs: number; quotes: number; invoices: number; teamMembers: number; canInvite: boolean };
+  counts: { customers: number; jobs: number; quotes: number; invoices: number; members: number };
+  subscriptionStatus: string | null;
+}
+
+function UsageBar({ label, used, limit }: { label: string; used: number; limit: number }) {
+  const unlimited = limit === -1;
+  const pct = unlimited ? 0 : Math.min((used / limit) * 100, 100);
+  const warn = !unlimited && pct >= 80;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <span className={`font-medium ${warn ? "text-orange-600" : ""}`}>
+          {used}{unlimited ? "" : ` / ${limit}`}
+          {unlimited && <span className="text-xs text-muted-foreground ml-1">(unlimited)</span>}
+        </span>
+      </div>
+      {!unlimited && (
+        <Progress value={pct} className={warn ? "[&>div]:bg-orange-500" : ""} />
+      )}
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const { user, org, refreshAuth } = useAuth();
   const { toast } = useToast();
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [newInviteRole, setNewInviteRole] = useState("tech");
+  const [portalLoading, setPortalLoading] = useState(false);
 
   const { data: inviteCodes = [] } = useQuery<InviteCode[]>({
     queryKey: ["/api/invite-codes"],
+    enabled: !!org,
+  });
+
+  const { data: members = [], isLoading: membersLoading } = useQuery<Member[]>({
+    queryKey: ["/api/memberships"],
+    enabled: !!org,
+  });
+
+  const { data: planInfo } = useQuery<PlanInfo>({
+    queryKey: ["/api/plan-info"],
     enabled: !!org,
   });
 
@@ -44,6 +111,18 @@ export default function SettingsPage() {
     },
   });
 
+  const changePasswordMutation = useMutation({
+    mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
+      await apiRequest("POST", "/api/auth/change-password", data);
+    },
+    onSuccess: () => {
+      toast({ title: "Password changed successfully" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to change password", variant: "destructive" });
+    },
+  });
+
   const createInviteMutation = useMutation({
     mutationFn: async (data: any) => {
       await apiRequest("POST", "/api/invite-codes", data);
@@ -51,6 +130,32 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/invite-codes"] });
       toast({ title: "Invite code created" });
+    },
+  });
+
+  const changeRoleMutation = useMutation({
+    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+      await apiRequest("PATCH", `/api/memberships/${userId}/role`, { role });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/memberships"] });
+      toast({ title: "Role updated" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to update role", variant: "destructive" });
+    },
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      await apiRequest("DELETE", `/api/memberships/${userId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/memberships"] });
+      toast({ title: "Member removed" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to remove member", variant: "destructive" });
     },
   });
 
@@ -81,6 +186,44 @@ export default function SettingsPage() {
     });
   };
 
+  const handlePasswordSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const currentPassword = fd.get("currentPassword") as string;
+    const newPassword = fd.get("newPassword") as string;
+    const confirmPassword = fd.get("confirmPassword") as string;
+    if (newPassword !== confirmPassword) {
+      toast({ title: "Passwords don't match", variant: "destructive" });
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast({ title: "Password must be at least 6 characters", variant: "destructive" });
+      return;
+    }
+    changePasswordMutation.mutate({ currentPassword, newPassword });
+    (e.currentTarget as HTMLFormElement).reset();
+  };
+
+  const handleManageBilling = async () => {
+    setPortalLoading(true);
+    try {
+      const res = await apiRequest("POST", "/api/stripe/create-portal");
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to open billing portal", variant: "destructive" });
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  const myMembership = members.find((m) => m.userId === user?.id);
+  const canManageTeam = myMembership?.role === "owner" || myMembership?.role === "admin";
+
+  const plan = planInfo?.plan || org?.plan || "free";
+  const limits = planInfo?.limits || PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+  const counts = planInfo?.counts || { customers: 0, jobs: 0, quotes: 0, invoices: 0, members: 0 };
+
   return (
     <div className="flex flex-col h-full">
       <PageHeader title="Settings" description="Manage your profile and organization" />
@@ -97,8 +240,16 @@ export default function SettingsPage() {
               Organization
             </TabsTrigger>
             <TabsTrigger value="team" data-testid="tab-team">
-              <Key className="h-3.5 w-3.5 mr-1.5" />
+              <Users className="h-3.5 w-3.5 mr-1.5" />
               Team
+            </TabsTrigger>
+            <TabsTrigger value="billing" data-testid="tab-billing">
+              <CreditCard className="h-3.5 w-3.5 mr-1.5" />
+              Billing
+            </TabsTrigger>
+            <TabsTrigger value="security" data-testid="tab-security">
+              <Shield className="h-3.5 w-3.5 mr-1.5" />
+              Security
             </TabsTrigger>
           </TabsList>
 
@@ -171,10 +322,79 @@ export default function SettingsPage() {
           <TabsContent value="team" className="mt-6 space-y-6">
             <Card>
               <CardHeader>
+                <CardTitle className="text-base">Team Members</CardTitle>
+                <CardDescription>
+                  {members.length} member{members.length !== 1 ? "s" : ""} in your organization
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {membersLoading ? (
+                  <p className="text-sm text-muted-foreground py-2">Loading members...</p>
+                ) : members.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2">No members found.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {members.map((m) => {
+                      const isMe = m.userId === user?.id;
+                      return (
+                        <div
+                          key={m.id}
+                          className="flex items-center gap-3 rounded-md border p-3"
+                          data-testid={`row-member-${m.userId}`}
+                        >
+                          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                            <User className="h-4 w-4 text-primary" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {m.user?.fullName || m.user?.username || "Unknown"}
+                              {isMe && <span className="ml-1.5 text-xs text-muted-foreground">(you)</span>}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">{m.user?.email || m.user?.username}</p>
+                          </div>
+                          {canManageTeam && !isMe && m.role !== "owner" ? (
+                            <Select
+                              value={m.role}
+                              onValueChange={(role) => changeRoleMutation.mutate({ userId: m.userId, role })}
+                            >
+                              <SelectTrigger className="w-[100px] h-7 text-xs" data-testid={`select-role-${m.userId}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="admin">Admin</SelectItem>
+                                <SelectItem value="tech">Tech</SelectItem>
+                                <SelectItem value="viewer">Viewer</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Badge variant="outline" className="text-xs capitalize">{m.role}</Badge>
+                          )}
+                          {canManageTeam && !isMe && m.role !== "owner" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => removeMemberMutation.mutate(m.userId)}
+                              disabled={removeMemberMutation.isPending}
+                              data-testid={`button-remove-member-${m.userId}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <CardTitle className="text-base">Invite Codes</CardTitle>
-                    <CardDescription>Share codes to invite team members</CardDescription>
+                    <CardDescription>Share codes to invite new team members</CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
                     <Select value={newInviteRole} onValueChange={setNewInviteRole}>
@@ -213,9 +433,7 @@ export default function SettingsPage() {
                       >
                         <div>
                           <code className="text-sm font-mono font-medium">{ic.code}</code>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Role: {ic.role}
-                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5 capitalize">Role: {ic.role}</p>
                         </div>
                         <Button
                           variant="ghost"
@@ -236,9 +454,104 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="billing" className="mt-6 space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base">Current Plan</CardTitle>
+                    <CardDescription>Your TradeFlow subscription</CardDescription>
+                  </div>
+                  <Badge variant="outline" className="text-sm font-medium capitalize">
+                    {PLAN_LABELS[plan] || plan}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <UsageBar label="Customers" used={counts.customers} limit={limits.customers} />
+                  <UsageBar label="Jobs" used={counts.jobs} limit={limits.jobs} />
+                  <UsageBar label="Quotes" used={counts.quotes} limit={limits.quotes} />
+                  <UsageBar label="Invoices" used={counts.invoices} limit={limits.invoices} />
+                  <UsageBar label="Team Members" used={counts.members} limit={limits.teamMembers} />
+                </div>
+                {plan === "free" && (
+                  <div className="pt-2">
+                    <a href="/subscription">
+                      <Button variant="outline" size="sm" data-testid="button-upgrade-plan">
+                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                        Upgrade Plan
+                      </Button>
+                    </a>
+                  </div>
+                )}
+                {org?.stripeSubscriptionId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleManageBilling}
+                    disabled={portalLoading}
+                    data-testid="button-manage-billing"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                    {portalLoading ? "Opening..." : "Manage Billing"}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="security" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Change Password</CardTitle>
+                <CardDescription>Update your account password</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handlePasswordSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Current Password</Label>
+                    <Input
+                      name="currentPassword"
+                      type="password"
+                      required
+                      data-testid="input-current-password"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>New Password</Label>
+                    <Input
+                      name="newPassword"
+                      type="password"
+                      required
+                      minLength={6}
+                      data-testid="input-new-password"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Confirm New Password</Label>
+                    <Input
+                      name="confirmPassword"
+                      type="password"
+                      required
+                      data-testid="input-confirm-password"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    disabled={changePasswordMutation.isPending}
+                    data-testid="button-change-password"
+                  >
+                    <Lock className="h-4 w-4 mr-2" />
+                    {changePasswordMutation.isPending ? "Changing..." : "Change Password"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       </div>
     </div>
   );
 }
-

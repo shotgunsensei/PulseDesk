@@ -25,6 +25,7 @@ import {
   PhoneMissed,
   Lock,
   BookOpen,
+  BarChart3,
 } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -43,6 +44,7 @@ const mainNav = [
   { title: "Jobs", url: "/jobs", icon: Wrench },
   { title: "Quotes", url: "/quotes", icon: FileText },
   { title: "Invoices", url: "/invoices", icon: Receipt },
+  { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
 
 const settingsNav = [

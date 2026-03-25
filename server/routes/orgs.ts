@@ -121,4 +121,52 @@ router.get("/api/memberships", requireAuth, requireOrg, async (req: Request, res
   }
 });
 
+router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.userId as string;
+    const { role } = req.body;
+    if (!["owner", "admin", "tech", "viewer"].includes(role)) {
+      return res.status(400).send("Invalid role");
+    }
+    const myMembership = await storage.getMembership(req.session.orgId!, req.session.userId!);
+    if (!myMembership || (myMembership.role !== "owner" && myMembership.role !== "admin")) {
+      return res.status(403).send("Only owners and admins can change roles");
+    }
+    if (userId === req.session.userId) {
+      return res.status(400).send("Cannot change your own role");
+    }
+    const targetMembership = await storage.getMembership(req.session.orgId!, userId);
+    if (!targetMembership) return res.status(404).send("Member not found");
+    if (targetMembership.role === "owner" && myMembership.role !== "owner") {
+      return res.status(403).send("Only the owner can change another owner's role");
+    }
+    await storage.updateMembershipRole(req.session.orgId!, userId, role);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.delete("/api/memberships/:userId", requireAuth, requireOrg, async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.userId as string;
+    if (userId === req.session.userId) {
+      return res.status(400).send("Cannot remove yourself");
+    }
+    const myMembership = await storage.getMembership(req.session.orgId!, req.session.userId!);
+    if (!myMembership || (myMembership.role !== "owner" && myMembership.role !== "admin")) {
+      return res.status(403).send("Only owners and admins can remove members");
+    }
+    const targetMembership = await storage.getMembership(req.session.orgId!, userId);
+    if (!targetMembership) return res.status(404).send("Member not found");
+    if (targetMembership.role === "owner") {
+      return res.status(403).send("Cannot remove the organization owner");
+    }
+    await storage.deleteMembership(req.session.orgId!, userId);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
 export default router;

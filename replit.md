@@ -14,7 +14,9 @@ The application follows a monolithic full-stack architecture with a React fronte
 - Quote creation with line items, tax, and discounts
 - Invoice generation with line items, tax, and discounts
 - Dashboard with business metrics
-- Settings for profile, organization, and invite code management
+- Settings for profile, organization, team member management, billing usage, and password change
+- Business Analytics page (/analytics) with recharts: quote acceptance rate, invoice collection rate, revenue trends, job status breakdown, customer growth
+- Call Recovery AI admin controls: enable/disable auto-response, custom message template, quiet hours configuration
 - Subscription management with 4 plan tiers (Free, Individual $20/mo, Small Business $100/mo, Enterprise $200/mo)
 - Stripe payment integration for subscription checkout and billing portal
 - Plan limit enforcement (resource limits on Free tier, team size limits per plan)
