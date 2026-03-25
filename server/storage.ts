@@ -600,6 +600,13 @@ export class DatabaseStorage implements IStorage {
     const customerMap: Record<string, string> = {};
     allCustomers.forEach((c) => { customerMap[c.id] = c.name; });
 
+    const memberUserIds = orgMembers.map((m) => m.userId);
+    const memberUsers = memberUserIds.length > 0
+      ? await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, memberUserIds))
+      : [];
+    const userNameMap: Record<string, string> = {};
+    memberUsers.forEach((u) => { userNameMap[u.id] = u.fullName || u.id; });
+
     const jobCounts: Record<string, number> = {
       lead: 0, quoted: 0, scheduled: 0, in_progress: 0,
       done: 0, invoiced: 0, paid: 0, canceled: 0,
@@ -611,7 +618,11 @@ export class DatabaseStorage implements IStorage {
 
     const todaysJobs = allJobs
       .filter((j) => j.scheduledStart && j.scheduledStart >= todayStart && j.scheduledStart < todayEnd)
-      .map((j) => ({ ...j, customerName: j.customerId ? customerMap[j.customerId] : undefined }));
+      .map((j) => ({
+        ...j,
+        customerName: j.customerId ? customerMap[j.customerId] : undefined,
+        assignedUserNames: (j.assignedUserIds || []).map((uid) => userNameMap[uid] || uid).filter(Boolean),
+      }));
 
     const invoiceIds = allInvoices.map((i) => i.id);
     const allItems = invoiceIds.length > 0
@@ -733,13 +744,13 @@ export class DatabaseStorage implements IStorage {
       });
     activityFeed.sort((a, b) => b.time.getTime() - a.time.getTime());
 
-    const memberWorkload: { userId: string; activeJobCount: number }[] = [];
+    const memberWorkload: { userId: string; userName: string; activeJobCount: number }[] = [];
     if (orgMembers.length > 1) {
       for (const { userId } of orgMembers) {
         const activeCount = allJobs.filter(
           (j) => activeStatuses.includes(j.status) && (j.assignedUserIds || []).includes(userId)
         ).length;
-        memberWorkload.push({ userId, activeJobCount: activeCount });
+        memberWorkload.push({ userId, userName: userNameMap[userId] || userId, activeJobCount: activeCount });
       }
     }
 

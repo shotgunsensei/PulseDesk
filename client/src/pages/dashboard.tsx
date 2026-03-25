@@ -29,6 +29,13 @@ interface TodayJob {
   status: string;
   scheduledStart: string | null;
   customerName?: string;
+  assignedUserNames?: string[];
+}
+
+interface MemberWorkload {
+  userId: string;
+  userName: string;
+  activeJobCount: number;
 }
 
 interface ActivityItem {
@@ -57,7 +64,7 @@ interface DashboardStats {
   todaysJobs: TodayJob[];
   revenueChartData: { date: string; amount: number }[];
   activityFeed: ActivityItem[];
-  memberWorkload: { userId: string; activeJobCount: number }[];
+  memberWorkload: MemberWorkload[];
   recentJobs: (TodayJob & { customerName?: string })[];
   recentInvoices: {
     id: string;
@@ -289,6 +296,9 @@ export default function Dashboard() {
                             <p className="text-xs text-muted-foreground">
                               {job.customerName || "No customer"}
                               {job.scheduledStart && ` · ${format(new Date(job.scheduledStart), "h:mm a")}`}
+                              {job.assignedUserNames && job.assignedUserNames.length > 0 && (
+                                <> · <span className="text-blue-600">{job.assignedUserNames.join(", ")}</span></>
+                              )}
                             </p>
                           </div>
                           <StatusBadge status={job.status} type="job" />
@@ -387,6 +397,40 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
+
+            {stats.memberWorkload.length > 0 && (
+              <Card data-testid="technician-workload">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    Team Workload
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {stats.memberWorkload.map((m) => (
+                      <div key={m.userId} className="flex items-center justify-between gap-2" data-testid={`workload-${m.userId}`}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="h-7 w-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
+                            {m.userName.slice(0, 2).toUpperCase()}
+                          </div>
+                          <span className="text-sm truncate">{m.userName}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="h-1.5 rounded-full bg-muted overflow-hidden w-16">
+                            <div
+                              className="h-full rounded-full bg-blue-500 transition-all"
+                              style={{ width: `${Math.min((m.activeJobCount / 10) * 100, 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-muted-foreground w-6 text-right">{m.activeJobCount}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>

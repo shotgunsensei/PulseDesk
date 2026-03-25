@@ -222,6 +222,65 @@ export default function AuthPage() {
               </div>
             </div>
           </div>
+
+          <div className="relative mt-12 md:mt-0 md:absolute md:right-0 md:top-1/2 md:-translate-y-1/2 md:w-[480px] lg:w-[560px] pointer-events-none" aria-hidden="true">
+            <div className="rounded-xl border border-white/10 bg-slate-800/80 shadow-2xl shadow-black/40 backdrop-blur overflow-hidden mx-4 md:mx-0">
+              <div className="bg-slate-900/80 px-4 py-2 flex items-center gap-2 border-b border-white/10">
+                <div className="flex gap-1.5">
+                  <div className="h-2.5 w-2.5 rounded-full bg-red-500/70" />
+                  <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/70" />
+                  <div className="h-2.5 w-2.5 rounded-full bg-green-500/70" />
+                </div>
+                <div className="flex-1 mx-4 h-4 rounded bg-slate-700/60 text-[10px] text-slate-400 flex items-center px-2">tradeflow.app/dashboard</div>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { label: "Today's Jobs", val: "3", color: "bg-blue-500/20 text-blue-300" },
+                    { label: "Overdue", val: "1", color: "bg-red-500/20 text-red-300" },
+                    { label: "Pending Quotes", val: "$4,200", color: "bg-amber-500/20 text-amber-300" },
+                    { label: "This Month", val: "$12,840", color: "bg-emerald-500/20 text-emerald-300" },
+                  ].map((card) => (
+                    <div key={card.label} className={`rounded-lg p-2 ${card.color}`}>
+                      <div className="text-[9px] opacity-70 mb-0.5">{card.label}</div>
+                      <div className="text-sm font-bold">{card.val}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-lg bg-slate-700/40 p-3">
+                  <div className="text-[10px] text-slate-400 mb-2 font-medium">REVENUE — LAST 30 DAYS</div>
+                  <div className="flex items-end gap-1 h-12">
+                    {[4, 7, 3, 9, 5, 11, 6, 8, 12, 7, 4, 10, 14, 8, 6, 11, 9, 5, 8, 13, 7, 10, 15, 11, 6, 9, 12, 8, 14, 10].map((h, i) => (
+                      <div key={i} className="flex-1 rounded-sm bg-blue-500/70" style={{ height: `${(h / 15) * 100}%` }} />
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg bg-slate-700/40 p-2.5">
+                    <div className="text-[10px] text-slate-400 mb-1.5 font-medium">TODAY'S SCHEDULE</div>
+                    {["Panel upgrade · 9:00 AM", "Outlet repair · 11:30 AM", "New service · 2:00 PM"].map((job) => (
+                      <div key={job} className="text-[10px] text-slate-300 py-1 border-b border-slate-600/40 last:border-0">{job}</div>
+                    ))}
+                  </div>
+                  <div className="rounded-lg bg-slate-700/40 p-2.5">
+                    <div className="text-[10px] text-slate-400 mb-1.5 font-medium">PIPELINE</div>
+                    {[
+                      { s: "Lead", n: 5, c: "bg-gray-400" },
+                      { s: "Quoted", n: 3, c: "bg-blue-400" },
+                      { s: "Scheduled", n: 3, c: "bg-indigo-400" },
+                      { s: "In Progress", n: 2, c: "bg-amber-400" },
+                    ].map((row) => (
+                      <div key={row.s} className="flex items-center gap-1.5 py-0.5">
+                        <div className={`h-1.5 w-1.5 rounded-full ${row.c}`} />
+                        <span className="text-[9px] text-slate-300 flex-1">{row.s}</span>
+                        <span className="text-[9px] font-bold text-slate-200">{row.n}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
