@@ -47,6 +47,11 @@ export default function CustomerDetail() {
     enabled: !!id,
   });
 
+  const { data: allQuotes = [] } = useQuery<(Quote & { customerName?: string; total?: number })[]>({
+    queryKey: ["/api/quotes"],
+  });
+  const customerQuotes = allQuotes.filter((q) => q.customerId === id);
+
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
       await apiRequest("PATCH", `/api/customers/${id}`, data);
@@ -193,6 +198,9 @@ export default function CustomerDetail() {
             <TabsTrigger value="jobs" data-testid="tab-customer-jobs">
               Jobs ({customerJobs.length})
             </TabsTrigger>
+            <TabsTrigger value="quotes" data-testid="tab-customer-quotes">
+              Quotes ({customerQuotes.length})
+            </TabsTrigger>
             <TabsTrigger value="invoices" data-testid="tab-customer-invoices">
               Invoices ({customerInvoices.length})
             </TabsTrigger>
@@ -228,6 +236,41 @@ export default function CustomerDetail() {
                         </p>
                       </div>
                       <StatusBadge status={job.status} type="job" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="quotes" className="mt-4">
+            {customerQuotes.length === 0 ? (
+              <div className="text-center py-8 text-sm text-muted-foreground border rounded-lg">
+                <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p>No quotes for this customer</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-3"
+                  onClick={() => navigate(`/quotes/new?customerId=${id}`)}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  New Quote
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {customerQuotes.map((q) => (
+                  <Link key={q.id} href={`/quotes/${q.id}`}>
+                    <div className="flex items-center justify-between gap-3 rounded-md border p-3 hover:bg-muted/50 cursor-pointer transition-colors" data-testid={`customer-quote-${q.id}`}>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">Quote #{q.id.slice(0, 8)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {q.total !== undefined ? `$${q.total.toFixed(2)}` : ""}
+                          {q.expiresAt ? ` · Expires ${format(new Date(q.expiresAt), "MMM d, yyyy")}` : ""}
+                        </p>
+                      </div>
+                      <StatusBadge status={q.status} type="quote" />
                     </div>
                   </Link>
                 ))}

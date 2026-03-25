@@ -206,6 +206,7 @@ export default function InvoicesPage() {
           isLoading={isLoading}
           onRowClick={(inv) => navigate(`/invoices/${inv.id}`)}
           testIdPrefix="invoice-row"
+          rowClassName={statusRowClass}
           emptyState={
             <EmptyState
               icon={Receipt}

@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Edit, Wrench, Trash2, Printer, Mail, Clock, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, Edit, Wrench, Trash2, Printer, Mail, Clock, AlertTriangle, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { calcLineItemsTotal, calcTotalWithTaxDiscount } from "@shared/schema";
@@ -168,6 +168,9 @@ export default function QuoteDetail() {
           <div className="hidden md:flex items-center gap-2 flex-wrap print:hidden">
             <Button variant="outline" size="sm" onClick={() => navigate("/quotes")} data-testid="button-back-quotes">
               <ArrowLeft className="h-4 w-4 mr-1" /> Back
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => window.open(`/quotes/${id}/view`, "_blank")} data-testid="button-preview-quote">
+              <ExternalLink className="h-4 w-4 mr-1" /> Preview
             </Button>
             <Button variant="outline" size="sm" onClick={handlePrint} data-testid="button-print-quote">
               <Printer className="h-4 w-4 mr-1" /> Print

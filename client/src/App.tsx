@@ -17,6 +17,7 @@ import JobDetail from "@/pages/job-detail";
 import QuotesPage from "@/pages/quotes";
 import QuoteForm from "@/pages/quote-form";
 import QuoteDetail from "@/pages/quote-detail";
+import QuoteView from "@/pages/quote-view";
 import InvoicesPage from "@/pages/invoices";
 import InvoiceForm from "@/pages/invoice-form";
 import InvoiceDetail from "@/pages/invoice-detail";
@@ -80,6 +81,7 @@ function AppContent() {
             <Route path="/jobs/:id" component={JobDetail} />
             <Route path="/quotes" component={QuotesPage} />
             <Route path="/quotes/new" component={QuoteForm} />
+            <Route path="/quotes/:id/view" component={QuoteView} />
             <Route path="/quotes/:id/edit" component={QuoteForm} />
             <Route path="/quotes/:id" component={QuoteDetail} />
             <Route path="/invoices" component={InvoicesPage} />
