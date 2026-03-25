@@ -8,6 +8,7 @@ import { runMigrations } from "stripe-replit-sync";
 import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
 import { getEnv } from "./env";
+import { isAppError } from "./errors";
 
 const app = express();
 const httpServer = createServer(app);
@@ -29,15 +30,26 @@ app.use(
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: "Too many requests, please try again later.",
   skip: () => env.NODE_ENV !== "production",
 });
 
+const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: "Too many webhook requests.",
+  skip: () => env.NODE_ENV !== "production",
+});
+
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
+app.use("/api/stripe/webhook", webhookLimiter);
+app.use("/api/call-recovery/webhook", webhookLimiter);
 
 async function initStripe() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -164,15 +176,28 @@ app.use((req, res, next) => {
 
   await registerRoutes(httpServer, app);
 
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const isProduction = process.env.NODE_ENV === "production";
-    const message = isProduction ? "An unexpected error occurred" : err.message || "Internal Server Error";
-
+  app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) {
       return next(err);
     }
 
+    const isProduction = process.env.NODE_ENV === "production";
+
+    if (isAppError(err)) {
+      return res.status(err.statusCode).json({
+        message: err.message,
+      });
+    }
+
+    const status = (err as { status?: number; statusCode?: number })?.status
+      ?? (err as { status?: number; statusCode?: number })?.statusCode
+      ?? 500;
+
+    const message = isProduction
+      ? "An unexpected error occurred"
+      : (err instanceof Error ? err.message : "Internal Server Error");
+
+    console.error("[unhandled error]", err);
     return res.status(status).json({ message });
   });
 

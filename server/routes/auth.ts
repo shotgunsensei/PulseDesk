@@ -50,7 +50,7 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
 
     if (/^[0-9a-f]{64}$/.test(user.password)) {
       const newHash = await hashPassword(password);
-      await storage.updateUser(user.id, { password: newHash } as any);
+      await storage.updateUser(user.id, { password: newHash });
     }
 
     req.session.userId = user.id;
@@ -162,7 +162,7 @@ router.post("/api/auth/change-password", requireAuth, async (req: Request, res: 
     const valid = await verifyPassword(currentPassword, user.password);
     if (!valid) return res.status(401).send("Current password is incorrect");
     const newHash = await hashPassword(newPassword);
-    await storage.updateUser(user.id, { password: newHash } as any);
+    await storage.updateUser(user.id, { password: newHash });
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).send(err.message);
