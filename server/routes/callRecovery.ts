@@ -1,0 +1,476 @@
+import { Router, type Request, type Response } from "express";
+import { storage } from "../storage";
+import { requireAuth, requireOrg } from "../middleware";
+import { getUncachableStripeClient } from "../stripeClient";
+import { processConversation, generateInitialMessage, completeRecovery } from "../callRecoveryAI";
+import { sendSMS, validateTwilioAccountSid } from "../twilioClient";
+import { db } from "../db";
+import { sql } from "drizzle-orm";
+import { type CallRecoveryPlan, CALL_RECOVERY_PLAN_LIMITS } from "@shared/schema";
+
+const router = Router();
+
+const VALID_CR_PLANS: CallRecoveryPlan[] = ["starter", "growth", "pro"];
+
+function isValidCallRecoveryPlan(p: unknown): p is CallRecoveryPlan {
+  return typeof p === "string" && VALID_CR_PLANS.includes(p as CallRecoveryPlan);
+}
+
+router.get("/api/call-recovery/subscription", requireAuth, requireOrg, async (req: Request, res: Response) => {
+  try {
+    const org = await storage.getOrg(req.session.orgId!);
+    if (!org) return res.status(404).send("Organization not found");
+
+    const plan = org.callRecoveryPlan;
+    const limits = plan ? CALL_RECOVERY_PLAN_LIMITS[plan] : null;
+
+    const crSub = await storage.getCallRecoverySubscription(org.id);
+    let usage = 0;
+    if (crSub) {
+      usage = await storage.getMissedCallCount(org.id, crSub.currentPeriodStart);
+    }
+
+    res.json({
+      plan,
+      status: org.callRecoveryStatus,
+      phone: org.callRecoveryPhone,
+      limits,
+      usage,
+      stripeSubscriptionId: org.callRecoveryStripeSubId,
+      subscription: crSub || null,
+      periodStart: crSub?.currentPeriodStart || null,
+      periodEnd: crSub?.currentPeriodEnd || null,
+    });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.get("/api/call-recovery/plans", requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        p.id as product_id,
+        p.name as product_name,
+        p.description as product_description,
+        p.metadata as product_metadata,
+        pr.id as price_id,
+        pr.unit_amount,
+        pr.currency,
+        pr.recurring
+      FROM stripe.products p
+      JOIN stripe.prices pr ON pr.product = p.id AND pr.active = true
+      WHERE p.active = true AND p.metadata->>'feature' = 'call_recovery'
+      ORDER BY pr.unit_amount ASC
+    `);
+    res.json(result.rows);
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.post("/api/call-recovery/checkout", requireAuth, requireOrg, async (req: Request, res: Response) => {
+  try {
+    const { priceId, plan } = req.body;
+    if (!priceId || !plan) return res.status(400).send("Price ID and plan required");
+
+    const org = await storage.getOrg(req.session.orgId!);
+    if (!org) return res.status(404).send("Organization not found");
+
+    const stripe = await getUncachableStripeClient();
+
+    let customerId = org.stripeCustomerId;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        name: org.name,
+        metadata: { orgId: org.id },
+      });
+      customerId = customer.id;
+      await storage.updateOrg(org.id, { stripeCustomerId: customerId });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      payment_method_types: ["card"],
+      line_items: [{ price: priceId, quantity: 1 }],
+      mode: "subscription",
+      success_url: `${baseUrl}/call-recovery?subscription=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/call-recovery?subscription=cancelled`,
+      metadata: { orgId: org.id, feature: "call_recovery", callRecoveryPlan: plan },
+      subscription_data: {
+        metadata: { orgId: org.id, feature: "call_recovery", callRecoveryPlan: plan },
+      },
+    });
+
+    res.json({ url: session.url });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.get("/api/call-recovery/verify-checkout", requireAuth, requireOrg, async (req: Request, res: Response) => {
+  try {
+    const { session_id } = req.query;
+    if (!session_id || typeof session_id !== "string") {
+      return res.status(400).send("session_id required");
+    }
+
+    const stripe = await getUncachableStripeClient();
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+
+    if (session.payment_status !== "paid" && session.status !== "complete") {
+      return res.status(400).send("Checkout session not completed");
+    }
+
+    const { orgId, callRecoveryPlan } = session.metadata || {};
+    if (!orgId || !callRecoveryPlan || orgId !== req.session.orgId) {
+      return res.status(400).send("Invalid session metadata");
+    }
+
+    if (session.metadata?.feature !== "call_recovery") {
+      return res.status(400).send("Not a call recovery session");
+    }
+
+    if (!isValidCallRecoveryPlan(callRecoveryPlan)) {
+      return res.status(400).send("Invalid call recovery plan in session metadata");
+    }
+
+    const existingSub = await storage.getCallRecoverySubscription(orgId);
+    let subId: string;
+    if (existingSub) {
+      await storage.updateCallRecoverySubscription(existingSub.id, {
+        plan: callRecoveryPlan,
+        status: "active",
+        stripeSubscriptionId: session.subscription as string,
+        stripeCustomerId: session.customer as string,
+        usageCount: 0,
+      });
+      subId = existingSub.id;
+    } else {
+      const newSub = await storage.createCallRecoverySubscription({
+        orgId,
+        plan: callRecoveryPlan,
+        stripeSubscriptionId: session.subscription as string,
+        stripeCustomerId: session.customer as string,
+      });
+      subId = newSub.id;
+    }
+
+    await storage.updateOrg(orgId, {
+      callRecoveryPlan,
+      callRecoveryStatus: "active",
+      callRecoveryStripeSubId: (session.subscription as string) || null,
+      callRecoverySubscriptionId: subId,
+    });
+
+    res.json({ ok: true, plan: callRecoveryPlan });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.post("/api/call-recovery/portal", requireAuth, requireOrg, async (req: Request, res: Response) => {
+  try {
+    const org = await storage.getOrg(req.session.orgId!);
+    if (!org?.stripeCustomerId) return res.status(400).send("No subscription found");
+
+    const stripe = await getUncachableStripeClient();
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: org.stripeCustomerId,
+      return_url: `${baseUrl}/call-recovery`,
+    });
+
+    res.json({ url: portalSession.url });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.post("/api/call-recovery/configure", requireAuth, requireOrg, async (req: Request, res: Response) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).send("Phone number required");
+
+    const org = await storage.getOrg(req.session.orgId!);
+    if (!org) return res.status(404).send("Organization not found");
+
+    if (!org.callRecoveryPlan) {
+      return res.status(403).send("No call recovery subscription active. Subscribe first.");
+    }
+
+    await storage.updateOrg(org.id, { callRecoveryPhone: phone });
+    res.json({ ok: true, phone });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.get("/api/call-recovery/missed-calls", requireAuth, requireOrg, async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const calls = await storage.getMissedCalls(req.session.orgId!, limit, offset);
+    res.json(calls);
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.get(
+  "/api/call-recovery/missed-calls/:id/messages",
+  requireAuth,
+  requireOrg,
+  async (req: Request, res: Response) => {
+    try {
+      const mc = await storage.getMissedCall(req.params.id as string);
+      if (!mc || mc.orgId !== req.session.orgId) {
+        return res.status(404).send("Missed call not found");
+      }
+      const messages = await storage.getAiMessages(req.params.id as string);
+      res.json({ missedCall: mc, messages });
+    } catch (err: any) {
+      res.status(500).send(err.message);
+    }
+  }
+);
+
+router.post("/api/call-recovery/webhook/missed-call", async (req: Request, res: Response) => {
+  const twiml = (inner: string) => {
+    res.set("Content-Type", "text/xml");
+    return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><Response>${inner}</Response>`);
+  };
+
+  try {
+    const { Called, From, CallSid, CallStatus, AccountSid } = req.body;
+
+    console.log(
+      `[missed-call webhook] From=${From} Called=${Called} CallSid=${CallSid} CallStatus=${CallStatus}`
+    );
+
+    if (!From || !Called) {
+      console.warn("[missed-call webhook] Missing From or Called — returning Hangup");
+      return twiml("<Hangup/>");
+    }
+
+    const isValid = await validateTwilioAccountSid(AccountSid);
+    if (!isValid) {
+      console.warn("[missed-call webhook] AccountSid validation failed — returning Hangup");
+      return twiml("<Hangup/>");
+    }
+
+    if (CallStatus === "in-progress" || CallStatus === "completed") {
+      res.set("Content-Type", "text/xml");
+      return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response/>');
+    }
+
+    const org = await storage.getOrgByCallRecoveryPhone(Called);
+    if (!org) return twiml("<Hangup/>");
+
+    if (!org.callRecoveryPlan || org.callRecoveryStatus !== "active") {
+      return twiml("<Hangup/>");
+    }
+
+    let crSub = await storage.getCallRecoverySubscription(org.id);
+    if (!crSub) {
+      console.log(`No call_recovery_subscriptions row for org ${org.id} — auto-creating`);
+      crSub = await storage.createCallRecoverySubscription({
+        orgId: org.id,
+        plan: org.callRecoveryPlan as CallRecoveryPlan,
+        currentPeriodStart: new Date(),
+      });
+    }
+
+    const limits = CALL_RECOVERY_PLAN_LIMITS[org.callRecoveryPlan];
+    if (limits && limits.recoveriesPerMonth !== -1) {
+      const currentUsage = await storage.getMissedCallCount(org.id, crSub.currentPeriodStart);
+      if (currentUsage >= limits.recoveriesPerMonth) {
+        return twiml("<Say voice=\"alice\">We received your call. Please try again later.</Say><Hangup/>");
+      }
+    }
+
+    const existing = await storage.getMissedCallByPhone(org.id, From);
+    if (existing) {
+      const existingMessages = await storage.getAiMessages(existing.id);
+      const conversationStarted = existingMessages.some((m) => m.role === "user");
+      if (!conversationStarted) {
+        const retryMessage = generateInitialMessage(org.name);
+        const smsSent = await sendSMS(From, Called, retryMessage);
+        if (smsSent) {
+          await storage.updateMissedCall(existing.id, { status: "in_progress" });
+        } else {
+          await storage.updateMissedCall(existing.id, { status: "failed" });
+        }
+      }
+      if (!CallStatus || CallStatus === "ringing") {
+        return twiml(
+          "<Say voice=\"alice\">Sorry we missed your call. Our automated system will send you a text message shortly.</Say><Hangup/>"
+        );
+      }
+      return twiml("");
+    }
+
+    const missedCall = await storage.createMissedCall(org.id, {
+      callerPhone: From,
+      twilioCallSid: CallSid,
+    });
+
+    await storage.incrementCallRecoveryUsage(org.id);
+
+    const initialMessage = generateInitialMessage(org.name);
+    await storage.createAiMessage(missedCall.id, "assistant", initialMessage);
+    await storage.updateMissedCall(missedCall.id, { status: "in_progress" });
+
+    const smsSent = await sendSMS(From, Called, initialMessage);
+    if (!smsSent) {
+      await storage.updateMissedCall(missedCall.id, { status: "failed" });
+    }
+
+    if (!CallStatus || CallStatus === "ringing") {
+      return twiml(
+        "<Say voice=\"alice\">Sorry we missed your call. Our automated system will send you a text message shortly.</Say><Hangup/>"
+      );
+    }
+    return twiml("");
+  } catch (err: any) {
+    console.error("Missed call webhook error:", err.message);
+    res.set("Content-Type", "text/xml");
+    return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>');
+  }
+});
+
+router.post("/api/call-recovery/webhook/sms", async (req: Request, res: Response) => {
+  const twiml = (inner: string) => {
+    res.set("Content-Type", "text/xml");
+    return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><Response>${inner}</Response>`);
+  };
+
+  try {
+    const { From, Body, To, AccountSid, SmsSid } = req.body;
+
+    console.log(`[sms webhook] From=${From} To=${To} SmsSid=${SmsSid} Body="${Body?.substring(0, 50)}"`);
+
+    if (!From || Body === undefined) {
+      return twiml("");
+    }
+
+    const isValid = await validateTwilioAccountSid(AccountSid);
+    if (!isValid) {
+      return twiml("");
+    }
+
+    const org = await storage.getOrgByCallRecoveryPhone(To);
+    if (!org) return twiml("");
+
+    const missedCall = await storage.getMissedCallByPhone(org.id, From);
+    if (!missedCall) return twiml("");
+
+    const result = await processConversation(missedCall.id, Body);
+    await sendSMS(From, To, result.responseText);
+
+    if (result.isComplete && result.serviceType && result.location && result.urgency) {
+      try {
+        await completeRecovery(missedCall.id, result.serviceType, result.location, result.urgency);
+      } catch (err: any) {
+        console.error("Failed to complete recovery:", err.message);
+        await storage.updateMissedCall(missedCall.id, { status: "failed" });
+      }
+    }
+
+    return twiml("");
+  } catch (err: any) {
+    console.error("SMS webhook error:", err.message);
+    res.set("Content-Type", "text/xml");
+    return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response/>');
+  }
+});
+
+router.post("/api/call-recovery/handle-subscription-change", async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const expectedToken = process.env.SESSION_SECRET || "internal-secret";
+    if (!authHeader || authHeader !== `Bearer ${expectedToken}`) {
+      return res.status(401).send("Unauthorized");
+    }
+
+    const { customerId, subscriptionId, status, callRecoveryPlan, periodStart, periodEnd } = req.body;
+    if (!customerId) return res.status(400).send("Customer ID required");
+
+    const org = await storage.getOrgByStripeCustomerId(customerId);
+    if (!org) return res.status(404).send("Organization not found");
+
+    const updateData: Record<string, unknown> = {
+      callRecoveryStripeSubId: subscriptionId || null,
+      callRecoveryStatus: status || null,
+    };
+
+    if (callRecoveryPlan && (status === "active" || status === "trialing")) {
+      updateData.callRecoveryPlan = callRecoveryPlan;
+
+      const existingSub = await storage.getCallRecoverySubscription(org.id);
+      if (existingSub) {
+        await storage.updateCallRecoverySubscription(existingSub.id, {
+          plan: callRecoveryPlan,
+          status: "active",
+          stripeSubscriptionId: subscriptionId,
+          currentPeriodStart: periodStart ? new Date(periodStart * 1000) : existingSub.currentPeriodStart,
+          currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : existingSub.currentPeriodEnd,
+          usageCount: 0,
+        });
+      } else {
+        await storage.createCallRecoverySubscription({
+          orgId: org.id,
+          plan: callRecoveryPlan,
+          stripeSubscriptionId: subscriptionId,
+          stripeCustomerId: customerId,
+          currentPeriodStart: periodStart ? new Date(periodStart * 1000) : new Date(),
+          currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : undefined,
+        });
+      }
+    }
+
+    if (status === "canceled" || status === "unpaid" || status === "past_due") {
+      updateData.callRecoveryPlan = null;
+      updateData.callRecoveryStatus = status;
+      const existingSub = await storage.getCallRecoverySubscription(org.id);
+      if (existingSub) {
+        await storage.updateCallRecoverySubscription(existingSub.id, { status: "canceled" });
+      }
+    }
+
+    await storage.updateOrg(org.id, updateData);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.get("/api/call-recovery/stats", requireAuth, requireOrg, async (req: Request, res: Response) => {
+  try {
+    const org = await storage.getOrg(req.session.orgId!);
+    if (!org) return res.status(404).send("Organization not found");
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const allCalls = await storage.getMissedCalls(req.session.orgId!, 1000, 0);
+    const thisMonthCalls = allCalls.filter((c) => new Date(c.createdAt) >= startOfMonth);
+    const recovered = thisMonthCalls.filter((c) => c.status === "recovered");
+    const inProgress = thisMonthCalls.filter((c) => c.status === "in_progress" || c.status === "new");
+    const failed = thisMonthCalls.filter((c) => c.status === "failed" || c.status === "expired");
+
+    res.json({
+      totalThisMonth: thisMonthCalls.length,
+      recovered: recovered.length,
+      inProgress: inProgress.length,
+      failed: failed.length,
+      recoveryRate:
+        thisMonthCalls.length > 0 ? Math.round((recovered.length / thisMonthCalls.length) * 100) : 0,
+    });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+export default router;

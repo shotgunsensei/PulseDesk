@@ -1,0 +1,172 @@
+import { Router, type Request, type Response } from "express";
+import { storage } from "../storage";
+import { requireAuth } from "../middleware";
+import { hashPassword, verifyPassword } from "../middleware";
+
+const router = Router();
+
+router.post("/api/auth/register", async (req: Request, res: Response) => {
+  try {
+    const { username, password, fullName } = req.body;
+    if (!username || !password) {
+      return res.status(400).send("Username and password required");
+    }
+    if (password.length < 6) {
+      return res.status(400).send("Password must be at least 6 characters");
+    }
+
+    const existing = await storage.getUserByUsername(username);
+    if (existing) {
+      return res.status(400).send("Username already taken");
+    }
+
+    const user = await storage.createUser({
+      username,
+      password: await hashPassword(password),
+      fullName: fullName || username,
+      phone: "",
+      email: "",
+    });
+
+    req.session.userId = user.id;
+    res.json({ user: { ...user, password: undefined } });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.post("/api/auth/login", async (req: Request, res: Response) => {
+  try {
+    const { username, password } = req.body;
+    const user = await storage.getUserByUsername(username);
+    if (!user) {
+      return res.status(401).send("Invalid credentials");
+    }
+
+    const valid = await verifyPassword(password, user.password);
+    if (!valid) {
+      return res.status(401).send("Invalid credentials");
+    }
+
+    if (/^[0-9a-f]{64}$/.test(user.password)) {
+      const newHash = await hashPassword(password);
+      await storage.updateUser(user.id, { password: newHash } as any);
+    }
+
+    req.session.userId = user.id;
+
+    const userOrgs = await storage.getUserOrgs(user.id);
+    if (userOrgs.length > 0) {
+      req.session.orgId = userOrgs[0].id;
+    }
+
+    res.json({ user: { ...user, password: undefined } });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.post("/api/auth/logout", (req: Request, res: Response) => {
+  req.session.destroy(() => {
+    res.json({ ok: true });
+  });
+});
+
+router.delete("/api/auth/delete-account", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.session.userId!;
+    await storage.deleteUser(userId);
+    req.session.destroy(() => {
+      res.json({ ok: true });
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to delete account" });
+  }
+});
+
+router.get("/api/auth/me", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { PLAN_LIMITS } = await import("@shared/schema");
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(401).send("User not found");
+
+    const userOrgs = await storage.getUserOrgs(user.id);
+
+    let org = null;
+    let membership = null;
+
+    if (req.session.orgId) {
+      org = await storage.getOrg(req.session.orgId);
+      membership = await storage.getMembership(req.session.orgId, user.id);
+    }
+
+    if (!org && userOrgs.length > 0) {
+      org = userOrgs[0];
+      req.session.orgId = org.id;
+      membership = await storage.getMembership(org.id, user.id);
+    }
+
+    let planLimits = null;
+    let orgCounts = null;
+    if (org) {
+      planLimits = PLAN_LIMITS[org.plan] || PLAN_LIMITS.free;
+      orgCounts = await storage.getOrgCounts(org.id);
+    }
+
+    res.json({
+      user: { ...user, password: undefined },
+      org,
+      membership,
+      orgs: userOrgs,
+      planLimits,
+      orgCounts,
+    });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.post("/api/auth/switch-org", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { orgId } = req.body;
+    const membership = await storage.getMembership(orgId, req.session.userId!);
+    if (!membership) return res.status(403).send("Not a member of this organization");
+    req.session.orgId = orgId;
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.patch("/api/auth/profile", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { fullName, phone, email } = req.body;
+    const user = await storage.updateUser(req.session.userId!, { fullName, phone, email });
+    res.json({ ...user, password: undefined });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.post("/api/auth/change-password", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).send("Current and new password required");
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).send("New password must be at least 6 characters");
+    }
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(404).send("User not found");
+    const valid = await verifyPassword(currentPassword, user.password);
+    if (!valid) return res.status(401).send("Current password is incorrect");
+    const newHash = await hashPassword(newPassword);
+    await storage.updateUser(user.id, { password: newHash } as any);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+export default router;

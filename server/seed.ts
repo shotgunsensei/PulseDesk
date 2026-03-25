@@ -3,6 +3,13 @@ import { db } from "./db";
 import { users, memberships } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
+import bcrypt from "bcrypt";
+
+const BCRYPT_ROUNDS = 12;
+
+async function hashPasswordBcrypt(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
 
 export async function ensureDemoAccount() {
   try {
@@ -26,7 +33,7 @@ export async function ensureDemoAccount() {
     }
     const demoUser = await storage.createUser({
       username: "demo",
-      password: crypto.createHash("sha256").update("demo123").digest("hex"),
+      password: await hashPasswordBcrypt("demo123"),
       fullName: "Demo User",
       phone: "(555) 234-5678",
       email: "demo@tradeflow.io",
@@ -45,9 +52,6 @@ export async function ensureDemoAccount() {
   }
 }
 
-function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password).digest("hex");
-}
 
 export async function ensureReviewerAccount() {
   try {
@@ -72,7 +76,7 @@ export async function ensureReviewerAccount() {
     const reviewerUser = await db.insert(users).values({
       id: crypto.randomUUID(),
       username: "reviewer",
-      password: hashPassword("Reviewer2026!"),
+      password: await hashPasswordBcrypt("Reviewer2026!"),
       fullName: "App Reviewer",
       phone: "",
       email: "",
@@ -98,7 +102,7 @@ export async function ensureSuperAdmin() {
       await db.insert(users).values({
         id: crypto.randomUUID(),
         username: "Johntwms355",
-        password: hashPassword("Admin2026!"),
+        password: await hashPasswordBcrypt("Admin2026!"),
         fullName: "John",
         phone: "",
         email: "",
@@ -123,7 +127,7 @@ export async function seedDatabase() {
 
     const demoUser = await storage.createUser({
       username: "demo",
-      password: hashPassword("demo123"),
+      password: await hashPasswordBcrypt("demo123"),
       fullName: "Mike Johnson",
       phone: "(555) 234-5678",
       email: "mike@tradeflow.io",
