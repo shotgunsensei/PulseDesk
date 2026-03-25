@@ -15,8 +15,12 @@ The application follows a monolithic full-stack architecture with a React fronte
 - Invoice generation with line items, tax, and discounts
 - Dashboard with business metrics
 - Settings for profile, organization, team member management, billing usage, and password change
-- Business Analytics page (/analytics) with recharts: quote acceptance rate, invoice collection rate, revenue trends, job status breakdown, customer growth
-- Call Recovery AI admin controls: enable/disable auto-response, custom message template, quiet hours configuration
+- Business Analytics page (/analytics) with recharts: quote acceptance rate + 30-day rate, invoice collection rate + avg days to payment, job completion rate + busiest day of week, customer repeat ratio + growth trends
+- Call Recovery AI admin controls: enable/disable auto-response, custom message template ({business}/{phone}/{name} placeholders), quiet hours configuration — settings enforced in webhook
+- Call Recovery recovery funnel visualization (Missed→Contacted→Responded→Recovered), MoM comparison, Mark as Recovered action per conversation
+- Organization profile fields: logo URL (with preview), website, business hours text field
+- Note: Invoice aging report shows overdue-only buckets (labeled "Aging Report (overdue only)"); current/no-due-date buckets not charted but included in aging API response
+- Note: Team membership API is at /api/memberships (not /api/orgs/:id/members)
 - Subscription management with 4 plan tiers (Free, Individual $20/mo, Small Business $100/mo, Enterprise $200/mo)
 - Stripe payment integration for subscription checkout and billing portal
 - Plan limit enforcement (resource limits on Free tier, team size limits per plan)
