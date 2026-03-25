@@ -251,6 +251,7 @@ export default function CustomersPage() {
         </div>
 
         <DataTable
+          tableId="customers"
           columns={columns}
           data={filtered}
           isLoading={isLoading}

@@ -201,6 +201,7 @@ export default function InvoicesPage() {
         </div>
 
         <DataTable
+          tableId="invoices"
           columns={columns}
           data={filtered}
           isLoading={isLoading}

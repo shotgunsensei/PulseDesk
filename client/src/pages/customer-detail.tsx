@@ -21,7 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Edit, Phone, Mail, MapPin, Wrench, FileText, Receipt, Trash2, Plus } from "lucide-react";
+import { ArrowLeft, Edit, Phone, Mail, MapPin, Wrench, FileText, Receipt, Trash2, Plus, BarChart3, Calendar } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -42,7 +42,7 @@ export default function CustomerDetail() {
     enabled: !!id,
   });
 
-  const { data: customerInvoices = [] } = useQuery<Invoice[]>({
+  const { data: customerInvoices = [] } = useQuery<(Invoice & { total?: number })[]>({
     queryKey: ["/api/customers", id, "invoices"],
     enabled: !!id,
   });
@@ -193,8 +193,11 @@ export default function CustomerDetail() {
           </Button>
         </div>
 
-        <Tabs defaultValue="jobs">
+        <Tabs defaultValue="overview">
           <TabsList>
+            <TabsTrigger value="overview" data-testid="tab-customer-overview">
+              Overview
+            </TabsTrigger>
             <TabsTrigger value="jobs" data-testid="tab-customer-jobs">
               Jobs ({customerJobs.length})
             </TabsTrigger>
@@ -208,6 +211,76 @@ export default function CustomerDetail() {
               Notes
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="overview" className="mt-4">
+            {(() => {
+              const activeJobs = customerJobs.filter((j) => !["done", "invoiced", "paid", "canceled"].includes(j.status));
+              const totalInvoiced = customerInvoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0);
+              const paidInvoices = customerInvoices.filter((inv) => inv.status === "paid");
+              const totalPaid = paidInvoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0);
+              const openQuotes = customerQuotes.filter((q) => q.status === "draft" || q.status === "sent");
+              return (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Wrench className="h-4 w-4 text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground">Total Jobs</p>
+                        </div>
+                        <p className="text-2xl font-bold" data-testid="overview-total-jobs">{customerJobs.length}</p>
+                        {activeJobs.length > 0 && <p className="text-xs text-primary mt-0.5">{activeJobs.length} active</p>}
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground">Open Quotes</p>
+                        </div>
+                        <p className="text-2xl font-bold" data-testid="overview-open-quotes">{openQuotes.length}</p>
+                        {customerQuotes.length > 0 && <p className="text-xs text-muted-foreground mt-0.5">{customerQuotes.length} total</p>}
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Receipt className="h-4 w-4 text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground">Invoiced</p>
+                        </div>
+                        <p className="text-2xl font-bold" data-testid="overview-total-invoiced">${totalInvoiced.toFixed(0)}</p>
+                        {totalPaid > 0 && <p className="text-xs text-green-600 mt-0.5">${totalPaid.toFixed(0)} paid</p>}
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground">Customer Since</p>
+                        </div>
+                        <p className="text-sm font-semibold mt-1" data-testid="overview-customer-since">
+                          {format(new Date(customer.createdAt), "MMM d, yyyy")}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {customer.notes && (
+                    <Card>
+                      <CardHeader className="pb-2 pt-4 px-4">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <FileText className="h-3.5 w-3.5" /> Notes
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-4 pb-4">
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{customer.notes}</p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              );
+            })()}
+          </TabsContent>
 
           <TabsContent value="jobs" className="mt-4">
             {customerJobs.length === 0 ? (

@@ -280,6 +280,7 @@ export default function JobsPage() {
           />
         ) : (
           <DataTable
+            tableId="jobs"
             columns={columns}
             data={filtered}
             isLoading={isLoading}

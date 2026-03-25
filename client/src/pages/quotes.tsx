@@ -169,6 +169,7 @@ export default function QuotesPage() {
         </div>
 
         <DataTable
+          tableId="quotes"
           columns={columns}
           data={filtered}
           isLoading={isLoading}
