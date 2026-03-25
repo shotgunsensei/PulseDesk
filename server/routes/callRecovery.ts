@@ -308,7 +308,7 @@ router.post("/api/call-recovery/webhook/missed-call", async (req: Request, res: 
       const existingMessages = await storage.getAiMessages(existing.id);
       const conversationStarted = existingMessages.some((m) => m.role === "user");
       if (!conversationStarted) {
-        const retryMessage = generateInitialMessage(org.name, org.callRecoveryCustomMessage);
+        const retryMessage = generateInitialMessage(org.name, org.callRecoveryCustomMessage, { orgPhone: org.phone });
         const smsSent = await sendSMS(From, Called, retryMessage);
         if (smsSent) {
           await storage.updateMissedCall(existing.id, { status: "in_progress" });
@@ -331,7 +331,7 @@ router.post("/api/call-recovery/webhook/missed-call", async (req: Request, res: 
 
     await storage.incrementCallRecoveryUsage(org.id);
 
-    const initialMessage = generateInitialMessage(org.name, org.callRecoveryCustomMessage);
+    const initialMessage = generateInitialMessage(org.name, org.callRecoveryCustomMessage, { orgPhone: org.phone });
     await storage.createAiMessage(missedCall.id, "assistant", initialMessage);
     await storage.updateMissedCall(missedCall.id, { status: "in_progress" });
 

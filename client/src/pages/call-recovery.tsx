@@ -913,9 +913,9 @@ function DashboardPage({
                   />
                   <div className="p-2.5 rounded-md bg-muted/50 text-xs text-muted-foreground space-y-1">
                     <p className="font-medium text-foreground">Available placeholders:</p>
-                    <p><code className="bg-muted px-1 rounded">{"{name}"}</code> — caller's name (if known)</p>
                     <p><code className="bg-muted px-1 rounded">{"{business}"}</code> — your business name</p>
-                    <p><code className="bg-muted px-1 rounded">{"{phone}"}</code> — your business phone</p>
+                    <p><code className="bg-muted px-1 rounded">{"{phone}"}</code> — your business phone number</p>
+                    <p><code className="bg-muted px-1 rounded">{"{name}"}</code> — caller's name (defaults to "there" if unknown)</p>
                   </div>
                 </div>
                 <div className="flex gap-2">

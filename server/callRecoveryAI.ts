@@ -83,9 +83,18 @@ export async function processConversation(
   };
 }
 
-export function generateInitialMessage(orgName: string, customTemplate?: string | null): string {
+export function generateInitialMessage(
+  orgName: string,
+  customTemplate?: string | null,
+  opts?: { callerName?: string | null; orgPhone?: string | null }
+): string {
   if (customTemplate && customTemplate.trim()) {
+    const callerName = opts?.callerName?.trim() || "there";
+    const orgPhone = opts?.orgPhone || orgName;
     return customTemplate
+      .replace(/\{name\}/gi, callerName)
+      .replace(/\{business\}/gi, orgName)
+      .replace(/\{phone\}/gi, orgPhone)
       .replace(/\{business_name\}/gi, orgName)
       .replace(/\{org_name\}/gi, orgName);
   }
