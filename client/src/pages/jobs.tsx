@@ -5,10 +5,12 @@ import { PageHeader } from "@/components/page-header";
 import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
+import { KanbanBoard } from "@/components/jobs/kanban-board";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -22,12 +24,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Wrench, Search, Filter } from "lucide-react";
+import { Plus, Wrench, Search, Filter, LayoutGrid, List } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { JOB_STATUS_LABELS } from "@shared/schema";
+import { JOB_STATUS_LABELS, JOB_PRIORITY_LABELS } from "@shared/schema";
 import type { Job, Customer } from "@shared/schema";
+
+const PRIORITY_BADGE: Record<string, string> = {
+  urgent: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  normal: "bg-muted text-muted-foreground",
+  low: "bg-muted text-muted-foreground",
+};
 
 export default function JobsPage() {
   const [, navigate] = useLocation();
@@ -35,6 +43,7 @@ export default function JobsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [customerFilter, setCustomerFilter] = useState("all");
+  const [view, setView] = useState<"kanban" | "list">("kanban");
   const { toast } = useToast();
 
   const { data: jobs = [], isLoading } = useQuery<(Job & { customerName?: string })[]>({
@@ -81,6 +90,16 @@ export default function JobsPage() {
       ),
     },
     {
+      key: "priority",
+      header: "Priority",
+      className: "hidden sm:table-cell",
+      render: (j: Job) => (
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${PRIORITY_BADGE[j.priority || "normal"]}`}>
+          {JOB_PRIORITY_LABELS[j.priority || "normal"]}
+        </span>
+      ),
+    },
+    {
       key: "status",
       header: "Status",
       render: (j: Job) => <StatusBadge status={j.status} type="job" />,
@@ -114,6 +133,7 @@ export default function JobsPage() {
       title: fd.get("title"),
       description: fd.get("description") || "",
       customerId: fd.get("customerId") || null,
+      priority: fd.get("priority") || "normal",
       status: "lead",
       scheduledStart: fd.get("scheduledStart") || null,
       scheduledEnd: fd.get("scheduledEnd") || null,
@@ -134,9 +154,9 @@ export default function JobsPage() {
         }
       />
 
-      <div className="flex-1 overflow-auto p-6">
-        <div className="mb-4 flex items-center gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
+      <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[180px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search jobs..."
@@ -147,21 +167,19 @@ export default function JobsPage() {
             />
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[160px]" data-testid="select-job-status-filter">
+            <SelectTrigger className="w-[140px]" data-testid="select-job-status-filter">
               <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
-              <SelectValue placeholder="Filter status" />
+              <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
               {Object.entries(JOB_STATUS_LABELS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
+                <SelectItem key={value} value={value}>{label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Select value={customerFilter} onValueChange={setCustomerFilter}>
-            <SelectTrigger className="w-[180px]" data-testid="select-job-customer-filter">
+            <SelectTrigger className="w-[150px]" data-testid="select-job-customer-filter">
               <SelectValue placeholder="Customer" />
             </SelectTrigger>
             <SelectContent>
@@ -171,27 +189,51 @@ export default function JobsPage() {
               ))}
             </SelectContent>
           </Select>
-          <span className="text-sm text-muted-foreground">
-            {filtered.length} job{filtered.length !== 1 ? "s" : ""}
-          </span>
+          <span className="text-sm text-muted-foreground">{filtered.length} job{filtered.length !== 1 ? "s" : ""}</span>
+          <div className="ml-auto flex items-center border rounded-md overflow-hidden">
+            <button
+              className={`p-2 transition-colors ${view === "kanban" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              onClick={() => setView("kanban")}
+              data-testid="button-kanban-view"
+              title="Kanban view"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              className={`p-2 transition-colors ${view === "list" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              onClick={() => setView("list")}
+              data-testid="button-list-view"
+              title="List view"
+            >
+              <List className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
-        <DataTable
-          columns={columns}
-          data={filtered}
-          isLoading={isLoading}
-          onRowClick={(j) => navigate(`/jobs/${j.id}`)}
-          testIdPrefix="job-row"
-          emptyState={
-            <EmptyState
-              icon={Wrench}
-              title="No jobs yet"
-              description="Create your first job to start tracking work."
-              actionLabel="New Job"
-              onAction={() => setShowCreate(true)}
-            />
-          }
-        />
+        {view === "kanban" ? (
+          <KanbanBoard
+            jobs={filtered}
+            isLoading={isLoading}
+            statusFilter={statusFilter}
+          />
+        ) : (
+          <DataTable
+            columns={columns}
+            data={filtered}
+            isLoading={isLoading}
+            onRowClick={(j) => navigate(`/jobs/${j.id}`)}
+            testIdPrefix="job-row"
+            emptyState={
+              <EmptyState
+                icon={Wrench}
+                title="No jobs yet"
+                description="Create your first job to start tracking work."
+                actionLabel="New Job"
+                onAction={() => setShowCreate(true)}
+              />
+            }
+          />
+        )}
       </div>
 
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
@@ -204,18 +246,33 @@ export default function JobsPage() {
               <Label>Title</Label>
               <Input name="title" required data-testid="input-job-title" placeholder="e.g. Kitchen sink repair" />
             </div>
-            <div className="space-y-2">
-              <Label>Customer</Label>
-              <select
-                name="customerId"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                data-testid="select-job-customer"
-              >
-                <option value="">No customer</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Customer</Label>
+                <select
+                  name="customerId"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  data-testid="select-job-customer"
+                >
+                  <option value="">No customer</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Priority</Label>
+                <select
+                  name="priority"
+                  defaultValue="normal"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  data-testid="select-job-priority"
+                >
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
@@ -223,11 +280,11 @@ export default function JobsPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Start Date/Time</Label>
+                <Label>Start</Label>
                 <Input name="scheduledStart" type="datetime-local" data-testid="input-job-start" />
               </div>
               <div className="space-y-2">
-                <Label>End Date/Time</Label>
+                <Label>End</Label>
                 <Input name="scheduledEnd" type="datetime-local" data-testid="input-job-end" />
               </div>
             </div>

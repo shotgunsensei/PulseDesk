@@ -14,9 +14,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Receipt, Search, Filter, Download } from "lucide-react";
-import { format } from "date-fns";
+import { Plus, Receipt, Search, Filter, Download, AlertTriangle } from "lucide-react";
+import { format, differenceInDays } from "date-fns";
 import type { Invoice, Customer } from "@shared/schema";
+
+function AgingBadge({ dueDate, status }: { dueDate: string | Date | null; status: string }) {
+  if (status === "paid" || status === "void" || !dueDate) return null;
+  const due = new Date(dueDate);
+  const days = differenceInDays(new Date(), due);
+  if (days > 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400">
+        <AlertTriangle className="h-3 w-3" />
+        Overdue {days}d
+      </span>
+    );
+  }
+  if (days >= -7) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+        Due in {Math.abs(days)}d
+      </span>
+    );
+  }
+  return null;
+}
+
+function statusRowClass(inv: Invoice & { total?: number }) {
+  if (inv.status === "paid") return "opacity-70";
+  if (inv.status === "void") return "opacity-50";
+  if (inv.dueDate && differenceInDays(new Date(), new Date(inv.dueDate)) > 0) {
+    return "border-l-2 border-l-red-400";
+  }
+  return "";
+}
 
 export default function InvoicesPage() {
   const [, navigate] = useLocation();
@@ -41,11 +72,15 @@ export default function InvoicesPage() {
     return matchesSearch && matchesStatus && matchesCustomer;
   });
 
+  const outstandingTotal = invoices
+    .filter((inv) => inv.status !== "paid" && inv.status !== "void")
+    .reduce((sum, inv) => sum + (inv.total || 0), 0);
+
   const columns = [
     {
       key: "id",
       header: "Invoice",
-      render: (inv: Invoice & { customerName?: string }) => (
+      render: (inv: Invoice & { customerName?: string; total?: number }) => (
         <div>
           <p className="font-medium">#{inv.id.slice(0, 8)}</p>
           <p className="text-xs text-muted-foreground">{inv.customerName || "No customer"}</p>
@@ -55,13 +90,18 @@ export default function InvoicesPage() {
     {
       key: "status",
       header: "Status",
-      render: (inv: Invoice) => <StatusBadge status={inv.status} type="invoice" />,
+      render: (inv: Invoice & { total?: number }) => (
+        <div className="space-y-1">
+          <StatusBadge status={inv.status} type="invoice" />
+          <AgingBadge dueDate={inv.dueDate} status={inv.status} />
+        </div>
+      ),
     },
     {
       key: "total",
       header: "Total",
       render: (inv: Invoice & { total?: number }) => (
-        <span className="font-medium">
+        <span className={`font-medium ${inv.status === "paid" ? "text-emerald-600" : ""}`}>
           ${(inv.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       ),
@@ -71,7 +111,7 @@ export default function InvoicesPage() {
       header: "Due Date",
       className: "hidden md:table-cell",
       render: (inv: Invoice) => (
-        <span className="text-sm text-muted-foreground">
+        <span className={`text-sm ${inv.dueDate && differenceInDays(new Date(), new Date(inv.dueDate)) > 0 && inv.status !== "paid" ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
           {inv.dueDate ? format(new Date(inv.dueDate), "MMM d, yyyy") : "-"}
         </span>
       ),
@@ -102,7 +142,7 @@ export default function InvoicesPage() {
               data-testid="button-export-quickbooks"
             >
               <Download className="h-4 w-4 mr-1" />
-              Export to QuickBooks
+              Export
             </Button>
             <Button size="sm" onClick={() => navigate("/invoices/new")} data-testid="button-add-invoice">
               <Plus className="h-4 w-4 mr-1" />
@@ -112,9 +152,18 @@ export default function InvoicesPage() {
         }
       />
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-4 md:p-6">
+        {outstandingTotal > 0 && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/20 px-4 py-3" data-testid="outstanding-total-banner">
+            <Receipt className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="text-sm text-amber-800 dark:text-amber-300">
+              Outstanding balance: <strong>${outstandingTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            </span>
+          </div>
+        )}
+
         <div className="mb-4 flex items-center gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <div className="relative flex-1 min-w-[180px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search invoices..."
@@ -125,7 +174,7 @@ export default function InvoicesPage() {
             />
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[150px]" data-testid="select-invoice-status-filter">
+            <SelectTrigger className="w-[140px]" data-testid="select-invoice-status-filter">
               <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
               <SelectValue placeholder="Status" />
             </SelectTrigger>
@@ -138,7 +187,7 @@ export default function InvoicesPage() {
             </SelectContent>
           </Select>
           <Select value={customerFilter} onValueChange={setCustomerFilter}>
-            <SelectTrigger className="w-[180px]" data-testid="select-invoice-customer-filter">
+            <SelectTrigger className="w-[160px]" data-testid="select-invoice-customer-filter">
               <SelectValue placeholder="Customer" />
             </SelectTrigger>
             <SelectContent>

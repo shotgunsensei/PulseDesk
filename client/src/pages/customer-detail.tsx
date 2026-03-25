@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { PageHeader } from "@/components/page-header";
@@ -9,15 +10,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Edit, Phone, Mail, MapPin, Wrench, FileText, Receipt, Trash2 } from "lucide-react";
+import { ArrowLeft, Edit, Phone, Mail, MapPin, Wrench, FileText, Receipt, Trash2, Plus } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
 import { format } from "date-fns";
 import type { Customer, Job, Quote, Invoice } from "@shared/schema";
 
@@ -75,9 +81,7 @@ export default function CustomerDetail() {
   }
 
   if (!customer) {
-    return (
-      <div className="p-6 text-center text-muted-foreground">Customer not found</div>
-    );
+    return <div className="p-6 text-center text-muted-foreground">Customer not found</div>;
   }
 
   const handleUpdate = (e: React.FormEvent<HTMLFormElement>) => {
@@ -110,9 +114,7 @@ export default function CustomerDetail() {
             <Button
               variant="destructive"
               size="sm"
-              onClick={() => {
-                if (confirm("Delete this customer?")) deleteMutation.mutate();
-              }}
+              onClick={() => { if (confirm("Delete this customer?")) deleteMutation.mutate(); }}
               data-testid="button-delete-customer"
             >
               <Trash2 className="h-4 w-4 mr-1" />
@@ -122,29 +124,29 @@ export default function CustomerDetail() {
         }
       />
 
-      <div className="flex-1 overflow-auto p-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {customer.phone && (
             <div className="flex items-center gap-3 rounded-md border p-4">
-              <Phone className="h-4 w-4 text-muted-foreground" />
+              <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
               <div>
                 <p className="text-xs text-muted-foreground">Phone</p>
-                <p className="text-sm font-medium">{customer.phone}</p>
+                <a href={`tel:${customer.phone}`} className="text-sm font-medium hover:underline">{customer.phone}</a>
               </div>
             </div>
           )}
           {customer.email && (
             <div className="flex items-center gap-3 rounded-md border p-4">
-              <Mail className="h-4 w-4 text-muted-foreground" />
+              <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
               <div>
                 <p className="text-xs text-muted-foreground">Email</p>
-                <p className="text-sm font-medium">{customer.email}</p>
+                <a href={`mailto:${customer.email}`} className="text-sm font-medium hover:underline">{customer.email}</a>
               </div>
             </div>
           )}
           {customer.address && (
             <div className="flex items-center gap-3 rounded-md border p-4">
-              <MapPin className="h-4 w-4 text-muted-foreground" />
+              <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
               <div>
                 <p className="text-xs text-muted-foreground">Address</p>
                 <p className="text-sm font-medium">{customer.address}</p>
@@ -153,32 +155,72 @@ export default function CustomerDetail() {
           )}
         </div>
 
-        {customer.notes && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Notes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{customer.notes}</p>
-            </CardContent>
-          </Card>
-        )}
+        <div className="flex gap-2 flex-wrap" data-testid="customer-quick-actions">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => navigate(`/jobs?customerId=${id}`)}
+            data-testid="quick-action-new-job"
+          >
+            <Wrench className="h-3.5 w-3.5" />
+            New Job
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => navigate(`/quotes/new?customerId=${id}`)}
+            data-testid="quick-action-new-quote"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            New Quote
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => navigate(`/invoices/new?customerId=${id}`)}
+            data-testid="quick-action-new-invoice"
+          >
+            <Receipt className="h-3.5 w-3.5" />
+            New Invoice
+          </Button>
+        </div>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Wrench className="h-4 w-4 text-muted-foreground" />
+        <Tabs defaultValue="jobs">
+          <TabsList>
+            <TabsTrigger value="jobs" data-testid="tab-customer-jobs">
               Jobs ({customerJobs.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+            </TabsTrigger>
+            <TabsTrigger value="invoices" data-testid="tab-customer-invoices">
+              Invoices ({customerInvoices.length})
+            </TabsTrigger>
+            <TabsTrigger value="notes" data-testid="tab-customer-notes">
+              Notes
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="jobs" className="mt-4">
             {customerJobs.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">No jobs for this customer</p>
+              <div className="text-center py-8 text-sm text-muted-foreground border rounded-lg">
+                <Wrench className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p>No jobs for this customer</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-3"
+                  onClick={() => navigate(`/jobs/new?customerId=${id}`)}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  New Job
+                </Button>
+              </div>
             ) : (
               <div className="space-y-2">
                 {customerJobs.map((job) => (
                   <Link key={job.id} href={`/jobs/${job.id}`}>
-                    <div className="flex items-center justify-between gap-3 rounded-md border p-3 hover-elevate cursor-pointer">
+                    <div className="flex items-center justify-between gap-3 rounded-md border p-3 hover:bg-muted/50 cursor-pointer transition-colors" data-testid={`customer-job-${job.id}`}>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{job.title}</p>
                         <p className="text-xs text-muted-foreground">
@@ -191,24 +233,28 @@ export default function CustomerDetail() {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </TabsContent>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Receipt className="h-4 w-4 text-muted-foreground" />
-              Invoices ({customerInvoices.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+          <TabsContent value="invoices" className="mt-4">
             {customerInvoices.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">No invoices for this customer</p>
+              <div className="text-center py-8 text-sm text-muted-foreground border rounded-lg">
+                <Receipt className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p>No invoices for this customer</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-3"
+                  onClick={() => navigate(`/invoices/new?customerId=${id}`)}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  New Invoice
+                </Button>
+              </div>
             ) : (
               <div className="space-y-2">
                 {customerInvoices.map((inv) => (
                   <Link key={inv.id} href={`/invoices/${inv.id}`}>
-                    <div className="flex items-center justify-between gap-3 rounded-md border p-3 hover-elevate cursor-pointer">
+                    <div className="flex items-center justify-between gap-3 rounded-md border p-3 hover:bg-muted/50 cursor-pointer transition-colors" data-testid={`customer-invoice-${inv.id}`}>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium">Invoice #{inv.id.slice(0, 8)}</p>
                         <p className="text-xs text-muted-foreground">
@@ -221,8 +267,32 @@ export default function CustomerDetail() {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </TabsContent>
+
+          <TabsContent value="notes" className="mt-4">
+            <Card>
+              <CardContent className="pt-4">
+                {customer.notes ? (
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{customer.notes}</p>
+                ) : (
+                  <div className="text-center py-4 text-sm text-muted-foreground">
+                    <p>No notes yet</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3"
+                      onClick={() => setShowEdit(true)}
+                      data-testid="button-add-notes"
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1.5" />
+                      Add Notes
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
 
       <Dialog open={showEdit} onOpenChange={setShowEdit}>

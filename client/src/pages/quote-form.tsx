@@ -33,6 +33,7 @@ export default function QuoteForm() {
   const [taxRate, setTaxRate] = useState("0");
   const [discount, setDiscount] = useState("0");
   const [notes, setNotes] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
   const [items, setItems] = useState<LineItem[]>([
     { description: "", qty: "1", unitPrice: "0" },
   ]);
@@ -53,6 +54,7 @@ export default function QuoteForm() {
       setTaxRate(existingQuote.taxRate || "0");
       setDiscount(existingQuote.discount || "0");
       setNotes(existingQuote.notes || "");
+      setExpiresAt(existingQuote.expiresAt ? new Date(existingQuote.expiresAt).toISOString().split("T")[0] : "");
       if (existingQuote.items && existingQuote.items.length > 0) {
         setItems(
           existingQuote.items.map((it) => ({
@@ -110,6 +112,7 @@ export default function QuoteForm() {
       taxRate,
       discount,
       notes,
+      expiresAt: expiresAt || null,
       items: items.filter((it) => it.description.trim()),
     });
   };
@@ -143,14 +146,23 @@ export default function QuoteForm() {
               </select>
             </div>
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <Label>Expiry Date</Label>
               <Input
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                data-testid="input-quote-notes"
-                placeholder="Quote notes..."
+                type="date"
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+                data-testid="input-quote-expires"
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Notes</Label>
+            <Input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              data-testid="input-quote-notes"
+              placeholder="Quote notes..."
+            />
           </div>
 
           <Card>

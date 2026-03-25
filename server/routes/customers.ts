@@ -6,7 +6,8 @@ const router = Router();
 
 router.get("/api/customers", requireAuth, requireOrg, async (req: Request, res: Response) => {
   try {
-    const result = await storage.getCustomers(req.session.orgId!);
+    const search = typeof req.query.q === "string" && req.query.q.trim() ? req.query.q.trim() : undefined;
+    const result = await storage.getCustomers(req.session.orgId!, search);
     res.json(result);
   } catch (err: any) {
     res.status(500).send(err.message);

@@ -14,9 +14,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, FileText, Search, Filter } from "lucide-react";
-import { format } from "date-fns";
+import { Plus, FileText, Search, Filter, Clock, AlertTriangle } from "lucide-react";
+import { format, differenceInDays } from "date-fns";
 import type { Quote, Customer } from "@shared/schema";
+
+function ExpiryBadge({ expiresAt, status }: { expiresAt: string | Date | null | undefined; status: string }) {
+  if (status === "accepted" || status === "declined" || !expiresAt) return null;
+  const exp = new Date(expiresAt);
+  const days = differenceInDays(exp, new Date());
+  if (days < 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400">
+        <AlertTriangle className="h-3 w-3" />
+        Expired
+      </span>
+    );
+  }
+  if (days <= 7) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+        <Clock className="h-3 w-3" />
+        Expires in {days}d
+      </span>
+    );
+  }
+  return null;
+}
 
 export default function QuotesPage() {
   const [, navigate] = useLocation();
@@ -55,11 +78,16 @@ export default function QuotesPage() {
     {
       key: "status",
       header: "Status",
-      render: (q: Quote) => <StatusBadge status={q.status} type="quote" />,
+      render: (q: Quote & { total?: number }) => (
+        <div className="space-y-1">
+          <StatusBadge status={q.status} type="quote" />
+          <ExpiryBadge expiresAt={q.expiresAt} status={q.status} />
+        </div>
+      ),
     },
     {
       key: "total",
-      header: "Total",
+      header: "Value",
       render: (q: Quote & { total?: number }) => (
         <span className="font-medium">
           ${(q.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -67,9 +95,19 @@ export default function QuotesPage() {
       ),
     },
     {
+      key: "expires",
+      header: "Expires",
+      className: "hidden md:table-cell",
+      render: (q: Quote) => (
+        <span className={`text-sm ${q.expiresAt && differenceInDays(new Date(q.expiresAt), new Date()) < 0 ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+          {q.expiresAt ? format(new Date(q.expiresAt), "MMM d, yyyy") : "-"}
+        </span>
+      ),
+    },
+    {
       key: "created",
       header: "Created",
-      className: "hidden md:table-cell",
+      className: "hidden lg:table-cell",
       render: (q: Quote) => (
         <span className="text-sm text-muted-foreground">
           {q.createdAt ? format(new Date(q.createdAt), "MMM d, yyyy") : ""}
@@ -91,9 +129,9 @@ export default function QuotesPage() {
         }
       />
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-4 md:p-6">
         <div className="mb-4 flex items-center gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <div className="relative flex-1 min-w-[180px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search quotes..."
@@ -104,7 +142,7 @@ export default function QuotesPage() {
             />
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[150px]" data-testid="select-quote-status-filter">
+            <SelectTrigger className="w-[140px]" data-testid="select-quote-status-filter">
               <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
               <SelectValue placeholder="Status" />
             </SelectTrigger>
@@ -117,7 +155,7 @@ export default function QuotesPage() {
             </SelectContent>
           </Select>
           <Select value={customerFilter} onValueChange={setCustomerFilter}>
-            <SelectTrigger className="w-[180px]" data-testid="select-quote-customer-filter">
+            <SelectTrigger className="w-[160px]" data-testid="select-quote-customer-filter">
               <SelectValue placeholder="Customer" />
             </SelectTrigger>
             <SelectContent>

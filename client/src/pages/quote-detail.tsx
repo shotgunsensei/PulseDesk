@@ -1,6 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { PageHeader } from "@/components/page-header";
+import { MobileActionBar } from "@/components/mobile-action-bar";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,12 +21,51 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Edit, Wrench, Trash2, Printer, Mail } from "lucide-react";
+import { ArrowLeft, Edit, Wrench, Trash2, Printer, Mail, Clock, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { calcLineItemsTotal, calcTotalWithTaxDiscount } from "@shared/schema";
-import { format } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 import type { Quote, QuoteItem, Customer, Org } from "@shared/schema";
+
+const STATUS_STEPS = ["draft", "sent", "accepted"] as const;
+
+function StatusProgressBar({ status }: { status: string }) {
+  if (status === "declined") {
+    return (
+      <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800">
+        <XCircle className="h-4 w-4 text-red-500" />
+        <span className="text-sm font-medium text-red-600 dark:text-red-400">Quote Declined</span>
+      </div>
+    );
+  }
+  const currentIdx = STATUS_STEPS.indexOf(status as any);
+  return (
+    <div className="flex items-center gap-0">
+      {STATUS_STEPS.map((step, idx) => {
+        const isComplete = currentIdx > idx;
+        const isCurrent = currentIdx === idx;
+        return (
+          <div key={step} className="flex items-center">
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${
+              isComplete
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                : isCurrent
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground"
+            }`}>
+              {isComplete && <CheckCircle2 className="h-3 w-3" />}
+              {step.charAt(0).toUpperCase() + step.slice(1)}
+            </div>
+            {idx < STATUS_STEPS.length - 1 && (
+              <div className={`h-px w-8 ${isComplete ? "bg-emerald-300 dark:bg-emerald-700" : "bg-muted-foreground/20"}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function QuoteDetail() {
   const { id } = useParams<{ id: string }>();
@@ -76,9 +117,7 @@ export default function QuoteDetail() {
     },
   });
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = () => window.print();
 
   const handleEmail = () => {
     if (!quote) return;
@@ -86,19 +125,16 @@ export default function QuoteDetail() {
     const items = quote.items || [];
     const subtotal = calcLineItemsTotal(items);
     const totals = calcTotalWithTaxDiscount(subtotal, quote.taxRate || "0", quote.discount || "0");
-
     const subject = encodeURIComponent(`Quote #${quote.id.slice(0, 8)} from ${quote.org?.name || "Our Company"}`);
     const body = encodeURIComponent(
       `Dear ${customer?.name || "Customer"},\n\n` +
       `Please find below your quote #${quote.id.slice(0, 8)}.\n\n` +
-      `Total: $${totals.total.toFixed(2)}\n\n` +
-      `Items:\n${items.map(it => `- ${it.description}: ${it.qty} x $${Number(it.unitPrice).toFixed(2)}`).join("\n")}\n\n` +
-      `${quote.notes ? `Notes: ${quote.notes}\n\n` : ""}` +
-      `Thank you for your business.\n\n` +
-      `${quote.org?.name || ""}\n${quote.org?.phone || ""}\n${quote.org?.email || ""}`
+      `Total: $${totals.total.toFixed(2)}\n` +
+      (quote.expiresAt ? `Valid until: ${format(new Date(quote.expiresAt), "MMM d, yyyy")}\n` : "") +
+      `\nItems:\n${items.map(it => `- ${it.description}: ${it.qty} x $${Number(it.unitPrice).toFixed(2)}`).join("\n")}\n\n` +
+      `${quote.notes ? `Notes: ${quote.notes}\n\n` : ""}Thank you for your business.\n\n${quote.org?.name || ""}`
     );
-    const email = customer?.email || "";
-    window.open(`mailto:${email}?subject=${subject}&body=${body}`);
+    window.open(`mailto:${customer?.email || ""}?subject=${subject}&body=${body}`);
   };
 
   if (isLoading) {
@@ -119,6 +155,9 @@ export default function QuoteDetail() {
   const totals = calcTotalWithTaxDiscount(subtotal, quote.taxRate || "0", quote.discount || "0");
   const customer = quote.customer;
   const org = quote.org;
+  const expiryDays = quote.expiresAt ? differenceInDays(new Date(quote.expiresAt), new Date()) : null;
+  const isExpired = expiryDays !== null && expiryDays < 0;
+  const isExpiringSoon = expiryDays !== null && expiryDays >= 0 && expiryDays <= 7;
 
   return (
     <div className="flex flex-col h-full">
@@ -126,7 +165,7 @@ export default function QuoteDetail() {
         title={`Quote #${quote.id.slice(0, 8)}`}
         description={quote.customerName || undefined}
         actions={
-          <div className="flex items-center gap-2 flex-wrap print:hidden">
+          <div className="hidden md:flex items-center gap-2 flex-wrap print:hidden">
             <Button variant="outline" size="sm" onClick={() => navigate("/quotes")} data-testid="button-back-quotes">
               <ArrowLeft className="h-4 w-4 mr-1" /> Back
             </Button>
@@ -162,12 +201,12 @@ export default function QuoteDetail() {
         }
       />
 
-      <div className="flex-1 overflow-auto p-6 space-y-6">
-        <div className="flex items-center gap-4 print:hidden">
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Status</p>
+      <div className="flex-1 overflow-auto p-4 md:p-6 pb-24 md:pb-6 space-y-5">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden">
+          <StatusProgressBar status={quote.status} />
+          <div className="flex items-center gap-3">
             <Select value={quote.status} onValueChange={(v) => statusMutation.mutate(v)}>
-              <SelectTrigger className="w-[160px]" data-testid="select-quote-status">
+              <SelectTrigger className="w-[140px]" data-testid="select-quote-status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -178,13 +217,43 @@ export default function QuoteDetail() {
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Created</p>
-            <p className="text-sm">{quote.createdAt ? format(new Date(quote.createdAt), "MMM d, yyyy") : ""}</p>
-          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="flex flex-wrap items-center gap-4 text-sm print:hidden">
+          <div>
+            <p className="text-xs text-muted-foreground mb-0.5">Created</p>
+            <p>{quote.createdAt ? format(new Date(quote.createdAt), "MMM d, yyyy") : ""}</p>
+          </div>
+          {quote.expiresAt && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-0.5">Valid Until</p>
+              <p className={`flex items-center gap-1 ${isExpired ? "text-red-600 font-medium" : isExpiringSoon ? "text-amber-600 font-medium" : ""}`}>
+                {isExpired && <AlertTriangle className="h-3.5 w-3.5" />}
+                {isExpiringSoon && !isExpired && <Clock className="h-3.5 w-3.5" />}
+                {format(new Date(quote.expiresAt), "MMM d, yyyy")}
+                {isExpired && " (Expired)"}
+                {isExpiringSoon && !isExpired && ` (${expiryDays}d left)`}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {(isExpired || isExpiringSoon) && quote.status !== "accepted" && quote.status !== "declined" && (
+          <div className={`flex items-center gap-2 p-3 rounded-lg border text-sm print:hidden ${
+            isExpired
+              ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-950/20 dark:border-red-800 dark:text-red-400"
+              : "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/20 dark:border-amber-800 dark:text-amber-400"
+          }`}>
+            {isExpired ? <AlertTriangle className="h-4 w-4 shrink-0" /> : <Clock className="h-4 w-4 shrink-0" />}
+            <span>
+              {isExpired
+                ? "This quote has expired. Consider updating the expiry date or issuing a new quote."
+                : `This quote expires in ${expiryDays} day${expiryDays === 1 ? "" : "s"}. Follow up with the customer soon.`}
+            </span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {org && (
             <Card data-testid="card-org-info">
               <CardHeader className="pb-2">
@@ -198,11 +267,10 @@ export default function QuoteDetail() {
               </CardContent>
             </Card>
           )}
-
           {customer && (
             <Card data-testid="card-customer-info">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Bill To</CardTitle>
+                <CardTitle className="text-sm">To</CardTitle>
               </CardHeader>
               <CardContent className="text-sm space-y-1">
                 <p className="font-medium">{customer.name}</p>
@@ -242,15 +310,17 @@ export default function QuoteDetail() {
               </TableBody>
             </Table>
 
-            <div className="mt-4 border-t pt-4 space-y-1 max-w-xs ml-auto">
+            <div className="mt-4 border-t pt-4 space-y-1.5 max-w-xs ml-auto">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
                 <span>${totals.subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Tax ({quote.taxRate}%)</span>
-                <span>${totals.tax.toFixed(2)}</span>
-              </div>
+              {totals.tax > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Tax ({quote.taxRate}%)</span>
+                  <span>${totals.tax.toFixed(2)}</span>
+                </div>
+              )}
               {totals.discount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Discount</span>
@@ -276,6 +346,30 @@ export default function QuoteDetail() {
           </Card>
         )}
       </div>
+
+      <MobileActionBar
+        actions={[
+          ...((!quote.jobId && quote.status !== "declined") ? [{
+            label: "Convert to Job",
+            icon: <Wrench className="h-3.5 w-3.5" />,
+            onClick: () => convertMutation.mutate(),
+            variant: "default" as const,
+            testId: "mobile-action-convert",
+          }] : []),
+          {
+            label: "Print",
+            icon: <Printer className="h-3.5 w-3.5" />,
+            onClick: handlePrint,
+            testId: "mobile-action-print",
+          },
+          {
+            label: "Edit",
+            icon: <Edit className="h-3.5 w-3.5" />,
+            onClick: () => navigate(`/quotes/${id}/edit`),
+            testId: "mobile-action-edit",
+          },
+        ]}
+      />
     </div>
   );
 }

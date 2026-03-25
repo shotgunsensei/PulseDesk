@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray, count } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, count, ilike, or } from "drizzle-orm";
 import { db } from "./db";
 import {
   users,
@@ -61,7 +61,7 @@ export interface IStorage {
   getInviteCodeByCode(code: string): Promise<InviteCode | undefined>;
   getOrgInviteCodes(orgId: string): Promise<InviteCode[]>;
 
-  getCustomers(orgId: string): Promise<Customer[]>;
+  getCustomers(orgId: string, search?: string): Promise<Customer[]>;
   getCustomer(orgId: string, id: string): Promise<Customer | undefined>;
   createCustomer(orgId: string, data: InsertCustomer): Promise<Customer>;
   updateCustomer(orgId: string, id: string, data: Partial<Customer>): Promise<Customer | undefined>;
@@ -243,11 +243,19 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(inviteCodes.createdAt));
   }
 
-  async getCustomers(orgId: string): Promise<Customer[]> {
+  async getCustomers(orgId: string, search?: string): Promise<Customer[]> {
+    const baseWhere = eq(customers.orgId, orgId);
+    const where = search
+      ? and(baseWhere, or(
+          ilike(customers.name, `%${search}%`),
+          ilike(customers.phone, `%${search}%`),
+          ilike(customers.email, `%${search}%`)
+        ))
+      : baseWhere;
     return db
       .select()
       .from(customers)
-      .where(eq(customers.orgId, orgId))
+      .where(where)
       .orderBy(desc(customers.createdAt));
   }
 
@@ -418,6 +426,9 @@ export class DatabaseStorage implements IStorage {
 
   async createQuote(orgId: string, data: any, createdBy: string): Promise<Quote> {
     const { items: itemsData, ...quoteData } = data;
+    if (quoteData.expiresAt && typeof quoteData.expiresAt === "string") {
+      quoteData.expiresAt = new Date(quoteData.expiresAt);
+    }
     const [q] = await db
       .insert(quotes)
       .values({ ...quoteData, orgId, createdBy, status: quoteData.status || "draft" })
@@ -439,6 +450,9 @@ export class DatabaseStorage implements IStorage {
 
   async updateQuote(orgId: string, id: string, data: any): Promise<Quote | undefined> {
     const { items: itemsData, ...quoteData } = data;
+    if (quoteData.expiresAt && typeof quoteData.expiresAt === "string") {
+      quoteData.expiresAt = new Date(quoteData.expiresAt);
+    }
     const [q] = await db
       .update(quotes)
       .set(quoteData)

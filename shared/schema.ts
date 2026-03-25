@@ -27,6 +27,8 @@ export const membershipRoleEnum = pgEnum("membership_role", [
   "viewer",
 ]);
 
+export const jobPriorityEnum = pgEnum("job_priority", ["low", "normal", "urgent"]);
+
 export const jobStatusEnum = pgEnum("job_status", [
   "lead",
   "quoted",
@@ -154,6 +156,7 @@ export const jobs = pgTable("jobs", {
   assignedUserIds: text("assigned_user_ids")
     .array()
     .default(sql`'{}'::text[]`),
+  priority: jobPriorityEnum("priority").notNull().default("normal"),
   internalNotes: text("internal_notes").default(""),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -184,6 +187,7 @@ export const quotes = pgTable("quotes", {
   taxRate: numeric("tax_rate", { precision: 5, scale: 2 }).default("0"),
   discount: numeric("discount", { precision: 10, scale: 2 }).default("0"),
   notes: text("notes").default(""),
+  expiresAt: timestamp("expires_at"),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -346,8 +350,10 @@ export const insertJobSchema = createInsertSchema(jobs).pick({
   title: true,
   description: true,
   status: true,
+  priority: true,
   scheduledStart: true,
   scheduledEnd: true,
+  assignedUserIds: true,
   internalNotes: true,
 });
 
@@ -358,6 +364,7 @@ export const insertQuoteSchema = createInsertSchema(quotes).pick({
   taxRate: true,
   discount: true,
   notes: true,
+  expiresAt: true,
 });
 
 export const insertQuoteItemSchema = createInsertSchema(quoteItems).pick({
@@ -447,6 +454,12 @@ export const PLAN_PRICES: Record<string, number> = {
   individual: 20,
   small_business: 100,
   enterprise: 200,
+};
+
+export const JOB_PRIORITY_LABELS: Record<string, string> = {
+  low: "Low",
+  normal: "Normal",
+  urgent: "Urgent",
 };
 
 export const JOB_STATUS_LABELS: Record<string, string> = {

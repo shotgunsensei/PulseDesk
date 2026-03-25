@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { PageHeader } from "@/components/page-header";
@@ -40,13 +40,25 @@ export default function CustomersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
   const [importResult, setImportResult] = useState<{ imported: number; errors: { row: number; error: string }[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const { data: customers = [], isLoading } = useQuery<Customer[]>({
-    queryKey: ["/api/customers"],
+    queryKey: ["/api/customers", { q: debouncedSearch }],
+    queryFn: async () => {
+      const url = debouncedSearch ? `/api/customers?q=${encodeURIComponent(debouncedSearch)}` : "/api/customers";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch customers");
+      return res.json();
+    },
   });
 
   const createMutation = useMutation({
@@ -77,12 +89,7 @@ export default function CustomersPage() {
     },
   });
 
-  const filtered = customers.filter(
-    (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      (c.email || "").toLowerCase().includes(search.toLowerCase()) ||
-      (c.phone || "").includes(search)
-  );
+  const filtered = customers;
 
   const columns = [
     {

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
+import { MobileActionBar } from "@/components/mobile-action-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,17 +28,45 @@ import {
   Edit,
   Trash2,
   Clock,
-  User,
   Calendar,
   FileText,
   Receipt,
   ChevronRight,
+  AlertTriangle,
+  User,
+  CheckCircle2,
+  Circle,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
-import { JOB_STATUS_LABELS } from "@shared/schema";
+import { format, formatDistanceToNow } from "date-fns";
+import { JOB_STATUS_LABELS, JOB_PRIORITY_LABELS } from "@shared/schema";
 import type { Job, Customer, JobEvent } from "@shared/schema";
+
+const EVENT_ICONS: Record<string, React.ReactNode> = {
+  created: <Circle className="h-3.5 w-3.5 text-blue-500" />,
+  status_changed: <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />,
+  updated: <Edit className="h-3.5 w-3.5 text-amber-500" />,
+  note_added: <FileText className="h-3.5 w-3.5 text-purple-500" />,
+};
+
+const PRIORITY_STYLES: Record<string, string> = {
+  urgent: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  normal: "bg-muted text-muted-foreground",
+  low: "bg-muted text-muted-foreground",
+};
+
+function eventLabel(event: JobEvent): string {
+  const type = event.type;
+  const payload = (event.payload || {}) as Record<string, any>;
+  if (type === "status_changed") {
+    return `Status changed to ${JOB_STATUS_LABELS[payload.to] || payload.to}`;
+  }
+  if (type === "created") return "Job created";
+  if (type === "updated") return "Job updated";
+  if (type === "note_added") return "Note added";
+  return type.replace(/_/g, " ");
+}
 
 export default function JobDetail() {
   const { id } = useParams<{ id: string }>();
@@ -117,6 +146,7 @@ export default function JobDetail() {
       title: fd.get("title"),
       description: fd.get("description") || "",
       customerId: fd.get("customerId") || null,
+      priority: fd.get("priority") || "normal",
       scheduledStart: fd.get("scheduledStart") || null,
       scheduledEnd: fd.get("scheduledEnd") || null,
       internalNotes: fd.get("internalNotes") || "",
@@ -129,7 +159,7 @@ export default function JobDetail() {
         title={job.title}
         description={job.customerName ? `Customer: ${job.customerName}` : undefined}
         actions={
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="hidden md:flex items-center gap-2 flex-wrap">
             <Button variant="outline" size="sm" onClick={() => navigate("/jobs")} data-testid="button-back-jobs">
               <ArrowLeft className="h-4 w-4 mr-1" />
               Back
@@ -158,90 +188,173 @@ export default function JobDetail() {
         }
       />
 
-      <div className="flex-1 overflow-auto p-6 space-y-6">
-        <div className="flex items-center gap-4 flex-wrap">
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Status</p>
-            <Select value={job.status} onValueChange={(v) => statusMutation.mutate(v)}>
-              <SelectTrigger className="w-[180px]" data-testid="select-job-status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(JOB_STATUS_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {job.scheduledStart && (
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Scheduled</p>
-              <div className="flex items-center gap-1.5 text-sm">
-                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                {format(new Date(job.scheduledStart), "MMM d, yyyy h:mm a")}
-                {job.scheduledEnd && (
-                  <>
-                    <ChevronRight className="h-3 w-3" />
-                    {format(new Date(job.scheduledEnd), "h:mm a")}
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {job.description && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Description</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{job.description}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {job.internalNotes && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Internal Notes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{job.internalNotes}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              Timeline
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {events.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">No events yet</p>
-            ) : (
-              <div className="space-y-3">
-                {events.map((event) => (
-                  <div key={event.id} className="flex items-start gap-3">
-                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted mt-0.5">
-                      <Clock className="h-3 w-3 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-sm">{event.type.replace(/_/g, " ")}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {event.createdAt ? format(new Date(event.createdAt), "MMM d, yyyy h:mm a") : ""}
-                      </p>
-                    </div>
+      <div className="flex-1 overflow-auto p-4 md:p-6 pb-24 md:pb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+          <div className="md:col-span-2 space-y-4">
+            <Card>
+              <CardContent className="pt-4 space-y-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Status</p>
+                    <Select value={job.status} onValueChange={(v) => statusMutation.mutate(v)}>
+                      <SelectTrigger className="w-[180px]" data-testid="select-job-status">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(JOB_STATUS_LABELS).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Priority</p>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium gap-1 ${PRIORITY_STYLES[job.priority || "normal"]}`}>
+                      {job.priority === "urgent" && <AlertTriangle className="h-3 w-3" />}
+                      {JOB_PRIORITY_LABELS[job.priority || "normal"]}
+                    </span>
+                  </div>
+                  {job.scheduledStart && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Scheduled</p>
+                      <div className="flex items-center gap-1.5 text-sm">
+                        <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                        {format(new Date(job.scheduledStart), "MMM d, yyyy h:mm a")}
+                        {job.scheduledEnd && (
+                          <>
+                            <ChevronRight className="h-3 w-3" />
+                            {format(new Date(job.scheduledEnd), "h:mm a")}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3 pt-1 flex-wrap">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={() => navigate(`/quotes/new?jobId=${id}&customerId=${job.customerId || ""}`)}
+                    data-testid="button-new-quote-from-job"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    New Quote
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={() => navigate(`/invoices/new?jobId=${id}&customerId=${job.customerId || ""}`)}
+                    data-testid="button-new-invoice-from-job"
+                  >
+                    <Receipt className="h-3.5 w-3.5" />
+                    New Invoice
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {job.description && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Description</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{job.description}</p>
+                </CardContent>
+              </Card>
             )}
-          </CardContent>
-        </Card>
+
+            {job.internalNotes && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Internal Notes</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{job.internalNotes}</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  Activity Timeline
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {events.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2">No events yet</p>
+                ) : (
+                  <div className="space-y-4">
+                    {events.map((event) => (
+                      <div key={event.id} className="flex items-start gap-3">
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted mt-0.5">
+                          {EVENT_ICONS[event.type] || <Clock className="h-3 w-3 text-muted-foreground" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm">{eventLabel(event)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {event.createdAt
+                              ? formatDistanceToNow(new Date(event.createdAt), { addSuffix: true })
+                              : ""}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {job.customerId && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    Customer
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Link href={`/customers/${job.customerId}`}>
+                    <p className="text-sm font-medium text-primary hover:underline cursor-pointer">
+                      {job.customerName}
+                    </p>
+                  </Link>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
       </div>
+
+      <MobileActionBar
+        actions={[
+          {
+            label: "Edit",
+            icon: <Edit className="h-3.5 w-3.5" />,
+            onClick: () => setShowEdit(true),
+            testId: "mobile-action-edit",
+          },
+          {
+            label: "Quote",
+            icon: <FileText className="h-3.5 w-3.5" />,
+            onClick: () => navigate(`/quotes/new?jobId=${id}&customerId=${job.customerId || ""}`),
+            testId: "mobile-action-quote",
+          },
+          {
+            label: "Invoice",
+            icon: <Receipt className="h-3.5 w-3.5" />,
+            onClick: () => navigate(`/invoices/new?jobId=${id}&customerId=${job.customerId || ""}`),
+            testId: "mobile-action-invoice",
+          },
+        ]}
+      />
 
       <Dialog open={showEdit} onOpenChange={setShowEdit}>
         <DialogContent className="sm:max-w-lg">
@@ -253,18 +366,33 @@ export default function JobDetail() {
               <Label>Title</Label>
               <Input name="title" defaultValue={job.title} required data-testid="input-edit-job-title" />
             </div>
-            <div className="space-y-2">
-              <Label>Customer</Label>
-              <select
-                name="customerId"
-                defaultValue={job.customerId || ""}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="">No customer</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Customer</Label>
+                <select
+                  name="customerId"
+                  defaultValue={job.customerId || ""}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">No customer</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Priority</Label>
+                <select
+                  name="priority"
+                  defaultValue={job.priority || "normal"}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  data-testid="select-edit-job-priority"
+                >
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
