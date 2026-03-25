@@ -558,6 +558,11 @@ router.get("/api/call-recovery/stats", requireAuth, requireOrg, async (req: Requ
 router.patch("/api/call-recovery/missed-calls/:id/recover", requireAuth, requireOrg, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const orgId = req.session.orgId!;
+    const existing = await storage.getMissedCall(id as string);
+    if (!existing || existing.orgId !== orgId) {
+      return res.status(404).send("Missed call not found");
+    }
     const updated = await storage.updateMissedCall(id as string, { status: "recovered" });
     if (!updated) return res.status(404).send("Missed call not found");
     res.json(updated);
