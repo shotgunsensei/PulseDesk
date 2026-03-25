@@ -36,6 +36,7 @@ import {
   User,
   CheckCircle2,
   Circle,
+  RefreshCw,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -73,6 +74,7 @@ export default function JobDetail() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [showEdit, setShowEdit] = useState(false);
+  const [showStatusChange, setShowStatusChange] = useState(false);
 
   const { data: job, isLoading } = useQuery<Job & { customerName?: string }>({
     queryKey: ["/api/jobs", id],
@@ -336,6 +338,12 @@ export default function JobDetail() {
       <MobileActionBar
         actions={[
           {
+            label: "Status",
+            icon: <RefreshCw className="h-3.5 w-3.5" />,
+            onClick: () => setShowStatusChange(true),
+            testId: "mobile-action-status",
+          },
+          {
             label: "Edit",
             icon: <Edit className="h-3.5 w-3.5" />,
             onClick: () => setShowEdit(true),
@@ -427,6 +435,37 @@ export default function JobDetail() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showStatusChange} onOpenChange={setShowStatusChange}>
+        <DialogContent className="sm:max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Change Status</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <p className="text-sm text-muted-foreground">
+              Current: <span className="font-medium text-foreground">{JOB_STATUS_LABELS[job.status]}</span>
+            </p>
+            <div className="grid gap-2">
+              {Object.entries(JOB_STATUS_LABELS).map(([value, label]) => (
+                <Button
+                  key={value}
+                  variant={job.status === value ? "default" : "outline"}
+                  size="sm"
+                  className="justify-start"
+                  disabled={job.status === value || statusMutation.isPending}
+                  onClick={() => {
+                    statusMutation.mutate(value);
+                    setShowStatusChange(false);
+                  }}
+                  data-testid={`status-option-mobile-${value}`}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

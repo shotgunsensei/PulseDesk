@@ -450,10 +450,12 @@ export default function CustomersPage() {
               const duplicates = mappedRows.map((row) => {
                 const nameLower = row.name?.trim().toLowerCase();
                 const emailLower = row.email?.trim().toLowerCase();
-                return filtered.some(
+                const phoneNorm = row.phone?.replace(/\D/g, "");
+                return customers.some(
                   (c) =>
                     (nameLower && c.name.toLowerCase() === nameLower) ||
-                    (emailLower && c.email && c.email.toLowerCase() === emailLower)
+                    (emailLower && c.email && c.email.toLowerCase() === emailLower) ||
+                    (phoneNorm && phoneNorm.length >= 7 && c.phone && c.phone.replace(/\D/g, "") === phoneNorm)
                 );
               });
               const dupCount = duplicates.filter(Boolean).length;

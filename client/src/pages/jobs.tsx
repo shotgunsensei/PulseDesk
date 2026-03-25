@@ -210,6 +210,30 @@ export default function JobsPage() {
           </div>
         </div>
 
+        {view === "kanban" && (
+          <div className="sm:hidden -mx-4 px-4 overflow-x-auto" data-testid="mobile-kanban-status-tabs">
+            <div className="flex gap-1.5 min-w-max pb-1">
+              <button
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${statusFilter === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+                onClick={() => setStatusFilter("all")}
+                data-testid="mobile-status-tab-all"
+              >
+                All
+              </button>
+              {Object.entries(JOB_STATUS_LABELS).map(([value, label]) => (
+                <button
+                  key={value}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${statusFilter === value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+                  onClick={() => setStatusFilter(value)}
+                  data-testid={`mobile-status-tab-${value}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {view === "kanban" ? (
           <KanbanBoard
             jobs={filtered}
