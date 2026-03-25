@@ -128,10 +128,11 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const { seedDatabase, ensureSuperAdmin, ensureDemoAccount } = await import("./seed");
+  const { seedDatabase, ensureSuperAdmin, ensureDemoAccount, ensureReviewerAccount } = await import("./seed");
   await seedDatabase();
   await ensureSuperAdmin();
   await ensureDemoAccount();
+  await ensureReviewerAccount();
 
   const { seedStripeProducts } = await import("./seedProducts");
   await seedStripeProducts();

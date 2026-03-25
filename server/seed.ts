@@ -49,6 +49,48 @@ function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 
+export async function ensureReviewerAccount() {
+  try {
+    const existing = await storage.getUserByUsername("reviewer");
+    if (existing) {
+      const mems = await db.select().from(memberships).where(eq(memberships.userId, existing.id));
+      if (mems.length > 0) {
+        console.log("Reviewer account already exists with org, skipping.");
+        return;
+      }
+      const demoUser = await storage.getUserByUsername("demo");
+      if (demoUser) {
+        const demoMems = await db.select().from(memberships).where(eq(memberships.userId, demoUser.id));
+        if (demoMems.length > 0) {
+          await storage.createMembership(demoMems[0].orgId, existing.id, "owner");
+          console.log("Reviewer added as owner to demo org.");
+          return;
+        }
+      }
+      return;
+    }
+    const reviewerUser = await db.insert(users).values({
+      id: crypto.randomUUID(),
+      username: "reviewer",
+      password: hashPassword("Reviewer2026!"),
+      fullName: "App Reviewer",
+      phone: "",
+      email: "",
+      isSuperAdmin: false,
+    }).returning();
+    const demoUser = await storage.getUserByUsername("demo");
+    if (demoUser) {
+      const demoMems = await db.select().from(memberships).where(eq(memberships.userId, demoUser.id));
+      if (demoMems.length > 0) {
+        await storage.createMembership(demoMems[0].orgId, reviewerUser[0].id, "owner");
+      }
+    }
+    console.log("Reviewer account created: reviewer / Reviewer2026!");
+  } catch (err) {
+    console.error("Error ensuring reviewer account:", err);
+  }
+}
+
 export async function ensureSuperAdmin() {
   try {
     const existing = await storage.getUserByUsername("Johntwms355");
