@@ -15,6 +15,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Plus, Users, Search, Download, Upload, CheckCircle2, AlertCircle } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -22,16 +29,47 @@ import type { Customer } from "@shared/schema";
 
 const CSV_HEADERS = ["name", "phone", "email", "address", "notes"];
 const CSV_DISPLAY_HEADERS = ["Name", "Phone", "Email", "Address", "Notes"];
+const CUSTOMER_FIELDS = [
+  { value: "skip", label: "— Skip —" },
+  { value: "name", label: "Name *" },
+  { value: "phone", label: "Phone" },
+  { value: "email", label: "Email" },
+  { value: "address", label: "Address" },
+  { value: "notes", label: "Notes" },
+];
 
-function parseCSV(text: string): Record<string, string>[] {
+function autoMap(csvHeader: string): string {
+  const h = csvHeader.toLowerCase().replace(/[\s_\-]+/g, "");
+  if (["name", "fullname", "customername", "client", "clientname"].includes(h)) return "name";
+  if (["phone", "phonenumber", "mobile", "cell", "telephone", "tel"].includes(h)) return "phone";
+  if (["email", "emailaddress", "mail"].includes(h)) return "email";
+  if (["address", "addr", "street", "location"].includes(h)) return "address";
+  if (["notes", "note", "comments", "comment", "description"].includes(h)) return "notes";
+  return "skip";
+}
+
+function parseCSV(text: string): { headers: string[]; rows: Record<string, string>[] } {
   const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/\s+/g, ""));
-  return lines.slice(1).map((line) => {
+  if (lines.length < 2) return { headers: [], rows: [] };
+  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+  const rows = lines.slice(1).map((line) => {
     const values = line.split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
     const row: Record<string, string> = {};
     headers.forEach((h, i) => { row[h] = values[i] || ""; });
     return row;
+  });
+  return { headers, rows };
+}
+
+function applyMapping(rows: Record<string, string>[], mapping: Record<string, string>): Record<string, string>[] {
+  return rows.map((row) => {
+    const mapped: Record<string, string> = {};
+    Object.entries(mapping).forEach(([csvHeader, field]) => {
+      if (field !== "skip" && field) {
+        if (!mapped[field]) mapped[field] = row[csvHeader] || "";
+      }
+    });
+    return mapped;
   });
 }
 
@@ -42,6 +80,9 @@ export default function CustomersPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({});
+  const [importStep, setImportStep] = useState<"upload" | "map" | "preview">("upload");
   const [importResult, setImportResult] = useState<{ imported: number; errors: { row: number; error: string }[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -151,9 +192,14 @@ export default function CustomersPage() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      const rows = parseCSV(text);
+      const { headers, rows } = parseCSV(text);
       setImportRows(rows);
+      setCsvHeaders(headers);
+      const initialMapping: Record<string, string> = {};
+      headers.forEach((h) => { initialMapping[h] = autoMap(h); });
+      setFieldMapping(initialMapping);
       setImportResult(null);
+      setImportStep("map");
     };
     reader.readAsText(file);
   };
@@ -161,6 +207,9 @@ export default function CustomersPage() {
   const handleImportClose = () => {
     setShowImport(false);
     setImportRows([]);
+    setCsvHeaders([]);
+    setFieldMapping({});
+    setImportStep("upload");
     setImportResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -298,7 +347,7 @@ export default function CustomersPage() {
                 <Button onClick={handleImportClose}>Done</Button>
               </div>
             </div>
-          ) : (
+          ) : importStep === "upload" ? (
             <div className="space-y-5">
               <div className="flex items-center gap-3 p-4 rounded-lg bg-muted/40 border">
                 <div className="flex-1">
@@ -315,40 +364,10 @@ export default function CustomersPage() {
 
               <div className="p-4 rounded-lg bg-muted/40 border space-y-3">
                 <div>
-                  <p className="text-sm font-medium">Step 2 — Fill in your customers</p>
+                  <p className="text-sm font-medium">Step 2 — Upload your CSV</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Open the file in Excel, Google Sheets, or any spreadsheet app. Add one customer per row.
-                    The <strong>Name</strong> column is required; all others are optional.
+                    Select your CSV file. You can map columns to customer fields in the next step.
                   </p>
-                </div>
-                <div className="overflow-x-auto rounded border bg-background text-xs">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b bg-muted/60">
-                        {CSV_DISPLAY_HEADERS.map((h) => (
-                          <th key={h} className="px-3 py-1.5 text-left font-medium whitespace-nowrap">
-                            {h}{h === "Name" && <span className="text-destructive ml-0.5">*</span>}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="text-muted-foreground">
-                        <td className="px-3 py-1.5">John Smith</td>
-                        <td className="px-3 py-1.5">(555) 123-4567</td>
-                        <td className="px-3 py-1.5">john@example.com</td>
-                        <td className="px-3 py-1.5">123 Main St</td>
-                        <td className="px-3 py-1.5">Existing customer</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-lg bg-muted/40 border space-y-3">
-                <div>
-                  <p className="text-sm font-medium">Step 3 — Upload your file</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Select your completed CSV file to preview before importing.</p>
                 </div>
                 <input
                   ref={fileInputRef}
@@ -364,91 +383,149 @@ export default function CustomersPage() {
                   data-testid="button-select-csv"
                 >
                   <Upload className="h-4 w-4 mr-1.5" />
-                  {importRows.length > 0 ? `${importRows.length} row${importRows.length !== 1 ? "s" : ""} loaded — click to change` : "Select CSV File"}
+                  Select CSV File
                 </Button>
               </div>
-
-              {importRows.length > 0 && (() => {
-                const duplicates = importRows.map((row) => {
-                  const nameLower = row.name?.trim().toLowerCase();
-                  const emailLower = row.email?.trim().toLowerCase();
-                  return filtered.some(
-                    (c) =>
-                      (nameLower && c.name.toLowerCase() === nameLower) ||
-                      (emailLower && c.email && c.email.toLowerCase() === emailLower)
-                  );
-                });
-                const dupCount = duplicates.filter(Boolean).length;
-                const missingName = importRows.filter((r) => !r.name?.trim()).length;
-                return (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium">Preview ({importRows.length} row{importRows.length !== 1 ? "s" : ""})</p>
-                      <div className="flex gap-2 text-xs">
-                        {dupCount > 0 && (
-                          <span className="text-amber-600 font-medium">⚠ {dupCount} possible duplicate{dupCount !== 1 ? "s" : ""}</span>
-                        )}
-                        {missingName > 0 && (
-                          <span className="text-destructive font-medium">✕ {missingName} missing name</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border overflow-hidden max-h-52 overflow-y-auto">
-                      <table className="w-full text-xs">
-                        <thead className="bg-muted/60 sticky top-0">
-                          <tr>
-                            <th className="px-3 py-1.5 text-left font-medium w-6">#</th>
-                            {CSV_DISPLAY_HEADERS.map((h) => (
-                              <th key={h} className="px-3 py-1.5 text-left font-medium whitespace-nowrap">{h}</th>
-                            ))}
-                            <th className="px-3 py-1.5 text-left font-medium">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                          {importRows.slice(0, 10).map((row, i) => (
-                            <tr key={i} className={!row.name?.trim() ? "bg-destructive/5" : duplicates[i] ? "bg-amber-50 dark:bg-amber-950/20" : ""}>
-                              <td className="px-3 py-1.5 text-muted-foreground">{i + 1}</td>
-                              {CSV_HEADERS.map((h) => (
-                                <td key={h} className="px-3 py-1.5 max-w-[100px] truncate">
-                                  {row[h] || <span className="text-muted-foreground">—</span>}
-                                </td>
-                              ))}
-                              <td className="px-3 py-1.5">
-                                {!row.name?.trim() ? (
-                                  <span className="text-destructive">Missing name</span>
-                                ) : duplicates[i] ? (
-                                  <span className="text-amber-600">Possible dup</span>
-                                ) : (
-                                  <span className="text-emerald-600">OK</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                          {importRows.length > 10 && (
-                            <tr>
-                              <td colSpan={7} className="px-3 py-1.5 text-center text-muted-foreground">
-                                +{importRows.length - 10} more rows
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                );
-              })()}
 
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={handleImportClose}>Cancel</Button>
+              </div>
+            </div>
+          ) : importStep === "map" ? (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium">Map columns — {importRows.length} rows detected</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Match each column in your CSV to the correct customer field. Set to "Skip" to ignore a column.
+                </p>
+              </div>
+              <div className="rounded-lg border divide-y divide-border max-h-64 overflow-y-auto">
+                {csvHeaders.map((header) => (
+                  <div key={header} className="flex items-center gap-3 px-4 py-2.5">
+                    <div className="flex-1">
+                      <span className="text-sm font-medium">{header}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        e.g. {importRows[0]?.[header] ? `"${String(importRows[0][header]).slice(0, 30)}"` : "—"}
+                      </span>
+                    </div>
+                    <Select
+                      value={fieldMapping[header] ?? "skip"}
+                      onValueChange={(val) =>
+                        setFieldMapping((prev) => ({ ...prev, [header]: val }))
+                      }
+                    >
+                      <SelectTrigger className="w-36 h-8 text-xs" data-testid={`map-select-${header}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CUSTOMER_FIELDS.map((f) => (
+                          <SelectItem key={f.value} value={f.value} className="text-xs">
+                            {f.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
+              {!Object.values(fieldMapping).includes("name") && (
+                <p className="text-xs text-destructive">
+                  ⚠ You must map at least one column to <strong>Name</strong> before continuing.
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setImportStep("upload")}>Back</Button>
                 <Button
-                  disabled={importRows.length === 0 || importMutation.isPending}
-                  onClick={() => importMutation.mutate(importRows)}
-                  data-testid="button-confirm-import"
+                  disabled={!Object.values(fieldMapping).includes("name")}
+                  onClick={() => setImportStep("preview")}
+                  data-testid="button-mapping-next"
                 >
-                  {importMutation.isPending ? "Importing..." : `Import ${importRows.length > 0 ? importRows.length + " " : ""}Customer${importRows.length !== 1 ? "s" : ""}`}
+                  Preview Import
                 </Button>
               </div>
             </div>
+          ) : (
+            (() => {
+              const mappedRows = applyMapping(importRows, fieldMapping);
+              const duplicates = mappedRows.map((row) => {
+                const nameLower = row.name?.trim().toLowerCase();
+                const emailLower = row.email?.trim().toLowerCase();
+                return filtered.some(
+                  (c) =>
+                    (nameLower && c.name.toLowerCase() === nameLower) ||
+                    (emailLower && c.email && c.email.toLowerCase() === emailLower)
+                );
+              });
+              const dupCount = duplicates.filter(Boolean).length;
+              const missingName = mappedRows.filter((r) => !r.name?.trim()).length;
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">Preview — {mappedRows.length} row{mappedRows.length !== 1 ? "s" : ""}</p>
+                    <div className="flex gap-2 text-xs">
+                      {dupCount > 0 && (
+                        <span className="text-amber-600 font-medium">⚠ {dupCount} possible dup{dupCount !== 1 ? "s" : ""}</span>
+                      )}
+                      {missingName > 0 && (
+                        <span className="text-destructive font-medium">✕ {missingName} missing name</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border overflow-hidden max-h-52 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/60 sticky top-0">
+                        <tr>
+                          <th className="px-3 py-1.5 text-left font-medium w-6">#</th>
+                          {CSV_DISPLAY_HEADERS.map((h) => (
+                            <th key={h} className="px-3 py-1.5 text-left font-medium whitespace-nowrap">{h}</th>
+                          ))}
+                          <th className="px-3 py-1.5 text-left font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {mappedRows.slice(0, 10).map((row, i) => (
+                          <tr key={i} className={!row.name?.trim() ? "bg-destructive/5" : duplicates[i] ? "bg-amber-50 dark:bg-amber-950/20" : ""}>
+                            <td className="px-3 py-1.5 text-muted-foreground">{i + 1}</td>
+                            {CSV_HEADERS.map((h) => (
+                              <td key={h} className="px-3 py-1.5 max-w-[100px] truncate">
+                                {row[h] || <span className="text-muted-foreground">—</span>}
+                              </td>
+                            ))}
+                            <td className="px-3 py-1.5">
+                              {!row.name?.trim() ? (
+                                <span className="text-destructive">Missing name</span>
+                              ) : duplicates[i] ? (
+                                <span className="text-amber-600">Possible dup</span>
+                              ) : (
+                                <span className="text-emerald-600">OK</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {mappedRows.length > 10 && (
+                          <tr>
+                            <td colSpan={7} className="px-3 py-1.5 text-center text-muted-foreground">
+                              +{mappedRows.length - 10} more rows
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setImportStep("map")}>Back</Button>
+                    <Button variant="outline" onClick={handleImportClose}>Cancel</Button>
+                    <Button
+                      disabled={mappedRows.length === 0 || importMutation.isPending}
+                      onClick={() => importMutation.mutate(mappedRows)}
+                      data-testid="button-confirm-import"
+                    >
+                      {importMutation.isPending ? "Importing..." : `Import ${mappedRows.length} Customer${mappedRows.length !== 1 ? "s" : ""}`}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()
           )}
         </DialogContent>
       </Dialog>

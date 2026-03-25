@@ -90,15 +90,9 @@ function JobCard({ job, members }: JobCardProps) {
   });
 
   const otherStatuses = STATUS_ORDER.filter((s) => s !== job.status);
-  const assignedIds: string[] = (() => {
-    const raw = job.assignedUserIds as any;
-    if (!raw) return [];
-    if (Array.isArray(raw)) return raw.filter((id: any) => typeof id === "string");
-    if (typeof raw === "string") {
-      try { return JSON.parse(raw).filter((id: any) => typeof id === "string"); } catch { return []; }
-    }
-    return [];
-  })();
+  const assignedIds: string[] = (job.assignedUserIds ?? []).filter(
+    (id): id is string => typeof id === "string"
+  );
 
   return (
     <div
