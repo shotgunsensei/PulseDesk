@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray, count } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, count, gte, lt, lte } from "drizzle-orm";
 import { db } from "./db";
 import {
   users,
@@ -582,43 +582,166 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDashboardStats(orgId: string): Promise<any> {
-    const allCustomers = await db.select().from(customers).where(eq(customers.orgId, orgId));
-    const allJobs = await db.select().from(jobs).where(eq(jobs.orgId, orgId));
-    const allQuotes = await db.select().from(quotes).where(eq(quotes.orgId, orgId));
-    const allInvoices = await db.select().from(invoices).where(eq(invoices.orgId, orgId));
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const [allCustomers, allJobs, allQuotes, allInvoices, orgMembers] = await Promise.all([
+      db.select().from(customers).where(eq(customers.orgId, orgId)),
+      db.select().from(jobs).where(eq(jobs.orgId, orgId)).orderBy(desc(jobs.createdAt)),
+      db.select().from(quotes).where(eq(quotes.orgId, orgId)).orderBy(desc(quotes.createdAt)),
+      db.select().from(invoices).where(eq(invoices.orgId, orgId)).orderBy(desc(invoices.createdAt)),
+      db.select({ userId: memberships.userId }).from(memberships).where(eq(memberships.orgId, orgId)),
+    ]);
+
+    const customerMap: Record<string, string> = {};
+    allCustomers.forEach((c) => { customerMap[c.id] = c.name; });
 
     const jobCounts: Record<string, number> = {
-      lead: 0,
-      quoted: 0,
-      scheduled: 0,
-      in_progress: 0,
-      done: 0,
-      invoiced: 0,
-      paid: 0,
-      canceled: 0,
+      lead: 0, quoted: 0, scheduled: 0, in_progress: 0,
+      done: 0, invoiced: 0, paid: 0, canceled: 0,
     };
-    allJobs.forEach((j) => {
-      jobCounts[j.status] = (jobCounts[j.status] || 0) + 1;
-    });
+    allJobs.forEach((j) => { jobCounts[j.status] = (jobCounts[j.status] || 0) + 1; });
 
     const activeStatuses = ["scheduled", "in_progress", "lead", "quoted"];
     const activeJobs = allJobs.filter((j) => activeStatuses.includes(j.status)).length;
 
-    let revenue = 0;
-    let outstanding = 0;
+    const todaysJobs = allJobs
+      .filter((j) => j.scheduledStart && j.scheduledStart >= todayStart && j.scheduledStart < todayEnd)
+      .map((j) => ({ ...j, customerName: j.customerId ? customerMap[j.customerId] : undefined }));
+
+    const invoiceIds = allInvoices.map((i) => i.id);
+    const allItems = invoiceIds.length > 0
+      ? await db.select().from(invoiceItems).where(inArray(invoiceItems.invoiceId, invoiceIds))
+      : [];
+    const itemsByInvoice: Record<string, typeof allItems> = {};
+    allItems.forEach((it) => {
+      if (!itemsByInvoice[it.invoiceId]) itemsByInvoice[it.invoiceId] = [];
+      itemsByInvoice[it.invoiceId].push(it);
+    });
+
+    const invoiceTotals: Record<string, number> = {};
     for (const inv of allInvoices) {
-      const items = await db.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, inv.id));
+      const items = itemsByInvoice[inv.id] || [];
       const subtotal = items.reduce((sum, it) => sum + Number(it.qty) * Number(it.unitPrice), 0);
       const tax = subtotal * (Number(inv.taxRate) / 100);
-      const total = subtotal + tax - Number(inv.discount);
-      if (inv.status === "paid") revenue += total;
-      if (inv.status === "sent") outstanding += total;
+      invoiceTotals[inv.id] = subtotal + tax - Number(inv.discount);
     }
 
-    const customerMap: Record<string, string> = {};
-    allCustomers.forEach((c) => {
-      customerMap[c.id] = c.name;
+    let revenue = 0;
+    let outstanding = 0;
+    let revenueThisMonth = 0;
+    let revenueLastMonth = 0;
+    let overdueAmount = 0;
+    let overdueCount = 0;
+
+    for (const inv of allInvoices) {
+      const total = invoiceTotals[inv.id] || 0;
+      if (inv.status === "paid") {
+        revenue += total;
+        if (inv.paidAt && inv.paidAt >= thisMonthStart) revenueThisMonth += total;
+        if (inv.paidAt && inv.paidAt >= lastMonthStart && inv.paidAt < thisMonthStart) revenueLastMonth += total;
+      }
+      if (inv.status === "sent") {
+        outstanding += total;
+        if (inv.dueDate && inv.dueDate < now) {
+          overdueCount++;
+          overdueAmount += total;
+        }
+      }
+    }
+
+    const allQuoteItems = allQuotes.length > 0
+      ? await db.select().from(quoteItems).where(inArray(quoteItems.quoteId, allQuotes.map((q) => q.id)))
+      : [];
+    const quoteItemsByQuote: Record<string, typeof allQuoteItems> = {};
+    allQuoteItems.forEach((qi) => {
+      if (!quoteItemsByQuote[qi.quoteId]) quoteItemsByQuote[qi.quoteId] = [];
+      quoteItemsByQuote[qi.quoteId].push(qi);
     });
+
+    const sentQuotes = allQuotes.filter((q) => q.status === "sent");
+    let quotesAwaitingValue = 0;
+    for (const q of sentQuotes) {
+      const items = quoteItemsByQuote[q.id] || [];
+      const subtotal = items.reduce((sum, it) => sum + Number(it.qty) * Number(it.unitPrice), 0);
+      const tax = subtotal * (Number(q.taxRate) / 100);
+      quotesAwaitingValue += subtotal + tax - Number(q.discount);
+    }
+
+    const revenueChartData: { date: string; amount: number }[] = [];
+    const chartMap: Record<string, number> = {};
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      chartMap[key] = 0;
+    }
+    for (const inv of allInvoices) {
+      if (inv.status === "paid" && inv.paidAt && inv.paidAt >= thirtyDaysAgo) {
+        const d = inv.paidAt;
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        if (key in chartMap) chartMap[key] = (chartMap[key] || 0) + (invoiceTotals[inv.id] || 0);
+      }
+    }
+    for (const [date, amount] of Object.entries(chartMap)) {
+      revenueChartData.push({ date, amount });
+    }
+    revenueChartData.sort((a, b) => a.date.localeCompare(b.date));
+
+    const activityFeed: { type: string; id: string; label: string; link: string; time: Date }[] = [];
+    allJobs.slice(0, 10).forEach((j) => {
+      activityFeed.push({
+        type: "job",
+        id: j.id,
+        label: `Job "${j.title}" is ${j.status.replace("_", " ")}`,
+        link: `/jobs/${j.id}`,
+        time: j.createdAt,
+      });
+    });
+    allInvoices
+      .filter((i) => i.status === "paid" || i.status === "sent")
+      .slice(0, 5)
+      .forEach((inv) => {
+        const customer = inv.customerId ? customerMap[inv.customerId] : "Unknown";
+        const label = inv.status === "paid"
+          ? `Invoice paid by ${customer}`
+          : `Invoice sent to ${customer}`;
+        activityFeed.push({
+          type: "invoice",
+          id: inv.id,
+          label,
+          link: `/invoices/${inv.id}`,
+          time: inv.status === "paid" && inv.paidAt ? inv.paidAt : (inv.sentAt ?? inv.createdAt),
+        });
+      });
+    allQuotes
+      .filter((q) => q.status === "accepted" || q.status === "sent" || q.status === "declined")
+      .slice(0, 5)
+      .forEach((q) => {
+        const customer = q.customerId ? customerMap[q.customerId] : "Unknown";
+        const verb = q.status === "accepted" ? "accepted" : q.status === "declined" ? "declined" : "sent";
+        activityFeed.push({
+          type: "quote",
+          id: q.id,
+          label: `Quote ${verb} for ${customer}`,
+          link: `/quotes/${q.id}`,
+          time: q.createdAt,
+        });
+      });
+    activityFeed.sort((a, b) => b.time.getTime() - a.time.getTime());
+
+    const memberWorkload: { userId: string; activeJobCount: number }[] = [];
+    if (orgMembers.length > 1) {
+      for (const { userId } of orgMembers) {
+        const activeCount = allJobs.filter(
+          (j) => activeStatuses.includes(j.status) && (j.assignedUserIds || []).includes(userId)
+        ).length;
+        memberWorkload.push({ userId, activeJobCount: activeCount });
+      }
+    }
 
     const recentJobs = allJobs.slice(0, 5).map((j) => ({
       ...j,
@@ -630,6 +753,8 @@ export class DatabaseStorage implements IStorage {
       customerName: inv.customerId ? customerMap[inv.customerId] : undefined,
     }));
 
+    const isEmpty = allJobs.length === 0 && allCustomers.length === 0 && allInvoices.length === 0;
+
     return {
       customerCount: allCustomers.length,
       jobCounts,
@@ -639,8 +764,19 @@ export class DatabaseStorage implements IStorage {
       invoiceCount: allInvoices.length,
       revenue,
       outstanding,
+      revenueThisMonth,
+      revenueLastMonth,
+      overdueCount,
+      overdueAmount,
+      quotesAwaitingCount: sentQuotes.length,
+      quotesAwaitingValue,
+      todaysJobs,
+      revenueChartData,
+      activityFeed: activityFeed.slice(0, 15),
+      memberWorkload,
       recentJobs,
       recentInvoices,
+      isEmpty,
     };
   }
 
