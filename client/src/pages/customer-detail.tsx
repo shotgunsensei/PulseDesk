@@ -314,9 +314,29 @@ export default function CustomerDetail() {
 
           <TabsContent value="notes" className="mt-4">
             <Card>
-              <CardContent className="pt-4">
+              <CardContent className="pt-4 space-y-3">
                 {customer.notes ? (
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{customer.notes}</p>
+                  <>
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">
+                        {customer.notesUpdatedAt
+                          ? `Last updated ${format(new Date(customer.notesUpdatedAt), "MMM d, yyyy 'at' h:mm a")}`
+                          : `Added ${format(new Date(customer.createdAt), "MMM d, yyyy")}`}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 ml-auto text-xs"
+                        onClick={() => setShowEdit(true)}
+                        data-testid="button-edit-notes"
+                      >
+                        <Edit className="h-3 w-3 mr-1" />
+                        Edit
+                      </Button>
+                    </div>
+                    <p className="text-sm text-foreground whitespace-pre-wrap border-l-2 border-muted pl-3">{customer.notes}</p>
+                  </>
                 ) : (
                   <div className="text-center py-4 text-sm text-muted-foreground">
                     <p>No notes yet</p>

@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Edit, Wrench, Trash2, Printer, Mail, Clock, AlertTriangle, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
+import { ArrowLeft, Edit, Wrench, Trash2, Printer, Mail, Clock, AlertTriangle, CheckCircle2, XCircle, ExternalLink, Copy } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { calcLineItemsTotal, calcTotalWithTaxDiscount } from "@shared/schema";
@@ -169,8 +169,26 @@ export default function QuoteDetail() {
             <Button variant="outline" size="sm" onClick={() => navigate("/quotes")} data-testid="button-back-quotes">
               <ArrowLeft className="h-4 w-4 mr-1" /> Back
             </Button>
-            <Button variant="outline" size="sm" onClick={() => window.open(`/quotes/${id}/view`, "_blank")} data-testid="button-preview-quote">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.open(`/quotes/${id}/view?token=${quote.publicToken}`, "_blank")}
+              data-testid="button-preview-quote"
+            >
               <ExternalLink className="h-4 w-4 mr-1" /> Preview
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const url = `${window.location.origin}/quotes/${id}/view?token=${quote.publicToken}`;
+                navigator.clipboard.writeText(url).then(() =>
+                  toast({ title: "Share link copied!", description: "Send this link to your customer." })
+                );
+              }}
+              data-testid="button-copy-share-link"
+            >
+              <Copy className="h-4 w-4 mr-1" /> Copy Link
             </Button>
             <Button variant="outline" size="sm" onClick={handlePrint} data-testid="button-print-quote">
               <Printer className="h-4 w-4 mr-1" /> Print

@@ -139,6 +139,7 @@ export const customers = pgTable("customers", {
   email: text("email").default(""),
   address: text("address").default(""),
   notes: text("notes").default(""),
+  notesUpdatedAt: timestamp("notes_updated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -188,6 +189,7 @@ export const quotes = pgTable("quotes", {
   discount: numeric("discount", { precision: 10, scale: 2 }).default("0"),
   notes: text("notes").default(""),
   expiresAt: timestamp("expires_at"),
+  publicToken: text("public_token").default(sql`gen_random_uuid()`),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

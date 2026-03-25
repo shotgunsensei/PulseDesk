@@ -17,6 +17,10 @@ router.get("/api/quotes/:id/public", async (req: Request, res: Response) => {
   try {
     const q = await storage.getQuotePublic(req.params.id as string);
     if (!q) return res.status(404).send("Quote not found");
+    const token = req.query.token as string | undefined;
+    if (!token || token !== q.publicToken) {
+      return res.status(403).send("Invalid or missing share token");
+    }
     res.json(q);
   } catch (err: any) {
     res.status(500).send(err.message);

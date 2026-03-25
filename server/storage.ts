@@ -274,9 +274,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateCustomer(orgId: string, id: string, data: Partial<Customer>): Promise<Customer | undefined> {
+    const payload: Partial<Customer> = { ...data };
+    if ("notes" in data) {
+      payload.notesUpdatedAt = new Date();
+    }
     const [c] = await db
       .update(customers)
-      .set(data)
+      .set(payload)
       .where(and(eq(customers.orgId, orgId), eq(customers.id, id)))
       .returning();
     return c;

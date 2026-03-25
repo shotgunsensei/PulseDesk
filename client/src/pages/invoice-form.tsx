@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams, useSearch } from "wouter";
 import { PageHeader } from "@/components/page-header";
@@ -89,8 +89,21 @@ export default function InvoiceForm() {
     },
   });
 
-  const addItem = () => {
-    setItems([...items, { description: "", qty: "1", unitPrice: "0" }]);
+  const itemRefs = useRef<Array<[HTMLInputElement | null, HTMLInputElement | null, HTMLInputElement | null]>>([]);
+  const setItemRef = (i: number, col: 0 | 1 | 2) => (el: HTMLInputElement | null) => {
+    if (!itemRefs.current[i]) itemRefs.current[i] = [null, null, null];
+    itemRefs.current[i][col] = el;
+  };
+  const focusCol = (row: number, col: 0 | 1 | 2) => {
+    setTimeout(() => itemRefs.current[row]?.[col]?.focus(), 30);
+  };
+
+  const addItem = (autoFocus = false) => {
+    setItems((prev) => {
+      const next = [...prev, { description: "", qty: "1", unitPrice: "0" }];
+      if (autoFocus) setTimeout(() => focusCol(next.length - 1, 0), 30);
+      return next;
+    });
   };
 
   const removeItem = (index: number) => {
@@ -101,6 +114,20 @@ export default function InvoiceForm() {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     setItems(newItems);
+  };
+
+  const handleDescKeyDown = (e: React.KeyboardEvent, i: number) => {
+    if (e.key === "Enter") { e.preventDefault(); focusCol(i, 1); }
+  };
+  const handleQtyKeyDown = (e: React.KeyboardEvent, i: number) => {
+    if (e.key === "Enter") { e.preventDefault(); focusCol(i, 2); }
+  };
+  const handlePriceKeyDown = (e: React.KeyboardEvent, i: number) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (i === items.length - 1) addItem(true);
+      else focusCol(i + 1, 0);
+    }
   };
 
   const subtotal = calcLineItemsTotal(items);
@@ -171,7 +198,7 @@ export default function InvoiceForm() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-sm">Line Items</CardTitle>
-                <Button type="button" variant="outline" size="sm" onClick={addItem} data-testid="button-add-invoice-item">
+                <Button type="button" variant="outline" size="sm" onClick={() => addItem(true)} data-testid="button-add-invoice-item">
                   <Plus className="h-3.5 w-3.5 mr-1" /> Add Item
                 </Button>
               </div>
@@ -182,8 +209,10 @@ export default function InvoiceForm() {
                   <div className="flex-1 space-y-1">
                     {i === 0 && <Label className="text-xs">Description</Label>}
                     <Input
+                      ref={setItemRef(i, 0)}
                       value={item.description}
                       onChange={(e) => updateItem(i, "description", e.target.value)}
+                      onKeyDown={(e) => handleDescKeyDown(e, i)}
                       placeholder="Service or material..."
                       data-testid={`input-inv-item-desc-${i}`}
                     />
@@ -191,21 +220,25 @@ export default function InvoiceForm() {
                   <div className="w-20 space-y-1">
                     {i === 0 && <Label className="text-xs">Qty</Label>}
                     <Input
+                      ref={setItemRef(i, 1)}
                       type="number"
                       step="1"
                       min="0"
                       value={item.qty}
                       onChange={(e) => updateItem(i, "qty", e.target.value)}
+                      onKeyDown={(e) => handleQtyKeyDown(e, i)}
                       data-testid={`input-inv-item-qty-${i}`}
                     />
                   </div>
                   <div className="w-28 space-y-1">
                     {i === 0 && <Label className="text-xs">Unit Price</Label>}
                     <Input
+                      ref={setItemRef(i, 2)}
                       type="number"
                       step="0.01"
                       value={item.unitPrice}
                       onChange={(e) => updateItem(i, "unitPrice", e.target.value)}
+                      onKeyDown={(e) => handlePriceKeyDown(e, i)}
                       data-testid={`input-inv-item-price-${i}`}
                     />
                   </div>
@@ -273,7 +306,7 @@ export default function InvoiceForm() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 pb-24 sm:pb-0">
             <Button type="button" variant="outline" onClick={() => navigate("/invoices")}>
               Cancel
             </Button>
@@ -282,6 +315,30 @@ export default function InvoiceForm() {
             </Button>
           </div>
         </form>
+      </div>
+
+      {/* Mobile pinned totals */}
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-10 bg-background border-t shadow-lg px-4 py-3 space-y-1" data-testid="mobile-inv-totals">
+        <div className="flex justify-between text-sm text-muted-foreground">
+          <span>Subtotal</span>
+          <span>${totals.subtotal.toFixed(2)}</span>
+        </div>
+        {totals.tax > 0 && (
+          <div className="flex justify-between text-sm text-muted-foreground">
+            <span>Tax ({taxRate}%)</span>
+            <span>${totals.tax.toFixed(2)}</span>
+          </div>
+        )}
+        {totals.discount > 0 && (
+          <div className="flex justify-between text-sm text-muted-foreground">
+            <span>Discount</span>
+            <span>-${totals.discount.toFixed(2)}</span>
+          </div>
+        )}
+        <div className="flex justify-between text-base font-bold pt-1 border-t">
+          <span>Total</span>
+          <span>${totals.total.toFixed(2)}</span>
+        </div>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useParams } from "wouter";
+import { useParams, useSearch } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Printer, Mail } from "lucide-react";
@@ -9,14 +9,17 @@ import type { Quote, QuoteItem, Customer, Org } from "@shared/schema";
 
 export default function QuoteView() {
   const { id } = useParams<{ id: string }>();
+  const search = useSearch();
+  const token = new URLSearchParams(search).get("token") || "";
 
-  const { data: quote, isLoading } = useQuery<Quote & { items?: QuoteItem[]; customerName?: string; customer?: Customer; org?: Org }>({
-    queryKey: ["/api/quotes", id, "public"],
+  const { data: quote, isLoading, error } = useQuery<Quote & { items?: QuoteItem[]; customerName?: string; customer?: Customer; org?: Org }>({
+    queryKey: ["/api/quotes", id, "public", token],
     queryFn: async () => {
-      const res = await fetch(`/api/quotes/${id}/public`);
-      if (!res.ok) throw new Error("Quote not found");
+      const res = await fetch(`/api/quotes/${id}/public?token=${encodeURIComponent(token)}`);
+      if (!res.ok) throw new Error(res.status === 403 ? "This link is invalid or has expired." : "Quote not found");
       return res.json();
     },
+    enabled: !!token,
   });
 
   const handlePrint = () => window.print();
@@ -43,6 +46,19 @@ export default function QuoteView() {
         <div className="max-w-2xl mx-auto space-y-4">
           <Skeleton className="h-8 w-48" />
           <Skeleton className="h-48 w-full" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!token || error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-2">
+          <p className="text-muted-foreground font-medium">
+            {error ? (error as Error).message : "This link is invalid or has expired."}
+          </p>
+          <p className="text-sm text-muted-foreground">Please request a new share link from your service provider.</p>
         </div>
       </div>
     );
