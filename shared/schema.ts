@@ -221,6 +221,7 @@ export const invoices = pgTable("invoices", {
   sentAt: timestamp("sent_at"),
   paidAt: timestamp("paid_at"),
   notes: text("notes").default(""),
+  paymentNotes: text("payment_notes").default(""),
   publicToken: text("public_token").default(sql`gen_random_uuid()`),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),

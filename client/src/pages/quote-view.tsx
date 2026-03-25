@@ -179,14 +179,6 @@ export default function QuoteView() {
             </div>
           </div>
 
-          {/* Notes */}
-          {quote.notes && (
-            <div className="border-t pt-4 text-sm">
-              <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Notes</p>
-              <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{quote.notes}</p>
-            </div>
-          )}
-
           {/* Footer */}
           <div className="border-t pt-4 text-center text-xs text-gray-400">
             Thank you for your business. Questions? Contact us at{" "}

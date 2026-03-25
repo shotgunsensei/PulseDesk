@@ -54,6 +54,10 @@ export default function JobsPage() {
     queryKey: ["/api/customers"],
   });
 
+  const { data: members = [] } = useQuery<{ userId: string; user?: { username: string; name?: string | null } | null }[]>({
+    queryKey: ["/api/memberships"],
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
       await apiRequest("POST", "/api/jobs", data);
@@ -77,6 +81,9 @@ export default function JobsPage() {
     const matchesCustomer = customerFilter === "all" || j.customerId === customerFilter;
     return matchesSearch && matchesStatus && matchesCustomer;
   });
+
+  const getInitials = (name: string) =>
+    name.split(/\s+/).slice(0, 2).map((n) => n[0]?.toUpperCase() || "").join("");
 
   const columns = [
     {
@@ -113,6 +120,37 @@ export default function JobsPage() {
           {j.scheduledStart ? format(new Date(j.scheduledStart), "MMM d, h:mm a") : "-"}
         </span>
       ),
+    },
+    {
+      key: "assigned",
+      header: "Assigned",
+      className: "hidden md:table-cell",
+      render: (j: Job) => {
+        const ids: string[] = (j.assignedUserIds ?? []).filter(
+          (id): id is string => typeof id === "string"
+        );
+        if (ids.length === 0) return <span className="text-muted-foreground text-sm">—</span>;
+        return (
+          <div className="flex items-center gap-0.5">
+            {ids.slice(0, 3).map((uid) => {
+              const m = members.find((mem) => mem.userId === uid);
+              const name = m?.user?.name || m?.user?.username || "?";
+              return (
+                <span
+                  key={uid}
+                  className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-primary/20 text-primary text-[9px] font-semibold"
+                  title={name}
+                >
+                  {getInitials(name)}
+                </span>
+              );
+            })}
+            {ids.length > 3 && (
+              <span className="text-xs text-muted-foreground ml-0.5">+{ids.length - 3}</span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "created",

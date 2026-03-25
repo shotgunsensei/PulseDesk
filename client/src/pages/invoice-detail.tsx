@@ -48,7 +48,7 @@ export default function InvoiceDetail() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: async (data: { status: string; notes?: string }) => {
+    mutationFn: async (data: { status: string; paymentNotes?: string }) => {
       await apiRequest("PATCH", `/api/invoices/${id}`, data);
     },
     onSuccess: () => {
@@ -343,7 +343,7 @@ export default function InvoiceDetail() {
               <Button
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 disabled={statusMutation.isPending}
-                onClick={() => statusMutation.mutate({ status: "paid", notes: paymentNotes || undefined })}
+                onClick={() => statusMutation.mutate({ status: "paid", paymentNotes: paymentNotes || undefined })}
                 data-testid="button-confirm-mark-paid"
               >
                 {statusMutation.isPending ? "Marking..." : "Confirm Paid"}
