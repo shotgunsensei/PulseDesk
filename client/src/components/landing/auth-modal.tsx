@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,8 +17,16 @@ interface AuthModalProps {
 export function AuthModal({ open, defaultTab = "login", onClose }: AuthModalProps) {
   const { login, register } = useAuth();
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<"login" | "register">(defaultTab);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setActiveTab(defaultTab);
+      setError("");
+    }
+  }, [open, defaultTab]);
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -65,7 +73,7 @@ export function AuthModal({ open, defaultTab = "login", onClose }: AuthModalProp
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue={defaultTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v as "login" | "register"); setError(""); }} className="w-full">
           <TabsList className="w-full" data-testid="auth-tabs">
             <TabsTrigger value="login" className="flex-1" data-testid="tab-login">
               Sign In
