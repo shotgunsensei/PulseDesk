@@ -371,12 +371,23 @@ export default function QuoteDetail() {
       <MobileActionBar
         actions={[
           ...((!quote.jobId && quote.status !== "declined") ? [{
-            label: "Convert to Job",
+            label: "Convert",
             icon: <Wrench className="h-3.5 w-3.5" />,
             onClick: () => convertMutation.mutate(),
             variant: "default" as const,
             testId: "mobile-action-convert",
           }] : []),
+          {
+            label: "Share",
+            icon: <Copy className="h-3.5 w-3.5" />,
+            onClick: () => {
+              const url = `${window.location.origin}/quotes/${id}/view?token=${quote.publicToken}`;
+              navigator.clipboard.writeText(url).then(() =>
+                toast({ title: "Link copied!", description: "Send this link to your customer." })
+              );
+            },
+            testId: "mobile-action-share",
+          },
           {
             label: "Print",
             icon: <Printer className="h-3.5 w-3.5" />,

@@ -487,26 +487,80 @@ router.get("/api/call-recovery/settings", requireAuth, requireOrg, async (req: R
 
 router.get("/api/call-recovery/stats", requireAuth, requireOrg, async (req: Request, res: Response) => {
   try {
-    const org = await storage.getOrg(req.session.orgId!);
-    if (!org) return res.status(404).send("Organization not found");
-
+    const orgId = req.session.orgId!;
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-    const allCalls = await storage.getMissedCalls(req.session.orgId!, 1000, 0);
+    const allCalls = await storage.getMissedCalls(orgId, 1000, 0);
     const thisMonthCalls = allCalls.filter((c) => new Date(c.createdAt) >= startOfMonth);
+    const lastMonthCalls = allCalls.filter((c) => {
+      const d = new Date(c.createdAt);
+      return d >= lastMonthStart && d < startOfMonth;
+    });
+
     const recovered = thisMonthCalls.filter((c) => c.status === "recovered");
     const inProgress = thisMonthCalls.filter((c) => c.status === "in_progress" || c.status === "new");
     const failed = thisMonthCalls.filter((c) => c.status === "failed" || c.status === "expired");
+    const contacted = thisMonthCalls.filter((c) => c.status !== "new");
+
+    const lastRecovered = lastMonthCalls.filter((c) => c.status === "recovered");
+    const recoveryRate = thisMonthCalls.length > 0 ? Math.round((recovered.length / thisMonthCalls.length) * 100) : 0;
+    const lastRecoveryRate = lastMonthCalls.length > 0 ? Math.round((lastRecovered.length / lastMonthCalls.length) * 100) : 0;
+
+    const respondedCount = await db.execute(sql`
+      SELECT COUNT(DISTINCT mc.id) as count
+      FROM missed_calls mc
+      WHERE mc.org_id = ${orgId}
+        AND mc.created_at >= ${startOfMonth}
+        AND EXISTS (
+          SELECT 1 FROM ai_messages am WHERE am.missed_call_id = mc.id AND am.role = 'user'
+        )
+    `);
+    const responded = Number((respondedCount.rows[0] as any)?.count || 0);
+
+    const estimatedRevenueResult = await db.execute(sql`
+      SELECT COALESCE(AVG(
+        COALESCE((SELECT SUM(qty::numeric * unit_price::numeric) FROM invoice_items ii WHERE ii.invoice_id = inv.id), 0)
+        * (1 + COALESCE(inv.tax_rate::numeric, 0) / 100)
+        - COALESCE(inv.discount::numeric, 0)
+      ), 0) as avg_invoice
+      FROM invoices inv
+      WHERE inv.org_id = ${orgId} AND inv.status = 'paid'
+    `);
+    const avgInvoice = Number((estimatedRevenueResult.rows[0] as any)?.avg_invoice || 0);
+    const estimatedRevenue = Math.round(recovered.length * avgInvoice * 100) / 100;
 
     res.json({
       totalThisMonth: thisMonthCalls.length,
       recovered: recovered.length,
       inProgress: inProgress.length,
       failed: failed.length,
-      recoveryRate:
-        thisMonthCalls.length > 0 ? Math.round((recovered.length / thisMonthCalls.length) * 100) : 0,
+      contacted: contacted.length,
+      responded,
+      recoveryRate,
+      lastMonthTotal: lastMonthCalls.length,
+      lastMonthRecovered: lastRecovered.length,
+      lastMonthRecoveryRate: lastRecoveryRate,
+      estimatedRevenue,
+      funnel: {
+        missed: thisMonthCalls.length,
+        contacted: contacted.length,
+        responded,
+        recovered: recovered.length,
+      },
     });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.patch("/api/call-recovery/missed-calls/:id/recover", requireAuth, requireOrg, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const updated = await storage.updateMissedCall(id as string, { status: "recovered" });
+    if (!updated) return res.status(404).send("Missed call not found");
+    res.json(updated);
   } catch (err: any) {
     res.status(500).send(err.message);
   }

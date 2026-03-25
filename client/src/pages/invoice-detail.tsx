@@ -186,10 +186,27 @@ export default function InvoiceDetail() {
           )}
         </div>
 
-        <div className="print:flex print:justify-between print:mb-8 hidden print:block">
-          <div>
-            <h1 className="text-2xl font-bold">Invoice #{invoice.id.slice(0, 8)}</h1>
-            {invoice.dueDate && <p className="text-sm mt-1">Due: {format(new Date(invoice.dueDate), "MMM d, yyyy")}</p>}
+        <div className="hidden print:block mb-8 border-b pb-6">
+          <div className="flex justify-between items-start">
+            <div>
+              {org && <h2 className="text-xl font-bold">{org.name}</h2>}
+              {org?.address && <p className="text-sm text-gray-600 mt-0.5">{org.address}</p>}
+              {org?.phone && <p className="text-sm text-gray-600">{org.phone}</p>}
+              {org?.email && <p className="text-sm text-gray-600">{org.email}</p>}
+            </div>
+            <div className="text-right">
+              <h1 className="text-3xl font-bold">INVOICE</h1>
+              <p className="text-sm text-gray-600 mt-1">#{invoice.id.slice(0, 8)}</p>
+              {invoice.createdAt && (
+                <p className="text-sm text-gray-600">Date: {format(new Date(invoice.createdAt), "MMM d, yyyy")}</p>
+              )}
+              {invoice.dueDate && (
+                <p className="text-sm font-medium">Due: {format(new Date(invoice.dueDate), "MMM d, yyyy")}</p>
+              )}
+              {isPaid && invoice.paidAt && (
+                <p className="text-sm font-medium text-green-700">Paid: {format(new Date(invoice.paidAt), "MMM d, yyyy")}</p>
+              )}
+            </div>
           </div>
         </div>
 

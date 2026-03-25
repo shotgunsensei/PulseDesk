@@ -255,11 +255,14 @@ export default function CustomerDetail() {
                     <Card>
                       <CardContent className="p-4">
                         <div className="flex items-center gap-2 mb-1">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
-                          <p className="text-xs text-muted-foreground">Customer Since</p>
+                          <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground">Lifetime Value</p>
                         </div>
-                        <p className="text-sm font-semibold mt-1" data-testid="overview-customer-since">
-                          {format(new Date(customer.createdAt), "MMM d, yyyy")}
+                        <p className="text-2xl font-bold text-emerald-600" data-testid="overview-lifetime-value">
+                          ${totalPaid.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {format(new Date(customer.createdAt), "MMM yyyy")} · since
                         </p>
                       </CardContent>
                     </Card>

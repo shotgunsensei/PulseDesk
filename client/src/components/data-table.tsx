@@ -134,7 +134,7 @@ export function DataTable<T extends { id: string }>({
       )}
 
       {/* Desktop table */}
-      <div className="hidden sm:block border rounded-md">
+      <div className="hidden md:block border rounded-md">
         <Table>
           <TableHeader>
             <TableRow>
@@ -191,7 +191,7 @@ export function DataTable<T extends { id: string }>({
       </div>
 
       {/* Mobile card view */}
-      <div className="sm:hidden space-y-2">
+      <div className="md:hidden space-y-2">
         {sortedData.map((item) => (
           <div
             key={item.id}
