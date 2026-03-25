@@ -20,7 +20,6 @@ function formatDollar(value: number) {
 
 export function RevenueChart({ data }: RevenueChartProps) {
   const hasData = data.some((d) => d.amount > 0);
-  const maxAmount = Math.max(...data.map((d) => d.amount), 1);
 
   if (!hasData) {
     return (
@@ -29,8 +28,6 @@ export function RevenueChart({ data }: RevenueChartProps) {
       </div>
     );
   }
-
-  const visibleData = data.filter((_, i) => i % 3 === 0 || data[i].amount > 0);
 
   return (
     <ResponsiveContainer width="100%" height={140}>

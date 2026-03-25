@@ -73,6 +73,7 @@ function AppContent() {
         <main className="flex-1 flex flex-col overflow-hidden">
           <Switch>
             <Route path="/" component={Dashboard} />
+            <Route path="/dashboard" component={Dashboard} />
             <Route path="/customers" component={CustomersPage} />
             <Route path="/customers/:id" component={CustomerDetail} />
             <Route path="/jobs" component={JobsPage} />
