@@ -96,6 +96,7 @@ export default function CustomersPage() {
       key: "name",
       header: "Name",
       render: (c: Customer) => <span className="font-medium">{c.name}</span>,
+      sortFn: (a: Customer, b: Customer) => a.name.localeCompare(b.name),
     },
     {
       key: "phone",
@@ -108,6 +109,7 @@ export default function CustomersPage() {
       header: "Email",
       className: "hidden md:table-cell",
       render: (c: Customer) => <span className="text-muted-foreground text-sm">{c.email || "-"}</span>,
+      sortFn: (a: Customer, b: Customer) => (a.email || "").localeCompare(b.email || ""),
     },
     {
       key: "address",
@@ -366,40 +368,75 @@ export default function CustomersPage() {
                 </Button>
               </div>
 
-              {importRows.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Preview ({importRows.length} row{importRows.length !== 1 ? "s" : ""})</p>
-                  <div className="rounded-lg border overflow-hidden max-h-48 overflow-y-auto">
-                    <table className="w-full text-xs">
-                      <thead className="bg-muted/60 sticky top-0">
-                        <tr>
-                          {CSV_DISPLAY_HEADERS.map((h) => (
-                            <th key={h} className="px-3 py-1.5 text-left font-medium whitespace-nowrap">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {importRows.slice(0, 10).map((row, i) => (
-                          <tr key={i} className={!row.name?.trim() ? "bg-destructive/5" : ""}>
-                            {CSV_HEADERS.map((h) => (
-                              <td key={h} className="px-3 py-1.5 max-w-[120px] truncate">
-                                {row[h] || <span className="text-muted-foreground">—</span>}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                        {importRows.length > 10 && (
-                          <tr>
-                            <td colSpan={5} className="px-3 py-1.5 text-center text-muted-foreground">
-                              +{importRows.length - 10} more rows
-                            </td>
-                          </tr>
+              {importRows.length > 0 && (() => {
+                const duplicates = importRows.map((row) => {
+                  const nameLower = row.name?.trim().toLowerCase();
+                  const emailLower = row.email?.trim().toLowerCase();
+                  return filtered.some(
+                    (c) =>
+                      (nameLower && c.name.toLowerCase() === nameLower) ||
+                      (emailLower && c.email && c.email.toLowerCase() === emailLower)
+                  );
+                });
+                const dupCount = duplicates.filter(Boolean).length;
+                const missingName = importRows.filter((r) => !r.name?.trim()).length;
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">Preview ({importRows.length} row{importRows.length !== 1 ? "s" : ""})</p>
+                      <div className="flex gap-2 text-xs">
+                        {dupCount > 0 && (
+                          <span className="text-amber-600 font-medium">⚠ {dupCount} possible duplicate{dupCount !== 1 ? "s" : ""}</span>
                         )}
-                      </tbody>
-                    </table>
+                        {missingName > 0 && (
+                          <span className="text-destructive font-medium">✕ {missingName} missing name</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border overflow-hidden max-h-52 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/60 sticky top-0">
+                          <tr>
+                            <th className="px-3 py-1.5 text-left font-medium w-6">#</th>
+                            {CSV_DISPLAY_HEADERS.map((h) => (
+                              <th key={h} className="px-3 py-1.5 text-left font-medium whitespace-nowrap">{h}</th>
+                            ))}
+                            <th className="px-3 py-1.5 text-left font-medium">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {importRows.slice(0, 10).map((row, i) => (
+                            <tr key={i} className={!row.name?.trim() ? "bg-destructive/5" : duplicates[i] ? "bg-amber-50 dark:bg-amber-950/20" : ""}>
+                              <td className="px-3 py-1.5 text-muted-foreground">{i + 1}</td>
+                              {CSV_HEADERS.map((h) => (
+                                <td key={h} className="px-3 py-1.5 max-w-[100px] truncate">
+                                  {row[h] || <span className="text-muted-foreground">—</span>}
+                                </td>
+                              ))}
+                              <td className="px-3 py-1.5">
+                                {!row.name?.trim() ? (
+                                  <span className="text-destructive">Missing name</span>
+                                ) : duplicates[i] ? (
+                                  <span className="text-amber-600">Possible dup</span>
+                                ) : (
+                                  <span className="text-emerald-600">OK</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                          {importRows.length > 10 && (
+                            <tr>
+                              <td colSpan={7} className="px-3 py-1.5 text-center text-muted-foreground">
+                                +{importRows.length - 10} more rows
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={handleImportClose}>Cancel</Button>

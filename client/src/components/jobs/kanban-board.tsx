@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronDown, Calendar, User, AlertTriangle, ArrowRight } from "lucide-react";
+import { ChevronDown, Calendar, User, AlertTriangle, ArrowRight, Users } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -34,6 +34,11 @@ const PRIORITY_COLORS: Record<string, string> = {
   low: "text-muted-foreground",
 };
 
+interface Member {
+  userId: string;
+  user?: { id: string; username: string; name?: string | null } | null;
+}
+
 interface KanbanBoardProps {
   jobs: (Job & { customerName?: string })[];
   isLoading: boolean;
@@ -42,9 +47,32 @@ interface KanbanBoardProps {
 
 interface JobCardProps {
   job: Job & { customerName?: string };
+  members: Member[];
 }
 
-function JobCard({ job }: JobCardProps) {
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((n) => n[0]?.toUpperCase() || "")
+    .join("");
+}
+
+function TechAvatar({ userId, members }: { userId: string; members: Member[] }) {
+  const member = members.find((m) => m.userId === userId);
+  const name = member?.user?.name || member?.user?.username || "?";
+  const initials = getInitials(name);
+  return (
+    <span
+      className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-primary/20 text-primary text-[9px] font-semibold shrink-0"
+      title={name}
+    >
+      {initials}
+    </span>
+  );
+}
+
+function JobCard({ job, members }: JobCardProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
@@ -62,6 +90,15 @@ function JobCard({ job }: JobCardProps) {
   });
 
   const otherStatuses = STATUS_ORDER.filter((s) => s !== job.status);
+  const assignedIds: string[] = (() => {
+    const raw = job.assignedUserIds as any;
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.filter((id: any) => typeof id === "string");
+    if (typeof raw === "string") {
+      try { return JSON.parse(raw).filter((id: any) => typeof id === "string"); } catch { return []; }
+    }
+    return [];
+  })();
 
   return (
     <div
@@ -87,6 +124,20 @@ function JobCard({ job }: JobCardProps) {
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <Calendar className="h-3 w-3" />
           <span>{format(new Date(job.scheduledStart), "MMM d")}</span>
+        </div>
+      )}
+
+      {assignedIds.length > 0 && (
+        <div className="flex items-center gap-1">
+          <Users className="h-3 w-3 text-muted-foreground shrink-0" />
+          <div className="flex items-center gap-0.5">
+            {assignedIds.slice(0, 3).map((uid) => (
+              <TechAvatar key={uid} userId={uid} members={members} />
+            ))}
+            {assignedIds.length > 3 && (
+              <span className="text-xs text-muted-foreground ml-0.5">+{assignedIds.length - 3}</span>
+            )}
+          </div>
         </div>
       )}
 
@@ -128,6 +179,10 @@ function JobCard({ job }: JobCardProps) {
 }
 
 export function KanbanBoard({ jobs, isLoading, statusFilter }: KanbanBoardProps) {
+  const { data: members = [] } = useQuery<Member[]>({
+    queryKey: ["/api/memberships"],
+  });
+
   const visibleStatuses = statusFilter && statusFilter !== "all"
     ? STATUS_ORDER.filter((s) => s === statusFilter)
     : STATUS_ORDER;
@@ -172,7 +227,7 @@ export function KanbanBoard({ jobs, isLoading, statusFilter }: KanbanBoardProps)
                   No jobs
                 </div>
               ) : (
-                cols.map((job) => <JobCard key={job.id} job={job} />)
+                cols.map((job) => <JobCard key={job.id} job={job} members={members} />)
               )}
             </div>
           </div>

@@ -13,6 +13,16 @@ router.get("/api/quotes", requireAuth, requireOrg, async (req: Request, res: Res
   }
 });
 
+router.get("/api/quotes/:id/public", async (req: Request, res: Response) => {
+  try {
+    const q = await storage.getQuotePublic(req.params.id as string);
+    if (!q) return res.status(404).send("Quote not found");
+    res.json(q);
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
 router.get("/api/quotes/:id", requireAuth, requireOrg, async (req: Request, res: Response) => {
   try {
     const q = await storage.getQuote(req.session.orgId!, req.params.id as string);

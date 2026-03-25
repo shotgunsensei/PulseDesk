@@ -11,7 +11,12 @@ export default function QuoteView() {
   const { id } = useParams<{ id: string }>();
 
   const { data: quote, isLoading } = useQuery<Quote & { items?: QuoteItem[]; customerName?: string; customer?: Customer; org?: Org }>({
-    queryKey: ["/api/quotes", id],
+    queryKey: ["/api/quotes", id, "public"],
+    queryFn: async () => {
+      const res = await fetch(`/api/quotes/${id}/public`);
+      if (!res.ok) throw new Error("Quote not found");
+      return res.json();
+    },
   });
 
   const handlePrint = () => window.print();

@@ -53,6 +53,7 @@ function AppContent() {
         <Route path="/sms-consent" component={SmsConsentPage} />
         <Route path="/guide" component={GuidePage} />
         <Route path="/delete-account" component={DeleteAccountPage} />
+        <Route path="/quotes/:id/view" component={QuoteView} />
         <Route><AuthPage /></Route>
       </Switch>
     );

@@ -79,6 +79,7 @@ export interface IStorage {
 
   getQuotes(orgId: string): Promise<(Quote & { customerName?: string; total?: number })[]>;
   getQuote(orgId: string, id: string): Promise<(Quote & { items?: QuoteItem[]; customerName?: string }) | undefined>;
+  getQuotePublic(id: string): Promise<(Quote & { items?: QuoteItem[]; customerName?: string; customer?: Customer; org?: Org }) | undefined>;
   createQuote(orgId: string, data: any, createdBy: string): Promise<Quote>;
   updateQuote(orgId: string, id: string, data: any): Promise<Quote | undefined>;
   deleteQuote(orgId: string, id: string): Promise<void>;
@@ -422,6 +423,21 @@ export class DatabaseStorage implements IStorage {
       customer = c;
     }
     return { ...q, items, customerName, customer };
+  }
+
+  async getQuotePublic(id: string): Promise<(Quote & { items?: QuoteItem[]; customerName?: string; customer?: Customer; org?: Org }) | undefined> {
+    const [q] = await db.select().from(quotes).where(eq(quotes.id, id));
+    if (!q) return undefined;
+    const items = await db.select().from(quoteItems).where(eq(quoteItems.quoteId, id));
+    let customerName: string | undefined;
+    let customer: Customer | undefined;
+    if (q.customerId) {
+      const [c] = await db.select().from(customers).where(eq(customers.id, q.customerId));
+      customerName = c?.name;
+      customer = c;
+    }
+    const org = await this.getOrg(q.orgId);
+    return { ...q, items, customerName, customer, org: org ?? undefined };
   }
 
   async createQuote(orgId: string, data: any, createdBy: string): Promise<Quote> {
