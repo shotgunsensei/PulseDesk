@@ -5,6 +5,10 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
+interface SafariNavigator extends Navigator {
+  standalone?: boolean;
+}
+
 interface UsePwaInstallResult {
   isInstallable: boolean;
   isIos: boolean;
@@ -18,12 +22,12 @@ export function usePwaInstall(): UsePwaInstallResult {
   const isIos =
     typeof navigator !== "undefined" &&
     /iphone|ipad|ipod/i.test(navigator.userAgent) &&
-    !(window as any).MSStream;
+    !("MSStream" in window);
 
   const isStandalone =
     typeof window !== "undefined" &&
     (window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as any).standalone === true);
+      (navigator as SafariNavigator).standalone === true);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -38,8 +42,9 @@ export function usePwaInstall(): UsePwaInstallResult {
     if (!deferredPrompt) return;
     await deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
+    setDeferredPrompt(null);
     if (outcome === "accepted") {
-      setDeferredPrompt(null);
+      sessionStorage.setItem("pwaInstallBannerDismissed", "true");
     }
   };
 

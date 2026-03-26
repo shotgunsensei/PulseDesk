@@ -8,10 +8,28 @@ import {
 } from "@/components/ui/popover";
 import { Smartphone, X, Share, PlusSquare } from "lucide-react";
 
+const SESSION_KEY = "pwaInstallBannerDismissed";
+
+function isDismissed(): boolean {
+  try {
+    return sessionStorage.getItem(SESSION_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 export function PwaInstallBanner() {
   const { isInstallable, isIos, promptInstall } = usePwaInstall();
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState<boolean>(isDismissed);
   const [iosOpen, setIosOpen] = useState(false);
+
+  const handleDismiss = () => {
+    try {
+      sessionStorage.setItem(SESSION_KEY, "true");
+    } catch {
+    }
+    setDismissed(true);
+  };
 
   if (!isInstallable || dismissed) return null;
 
@@ -74,7 +92,7 @@ export function PwaInstallBanner() {
         )}
 
         <button
-          onClick={() => setDismissed(true)}
+          onClick={handleDismiss}
           className="text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 transition-colors p-1 rounded"
           aria-label="Dismiss"
           data-testid="button-pwa-dismiss"
