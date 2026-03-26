@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
+import { PwaInstallBanner } from "@/components/pwa-install-banner";
 import {
   Users,
   Wrench,
@@ -183,6 +184,8 @@ export default function Dashboard() {
       />
 
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
+        <PwaInstallBanner />
+
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <Link href="/jobs?status=scheduled">
             <div className="rounded-xl border bg-card p-4 hover-elevate cursor-pointer" data-testid="kpi-todays-jobs">
