@@ -29,7 +29,10 @@ router.post("/api/auth/register", async (req: Request, res: Response) => {
     });
 
     req.session.userId = user.id;
-    res.json({ user: { ...user, password: undefined } });
+    req.session.save((err) => {
+      if (err) return res.status(500).send("Session error");
+      res.json({ user: { ...user, password: undefined } });
+    });
   } catch (err: any) {
     res.status(500).send(err.message);
   }
@@ -60,7 +63,10 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
       req.session.orgId = userOrgs[0].id;
     }
 
-    res.json({ user: { ...user, password: undefined } });
+    req.session.save((err) => {
+      if (err) return res.status(500).send("Session error");
+      res.json({ user: { ...user, password: undefined } });
+    });
   } catch (err: any) {
     res.status(500).send(err.message);
   }

@@ -42,7 +42,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         maxAge: 30 * 24 * 60 * 60 * 1000,
         httpOnly: true,
         secure: isProduction,
-        sameSite: isProduction ? "strict" : "lax",
+        sameSite: "lax",
       },
     })
   );
