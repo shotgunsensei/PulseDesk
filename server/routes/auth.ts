@@ -4,6 +4,7 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { requireAuth, requireOrg, requireMinRole, resolveTenant } from "../middleware";
 import { hashPassword, verifyPassword } from "../middleware";
+import type { ResolvedTenantRequest } from "../middleware";
 import { getAuthProvider, localProvider, encryptSecret, decryptSecret } from "../auth";
 import type { AuthProviderConfig } from "../auth";
 
@@ -56,8 +57,9 @@ async function logAuthEvent(req: Request, params: {
 
 router.get("/api/auth/tenant/:slug", resolveTenant, async (req: Request, res: Response) => {
   try {
-    const org = (req as any).resolvedOrg;
-    const authConfig = (req as any).resolvedAuthConfig;
+    const tenantReq = req as ResolvedTenantRequest;
+    const org = tenantReq.resolvedOrg;
+    const authConfig = tenantReq.resolvedAuthConfig;
     res.json({
       orgId: org.id,
       orgName: org.name,
@@ -266,8 +268,9 @@ const DEV_M365_MOCK = process.env.NODE_ENV === "development" && process.env.DEV_
 
 router.get("/api/auth/m365/login", resolveTenant, async (req: Request, res: Response) => {
   try {
-    const org = (req as any).resolvedOrg;
-    const authConfig = (req as any).resolvedAuthConfig;
+    const tenantReq = req as ResolvedTenantRequest;
+    const org = tenantReq.resolvedOrg;
+    const authConfig = tenantReq.resolvedAuthConfig;
 
     if (!authConfig || authConfig.authMode === "local") {
       return res.status(400).json({ error: "Microsoft 365 login is not enabled for this organization" });
@@ -668,6 +671,20 @@ router.post("/api/auth/switch-org", requireAuth, async (req: Request, res: Respo
     const { orgId } = req.body;
     const membership = await storage.getMembership(orgId, req.session.userId!);
     if (!membership) return res.status(403).json({ error: "Not a member of this organization" });
+
+    const targetAuthConfig = await storage.getOrgAuthConfig(orgId);
+    const sessionAuthSource = req.session.authSource || "local";
+
+    if (targetAuthConfig?.authMode === "m365" && sessionAuthSource === "local") {
+      return res.status(403).json({ error: "This organization requires Microsoft 365 sign-in. Please sign in via M365 to access it." });
+    }
+
+    if (targetAuthConfig?.authMode === "hybrid" && sessionAuthSource === "local") {
+      if (!["admin", "owner"].includes(membership.role)) {
+        return res.status(403).json({ error: "This organization requires Microsoft 365 sign-in. Local login is available only for administrators." });
+      }
+    }
+
     req.session.orgId = orgId;
     res.json({ ok: true });
   } catch (err: any) {

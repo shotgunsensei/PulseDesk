@@ -2,6 +2,12 @@ import type { Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+import type { Org, OrgAuthConfig } from "@shared/schema";
+
+export interface ResolvedTenantRequest extends Request {
+  resolvedOrg: Org;
+  resolvedAuthConfig: OrgAuthConfig | { authMode: string };
+}
 
 export const BCRYPT_ROUNDS = 12;
 
@@ -97,8 +103,8 @@ export async function resolveTenant(req: Request, res: Response, next: NextFunct
 
   const authConfig = await storage.getOrgAuthConfig(org.id);
 
-  (req as any).resolvedOrg = org;
-  (req as any).resolvedAuthConfig = authConfig || { authMode: "local" };
+  (req as ResolvedTenantRequest).resolvedOrg = org;
+  (req as ResolvedTenantRequest).resolvedAuthConfig = authConfig || { authMode: "local" };
   next();
 }
 
