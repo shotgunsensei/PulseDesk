@@ -736,6 +736,43 @@ function AuthenticationSettings() {
               </div>
             )}
 
+            {form?.authMode === "hybrid" && (
+              <div className="rounded-lg border p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-sm font-medium">Local Fallback Administrators</p>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  In hybrid mode, only users with <strong>Admin</strong> or <strong>Owner</strong> roles can sign in with local passwords.
+                  All other users must use Microsoft 365. Manage roles in the Team tab.
+                </p>
+                {members && (
+                  <div className="space-y-1 mt-2">
+                    {members
+                      .filter((m: MemberWithUser) => ["admin", "owner"].includes(m.role))
+                      .map((m: MemberWithUser) => (
+                        <div key={m.userId} className="flex items-center justify-between text-xs bg-muted/50 rounded px-2 py-1.5" data-testid={`local-fallback-admin-${m.userId}`}>
+                          <div className="flex items-center gap-2">
+                            <Shield className="h-3 w-3 text-muted-foreground" />
+                            <span>{m.fullName || m.username}</span>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{m.role}</span>
+                        </div>
+                      ))
+                    }
+                    {members.filter((m: MemberWithUser) => ["admin", "owner"].includes(m.role)).length === 0 && (
+                      <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 p-2 flex items-start gap-2">
+                        <AlertTriangle className="h-3 w-3 text-red-600 shrink-0 mt-0.5" />
+                        <p className="text-[11px] text-red-700 dark:text-red-300">
+                          No admin or owner accounts found. At least one admin must exist for local fallback access.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center gap-2">
               {authConfig?.entraLastTestStatus && (
                 <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${

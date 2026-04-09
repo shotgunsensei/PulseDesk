@@ -35,6 +35,7 @@ import {
   type InsertVendor,
   type InviteCode,
   type OrgAuthConfig,
+  type InsertOrgAuthConfig,
   type OrgRoleMapping,
   type AuthAuditLogEntry,
 } from "@shared/schema";
@@ -660,7 +661,7 @@ export class DatabaseStorage implements IStorage {
     return config;
   }
 
-  async upsertOrgAuthConfig(orgId: string, data: Partial<OrgAuthConfig>): Promise<OrgAuthConfig> {
+  async upsertOrgAuthConfig(orgId: string, data: Partial<InsertOrgAuthConfig>): Promise<OrgAuthConfig> {
     const existing = await this.getOrgAuthConfig(orgId);
     if (existing) {
       const [updated] = await db.update(orgAuthConfig)
@@ -669,8 +670,13 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return updated;
     }
+    const insertData: InsertOrgAuthConfig = {
+      orgId,
+      authMode: data.authMode || "local",
+      ...data,
+    };
     const [created] = await db.insert(orgAuthConfig)
-      .values({ ...data, orgId } as any)
+      .values(insertData)
       .returning();
     return created;
   }
@@ -698,7 +704,7 @@ export class DatabaseStorage implements IStorage {
     const [m] = await db.insert(orgRoleMappings).values({
       orgId,
       entraGroupId,
-      pulsedeskRole: pulsedeskRole as any,
+      pulsedeskRole,
       displayLabel: displayLabel || null,
     }).returning();
     return m;
