@@ -200,7 +200,7 @@ export default function SettingsPage() {
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         <div className="max-w-2xl mx-auto">
           <Tabs defaultValue="profile">
-            <TabsList className={`w-full grid ${isAdmin ? "grid-cols-5" : "grid-cols-2"}`}>
+            <TabsList className={`w-full grid ${isAdmin ? "grid-cols-3 sm:grid-cols-5" : "grid-cols-2"}`}>
               <TabsTrigger value="profile" data-testid="tab-profile">Profile</TabsTrigger>
               {isAdmin && <TabsTrigger value="organization" data-testid="tab-organization">Organization</TabsTrigger>}
               {isAdmin && <TabsTrigger value="team" data-testid="tab-team">Team</TabsTrigger>}

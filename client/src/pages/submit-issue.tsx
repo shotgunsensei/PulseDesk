@@ -191,7 +191,7 @@ export default function SubmitIssue() {
                   className="mt-1"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <Label htmlFor="building">Building</Label>
                   <Input id="building" data-testid="input-building" placeholder="A" value={building} onChange={(e) => setBuilding(e.target.value)} className="mt-1" />

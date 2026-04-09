@@ -82,7 +82,7 @@ export default function TicketsPage() {
       />
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
         <div className="flex flex-wrap gap-2.5 items-center">
-          <div className="relative flex-1 min-w-[200px]">
+          <div className="relative w-full sm:flex-1 sm:min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               data-testid="input-search"
@@ -93,7 +93,7 @@ export default function TicketsPage() {
             />
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[150px]" data-testid="filter-status">
+            <SelectTrigger className="w-full sm:w-[150px]" data-testid="filter-status">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -104,7 +104,7 @@ export default function TicketsPage() {
             </SelectContent>
           </Select>
           <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-            <SelectTrigger className="w-[140px]" data-testid="filter-priority">
+            <SelectTrigger className="w-full sm:w-[140px]" data-testid="filter-priority">
               <SelectValue placeholder="Priority" />
             </SelectTrigger>
             <SelectContent>
@@ -115,7 +115,7 @@ export default function TicketsPage() {
             </SelectContent>
           </Select>
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[170px]" data-testid="filter-category">
+            <SelectTrigger className="w-full sm:w-[170px]" data-testid="filter-category">
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>

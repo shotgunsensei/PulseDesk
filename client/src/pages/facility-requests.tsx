@@ -154,7 +154,7 @@ export default function FacilityRequestsPage() {
                 </div>
                 {canManageTickets(role) && (
                   <Select value={req.status} onValueChange={(v) => updateMutation.mutate({ id: req.id, status: v })}>
-                    <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-[100px] sm:w-[130px] shrink-0"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {Object.entries(FACILITY_STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
                     </SelectContent>

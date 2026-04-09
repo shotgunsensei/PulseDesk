@@ -162,7 +162,7 @@ export default function SupplyRequestsPage() {
                 </div>
                 {canManageTickets(role) && (
                   <Select value={req.status} onValueChange={(v) => updateMutation.mutate({ id: req.id, status: v })}>
-                    <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-[100px] sm:w-[120px] shrink-0"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {Object.entries(SUPPLY_STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
                     </SelectContent>

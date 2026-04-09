@@ -80,7 +80,7 @@ export default function AssetsPage() {
               <DialogContent className="max-w-md">
                 <DialogHeader><DialogTitle>Register Equipment</DialogTitle></DialogHeader>
                 <div className="space-y-3 mt-4">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div><Label>Asset Tag *</Label><Input data-testid="input-asset-tag" value={form.assetTag} onChange={(e) => setForm({ ...form, assetTag: e.target.value })} placeholder="MRI-001" className="mt-1" /></div>
                     <div><Label>Type</Label><Input data-testid="input-asset-type" value={form.assetType} onChange={(e) => setForm({ ...form, assetType: e.target.value })} placeholder="MRI Scanner" className="mt-1" /></div>
                   </div>

@@ -72,7 +72,7 @@ function HorizontalBar({ items, color = "bg-primary" }: { items: [string, number
       {items.map(([label, cnt]) => (
         <div key={label} className="flex items-center justify-between gap-3">
           <span className="text-sm truncate flex-1">{label}</span>
-          <div className="flex items-center gap-2 w-32">
+          <div className="flex items-center gap-2 w-20 sm:w-32">
             <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
               <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${(cnt / maxCnt) * 100}%` }} />
             </div>

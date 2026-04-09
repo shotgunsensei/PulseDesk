@@ -11,6 +11,7 @@ import { DemoBanner } from "@/components/demo-banner";
 import { NotificationCenter } from "@/components/notification-center";
 import { PulseLoader } from "@/components/pulse-line";
 import NotFound, { Unauthorized } from "@/pages/not-found";
+import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import AuthPage from "@/pages/auth-page";
 import OrgSetup from "@/pages/org-setup";
 import Dashboard from "@/pages/dashboard";
@@ -133,6 +134,7 @@ function App() {
             <AppContent />
           </ErrorBoundary>
         </AuthProvider>
+        <PwaInstallPrompt />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

@@ -51,6 +51,13 @@ The application follows a monolithic full-stack architecture with a React fronte
 - `PulseDivider` (`client/src/components/pulse-line.tsx`): Decorative pulse-line section divider with gradient lines.
 - CSS animations: `pulse-line-draw` (SVG draw-on), `pulse-glow` (opacity cycle), `pulse-dot-critical` (pulsing alert dot). All respect `prefers-reduced-motion`.
 
+### PWA
+- Manifest: `client/public/manifest.json` (display: standalone, theme: #1f3044)
+- Service worker: `client/public/sw.js` (cache-first static assets, network-first navigation/API)
+- SW registered in `client/src/main.tsx` (production only via `import.meta.env.PROD`)
+- iOS meta tags in `client/index.html` (apple-touch-icon, apple-mobile-web-app-capable)
+- `PwaInstallPrompt` component (`client/src/components/pwa-install-prompt.tsx`): Smart install banner that uses `beforeinstallprompt` on Chromium and shows Share→Add to Home Screen instructions on iOS Safari. Auto-hides when app is in standalone mode or after user dismisses (72h cooldown in localStorage).
+
 ### Components
 - `StatusBadge` (`client/src/components/status-badge.tsx`): Unified badge component for ticket-status, ticket-priority, asset-status, supply-status, facility-status, facility-priority. Sizes: xs, sm, md.
 - `PageHeader` (`client/src/components/page-header.tsx`): Standard page header with sidebar trigger, title, description, action/actions slots.
