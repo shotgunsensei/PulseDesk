@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { HeartPulse } from "lucide-react";
+import { HeartPulse, Shield, Clock, BarChart3 } from "lucide-react";
 
 export default function AuthPage() {
   const { login, register } = useAuth();
@@ -41,28 +41,35 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen flex">
-      <div className="hidden lg:flex lg:w-[45%] bg-[hsl(215,32%,15%)] items-center justify-center p-12">
-        <div className="max-w-md text-center">
-          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-[hsl(174,42%,38%)] mb-6">
+      <div className="hidden lg:flex lg:w-[45%] bg-primary items-center justify-center p-12 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary to-[hsl(213,65%,25%)]" />
+        <div className="relative max-w-md text-center">
+          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-accent mb-6">
             <HeartPulse className="h-8 w-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-white mb-3">PulseDesk</h1>
-          <p className="text-[hsl(210,20%,70%)] text-sm leading-relaxed">
+          <p className="text-primary-foreground/70 text-sm leading-relaxed">
             Internal operations management for healthcare facilities.
             Track issues, coordinate departments, and keep your facility running smoothly.
           </p>
-          <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+          <div className="mt-10 grid grid-cols-3 gap-6 text-center">
             <div>
-              <p className="text-2xl font-bold text-[hsl(174,42%,50%)]">9</p>
-              <p className="text-[11px] text-[hsl(210,20%,55%)] mt-0.5">Issue Statuses</p>
+              <div className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white/10 mb-2">
+                <Shield className="h-5 w-5 text-accent" />
+              </div>
+              <p className="text-[11px] text-primary-foreground/60 mt-1">Role-Based Access</p>
             </div>
             <div>
-              <p className="text-2xl font-bold text-[hsl(174,42%,50%)]">10</p>
-              <p className="text-[11px] text-[hsl(210,20%,55%)] mt-0.5">Categories</p>
+              <div className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white/10 mb-2">
+                <Clock className="h-5 w-5 text-accent" />
+              </div>
+              <p className="text-[11px] text-primary-foreground/60 mt-1">Issue Tracking</p>
             </div>
             <div>
-              <p className="text-2xl font-bold text-[hsl(174,42%,50%)]">24/7</p>
-              <p className="text-[11px] text-[hsl(210,20%,55%)] mt-0.5">Issue Tracking</p>
+              <div className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white/10 mb-2">
+                <BarChart3 className="h-5 w-5 text-accent" />
+              </div>
+              <p className="text-[11px] text-primary-foreground/60 mt-1">Operational Analytics</p>
             </div>
           </div>
         </div>
@@ -71,7 +78,7 @@ export default function AuthPage() {
       <div className="flex-1 flex items-center justify-center p-6 bg-background">
         <div className="w-full max-w-sm space-y-6">
           <div className="lg:hidden text-center mb-2">
-            <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-[hsl(174,42%,38%)] mb-3">
+            <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-accent mb-3">
               <HeartPulse className="h-6 w-6 text-white" />
             </div>
             <h1 className="text-xl font-bold tracking-tight">PulseDesk</h1>
@@ -104,7 +111,7 @@ export default function AuthPage() {
                       {loading ? "Signing in..." : "Sign In"}
                     </Button>
                   </form>
-                  <div className="mt-4 p-3 rounded-md bg-muted/50 text-xs text-muted-foreground">
+                  <div className="mt-4 p-3 rounded-lg bg-muted/50 border text-xs text-muted-foreground">
                     <p className="font-medium mb-1">Demo access:</p>
                     <p>Username: <code className="font-mono text-foreground/70">demo</code> / Password: <code className="font-mono text-foreground/70">demo123</code></p>
                   </div>

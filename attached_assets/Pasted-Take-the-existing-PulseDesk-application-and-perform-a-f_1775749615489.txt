@@ -1,0 +1,310 @@
+Take the existing PulseDesk application and perform a full PHASE 3 DEPLOYMENT-READINESS + AUTH HARDENING + ADMIN CONTROL + PILOT-LAUNCH PREP pass.
+
+IMPORTANT:
+This is NOT a visual redesign.
+This is a production-minded application hardening pass focused on:
+- authentication structure
+- authorization enforcement
+- admin control refinement
+- environment readiness
+- demo/pilot usability
+- operational reliability
+- deployment sanity
+- future scaling readiness
+
+The goal is to make PulseDesk feel like a credible internal healthcare operations platform that could move from polished demo status toward pilot deployment with minimal confusion.
+
+KEEP INTACT:
+- product name: PulseDesk
+- modern clinical branding direction
+- modern clinical color palette
+- core modules and workflows already established
+- design DNA inherited from TradeFlowKit but now fully rebranded as PulseDesk
+
+DO NOT:
+- replace the product identity
+- bloat the app with unnecessary enterprise complexity
+- turn the platform into a patient charting system
+- introduce visual clutter
+- break the operational simplicity of the product
+
+PRIMARY PHASE 3 GOALS:
+1. Strengthen authentication and session structure
+2. Harden role-based authorization enforcement
+3. Improve admin control and organization settings
+4. Separate demo mode from production-minded behavior
+5. Prepare the app for pilot presentation or limited internal rollout
+6. Improve environment/config structure
+7. Improve deployment reliability and operational clarity
+8. Add basic internal platform governance patterns
+9. Ensure the product can be understood by both technical and non-technical stakeholders
+
+AUTHENTICATION HARDENING:
+Refine the authentication system so it feels credible and production-minded.
+
+Include or improve:
+- login flow
+- logout flow
+- protected routes
+- role-aware session handling
+- unauthorized access handling
+- session expiration handling or placeholder support
+- forgot password placeholder flow if appropriate
+- password reset placeholder flow if appropriate
+- invite-user or admin-created-user flow placeholder if appropriate
+
+The login experience should be polished, simple, and aligned to PulseDesk branding.
+
+AUTHORIZATION / ROLE ENFORCEMENT:
+Ensure role-based authorization is actually enforced consistently throughout the application, not just cosmetically.
+
+Roles:
+- Admin
+- Supervisor
+- Staff
+- Technician
+- Read-Only Executive
+
+Enforce role logic in:
+- route access
+- visible navigation
+- table actions
+- edit permissions
+- assignment permissions
+- reporting access
+- admin settings access
+- user management access
+- ticket visibility behavior where practical
+- export/report actions if applicable
+
+Examples:
+- Read-Only Executive should not see editing clutter
+- Staff should not get administrative controls
+- Technician should only manage permitted issue workflows
+- Supervisor should control triage/assignment/escalation
+- Admin should have full platform control
+
+Add appropriate empty states or permission messages instead of broken flows.
+
+USER / ORG MANAGEMENT HARDENING:
+Refine user management and organization configuration so PulseDesk feels like a real internal platform.
+
+Improve or add:
+- organization profile/settings page
+- location/site management
+- department management
+- user directory
+- role assignment UI
+- active/inactive user states
+- account status control placeholders
+- organization-level operational settings
+- branding/settings surface if appropriate
+- timezone / business hours placeholders if useful
+- notification preference settings placeholders
+- issue category management
+- priority/SLA rule placeholders if useful
+
+Keep this polished and practical, not overly bloated.
+
+DEMO MODE VS PRODUCTION MODE:
+Introduce a clean application structure that distinguishes:
+- demo/sample experience
+- production-like organizational use
+
+Possible examples:
+- demo seed data mode
+- cleaner handling of sample organization branding
+- environment flag for demo mode
+- starter admin/demo accounts
+- demo banners or subtle internal markers if useful
+- ability to reset or reseed demo content in dev/demo environments only
+
+Make sure the app can be shown to stakeholders without confusion from obviously fake/unfinished flows.
+
+CONFIG / ENVIRONMENT STRUCTURE:
+Refactor the application so its configuration feels deployment-ready.
+
+Improve structure for:
+- environment variables
+- auth config
+- app metadata
+- organization settings
+- branding constants
+- role constants
+- status/category constants
+- seed/demo config
+- API/service layer separation if applicable
+
+Ensure secrets are not hardcoded.
+Ensure the app structure is clean enough for later migration into a more formal hosted environment.
+
+DEPLOYMENT READINESS:
+Perform a deployment-focused pass on the codebase and application behavior.
+
+Improve or add:
+- error boundaries or graceful fallbacks where appropriate
+- better handling of loading states
+- no broken placeholder pages
+- clearer not-found/unauthorized pages
+- consistent route naming
+- favicon/app metadata cleanup
+- app title consistency
+- browser/tab naming consistency
+- cleaner startup/default landing flow
+- ensure forms and major actions have clear success/failure feedback
+
+The application should feel stable and deliberate when navigating between pages.
+
+AUDIT / GOVERNANCE FOUNDATIONS:
+Without overengineering, strengthen the product’s internal governance posture.
+
+Add or improve foundation support for:
+- user activity history
+- ticket-level change history
+- assignment history
+- status change tracking
+- administrative action visibility placeholders
+- resolution/closure accountability
+- internal note authorship
+- created by / updated by patterns
+
+This can be lightweight, but it should be clearly structured and believable.
+
+NOTIFICATIONS / COMMUNICATION FOUNDATIONS:
+Improve the application’s readiness for operational communication patterns.
+
+Add placeholders or light implementation patterns for:
+- assignment notifications
+- overdue alerts
+- status change notifications
+- supervisor attention flags
+- vendor follow-up reminders
+- daily summary placeholder concepts
+- in-app notification center or notification dropdown if appropriate
+
+Do not overbuild external integrations yet.
+Just create the internal structural/UI foundation cleanly.
+
+EXPORT / REPORTING READINESS:
+Improve reporting and operational export readiness where practical.
+
+Include/refine support for:
+- exportable reports placeholder actions
+- printable ticket detail views if appropriate
+- downloadable summary/report actions placeholder
+- leadership-friendly summary views
+- cleaner date range filtering
+- consistent report filter UX
+
+The reporting section should feel like it is one step away from operational use.
+
+FORM / DATA ENTRY HARDENING:
+Refine forms across the application for production-minded usability.
+
+Improve:
+- validation
+- required field clarity
+- inline error messages
+- helpful helper text where appropriate
+- predictable save/cancel patterns
+- unsaved changes warning placeholders if useful
+- better default values
+- better accessibility and keyboard flow
+- clearer attachment handling UI
+
+This is important because the app targets busy healthcare admin staff and support teams.
+
+HEALTHCARE INTERNAL USE POSITIONING:
+Ensure all copy, behavior, and structure stay aligned to internal healthcare operations.
+
+The app should clearly communicate:
+- internal issue tracking
+- operational coordination
+- department and facilities support
+- equipment/service oversight
+- administrative workflow visibility
+
+Do NOT let the application drift into:
+- patient record management
+- clinical charting
+- public-facing portal behavior
+- generic IT-only helpdesk positioning
+
+PILOT-READINESS UX:
+Prepare the app to feel ready for pilot use or executive review.
+
+Include improvements such as:
+- polished landing/dashboard experience after login
+- obvious next actions for each role
+- realistic data and workflows
+- reduced placeholder awkwardness
+- stronger app-wide coherence
+- cleaner onboarding feel for first-time users
+- clear admin setup path if appropriate
+- believable executive reporting views
+- role-specific navigation focus
+
+The first 5 minutes in the app should feel confident and intentional.
+
+SECURITY / PROFESSIONALISM SIGNALS:
+Without building a full enterprise security stack, improve the product’s professionalism signals.
+
+Examples:
+- session/account menu polish
+- unauthorized route handling
+- audit trail presence
+- user/role control visibility
+- organization settings
+- polished login state transitions
+- privacy-respectful wording
+- operational accountability cues
+
+CODE QUALITY / ARCHITECTURE HARDENING:
+Refactor where needed to improve:
+- naming consistency
+- separation of concerns
+- shared constants
+- reusable hooks/utilities
+- modularity
+- route organization
+- admin feature organization
+- maintainability
+- future API integration readiness
+
+Clean up any remaining legacy fragments from the original TradeFlowKit origin where they still show through.
+
+SEED / DEMO ACCOUNT EXPECTATIONS:
+Create clean demo account patterns if applicable, such as:
+- admin demo user
+- supervisor demo user
+- technician demo user
+- staff demo user
+- executive demo user
+
+If implemented, make these clearly separated for demo/dev usage and not exposed unsafely in a production-minded context.
+
+OPTIONAL NICE-TO-HAVE IMPROVEMENTS IF THEY FIT CLEANLY:
+- onboarding checklist for Admin
+- first-login guidance cards
+- sample workflow tutorial prompts
+- “getting started” setup block for org admins
+- SLA placeholder settings
+- multi-location organization support scaffolding
+- notification center icon with mock/readiness states
+
+FINAL DELIVERABLE EXPECTATION:
+The final result should make PulseDesk feel ready for:
+- internal demos
+- leadership walkthroughs
+- pilot testing
+- staged deployment planning
+- future production expansion
+
+It should present as a polished internal healthcare operations platform with:
+- cleaner auth
+- stronger role enforcement
+- improved admin control
+- better deployment structure
+- believable operational governance
+- demo/pilot readiness
+- clear internal-product professionalism

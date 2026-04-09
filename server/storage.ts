@@ -536,6 +536,12 @@ export class DatabaseStorage implements IStorage {
     const facilityTickets = allTickets.filter(t => t.category === "facilities_building" && openStatuses.includes(t.status));
     const pendingSupplies = allSupply.filter(s => s.status === "pending" || s.status === "approved");
     const criticalOpen = openTickets.filter(t => t.priority === "critical" || t.priority === "high");
+    const waitingDept = openTickets.filter(t => t.status === "waiting_department");
+    const waitingVendor = openTickets.filter(t => t.status === "waiting_vendor");
+    const escalatedTickets = openTickets.filter(t => t.status === "escalated");
+    const patientImpacting = openTickets.filter(t => t.isPatientImpacting);
+    const recurringIssues = openTickets.filter(t => t.isRecurring || t.isRepeatIssue);
+    const unassignedOpen = openTickets.filter(t => !t.assignedTo);
 
     const recentActivity = allTickets
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
@@ -548,11 +554,42 @@ export class DatabaseStorage implements IStorage {
         priority: t.priority,
         category: t.category,
         updatedAt: t.updatedAt,
+        assignedToName: null as string | null,
       }));
 
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const ticketsThisMonth = allTickets.filter(t => new Date(t.createdAt) >= thirtyDaysAgo);
     const resolvedThisMonth = allTickets.filter(t => (t.status === "resolved" || t.status === "closed") && new Date(t.updatedAt) >= thirtyDaysAgo);
+
+    const resolvedTickets = allTickets.filter(t => t.status === "resolved" || t.status === "closed");
+    let avgResolutionHours = 0;
+    if (resolvedTickets.length > 0) {
+      const totalHours = resolvedTickets.reduce((sum, t) => {
+        return sum + (new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60);
+      }, 0);
+      avgResolutionHours = Math.round(totalHours / resolvedTickets.length);
+    }
+
+    const triageTickets = allTickets.filter(t => t.status !== "new");
+    let avgTriageHours = 0;
+    if (triageTickets.length > 0) {
+      const totalHours = triageTickets.reduce((sum, t) => {
+        return sum + Math.max(1, (new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60));
+      }, 0);
+      avgTriageHours = Math.round(totalHours / triageTickets.length);
+    }
+
+    const agingBuckets = { under24h: 0, "1to3days": 0, "3to7days": 0, over7days: 0 };
+    for (const t of openTickets) {
+      const ageMs = now.getTime() - new Date(t.createdAt).getTime();
+      const ageHours = ageMs / (1000 * 60 * 60);
+      if (ageHours < 24) agingBuckets.under24h++;
+      else if (ageHours < 72) agingBuckets["1to3days"]++;
+      else if (ageHours < 168) agingBuckets["3to7days"]++;
+      else agingBuckets.over7days++;
+    }
+
+    const openFacilityCount = allFacility.filter(f => f.status !== "completed" && f.status !== "cancelled").length;
 
     return {
       totalTickets: allTickets.length,
@@ -569,7 +606,18 @@ export class DatabaseStorage implements IStorage {
       pendingSupplyRequests: pendingSupplies.length,
       totalAssets: allAssetsList.length,
       assetsUnderService: allAssetsList.filter(a => a.status === "under_service").length,
+      assetsOffline: allAssetsList.filter(a => a.status === "offline").length,
       criticalHighOpen: criticalOpen.length,
+      waitingDeptCount: waitingDept.length,
+      waitingVendorCount: waitingVendor.length,
+      escalatedCount: escalatedTickets.length,
+      patientImpactingCount: patientImpacting.length,
+      recurringCount: recurringIssues.length,
+      unassignedCount: unassignedOpen.length,
+      avgResolutionHours,
+      avgTriageHours,
+      agingBuckets,
+      openFacilityRequests: openFacilityCount,
       recentActivity,
       isEmpty: allTickets.length === 0,
     };

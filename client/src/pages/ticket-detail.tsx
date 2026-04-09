@@ -6,29 +6,73 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useState } from "react";
-import { ArrowLeft, Clock, User, MapPin, Building2, AlertTriangle } from "lucide-react";
+import {
+  ArrowLeft, Clock, User, MapPin, Building2, AlertTriangle,
+  HeartPulse, RefreshCw, ExternalLink, Cpu, FileText,
+  MessageSquare, ChevronUp,
+} from "lucide-react";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { useAuth } from "@/lib/auth";
+import { StatusBadge } from "@/components/status-badge";
+import { canManageTickets, canAssignTickets, canAddNotes, isReadOnly, canEscalate } from "@/lib/permissions";
+import { format, formatDistanceToNow } from "date-fns";
 import {
   TICKET_STATUS_LABELS,
-  TICKET_STATUS_COLORS,
   TICKET_PRIORITY_LABELS,
-  TICKET_PRIORITY_COLORS,
   TICKET_CATEGORY_LABELS,
   type Ticket,
   type TicketEvent,
+  type Membership,
 } from "@shared/schema";
 
 type TicketWithNames = Ticket & { departmentName?: string; reportedByName?: string; assignedToName?: string };
+
+function DetailRow({ icon: Icon, label, children }: { icon: any; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2.5 py-2">
+      <Icon className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
+        <div className="text-sm mt-0.5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineEvent({ event }: { event: TicketEvent }) {
+  const isNote = event.type === "note";
+  const isStatus = event.type === "status_change";
+
+  return (
+    <div className="flex gap-3 items-start" data-testid={`event-${event.id}`}>
+      <div className={`h-2 w-2 rounded-full mt-2 shrink-0 ${isNote ? "bg-accent" : isStatus ? "bg-primary" : "bg-muted-foreground"}`} />
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm ${isNote ? "bg-muted/50 rounded-lg p-2.5 border" : ""}`}>
+          {event.content || event.type}
+        </p>
+        <p className="text-[11px] text-muted-foreground mt-1">
+          {format(new Date(event.createdAt), "MMM d, yyyy 'at' h:mm a")}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { membership } = useAuth();
+  const role = membership?.role;
   const [noteContent, setNoteContent] = useState("");
+  const [showResolution, setShowResolution] = useState(false);
+  const [rootCause, setRootCause] = useState("");
+  const [resolutionSummary, setResolutionSummary] = useState("");
 
   const { data: ticket, isLoading } = useQuery<TicketWithNames>({
     queryKey: ["/api/tickets", id],
@@ -39,6 +83,10 @@ export default function TicketDetail() {
     enabled: !!id,
   });
 
+  const { data: members } = useQuery<(Membership & { fullName?: string; username?: string })[]>({
+    queryKey: ["/api/members"],
+  });
+
   const updateMutation = useMutation({
     mutationFn: (data: Partial<Ticket>) =>
       apiRequest("PATCH", `/api/tickets/${id}`, data),
@@ -46,6 +94,7 @@ export default function TicketDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       toast({ title: "Ticket updated" });
     },
   });
@@ -73,8 +122,12 @@ export default function TicketDetail() {
     return (
       <div className="flex flex-col h-full">
         <PageHeader title="Ticket Details" description="Loading..." />
-        <div className="flex-1 overflow-auto p-4 sm:p-6">
-          <Skeleton className="h-64" />
+        <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
+          <Skeleton className="h-32" />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <Skeleton className="h-64 lg:col-span-2" />
+            <Skeleton className="h-64" />
+          </div>
         </div>
       </div>
     );
@@ -85,53 +138,83 @@ export default function TicketDetail() {
       <div className="flex flex-col h-full">
         <PageHeader title="Ticket Not Found" description="" />
         <div className="flex-1 overflow-auto p-4 sm:p-6">
-          <Link href="/tickets"><Button variant="outline"><ArrowLeft className="h-4 w-4 mr-2" /> Back to Tickets</Button></Link>
+          <Link href="/tickets"><Button variant="outline"><ArrowLeft className="h-4 w-4 mr-2" /> Back to Queue</Button></Link>
         </div>
       </div>
     );
   }
 
+  const isOverdue = ticket.dueDate && new Date(ticket.dueDate) < new Date() && !["resolved", "closed"].includes(ticket.status);
+  const age = formatDistanceToNow(new Date(ticket.createdAt), { addSuffix: false });
+
   return (
     <div className="flex flex-col h-full">
       <PageHeader
-        title={`${ticket.ticketNumber}: ${ticket.title}`}
-        description={TICKET_CATEGORY_LABELS[ticket.category] || ticket.category}
+        title={ticket.ticketNumber}
+        description={ticket.title}
         action={
           <Link href="/tickets">
-            <Button variant="outline" data-testid="button-back">
-              <ArrowLeft className="h-4 w-4 mr-2" /> Back
+            <Button variant="outline" size="sm" data-testid="button-back">
+              <ArrowLeft className="h-4 w-4 mr-1.5" /> Queue
             </Button>
           </Link>
         }
       />
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge type="ticket-status" value={ticket.status} size="md" />
+          <StatusBadge type="ticket-priority" value={ticket.priority} size="md" />
+          <span className="text-xs text-muted-foreground px-2 py-1 rounded-full border bg-card">
+            {TICKET_CATEGORY_LABELS[ticket.category] || ticket.category}
+          </span>
+          {ticket.isPatientImpacting && (
+            <span className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-rose-200 bg-rose-50 text-rose-700 flex items-center gap-1">
+              <HeartPulse className="h-3 w-3" /> Patient Impacting
+            </span>
+          )}
+          {ticket.isRecurring && (
+            <span className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 text-amber-700 flex items-center gap-1">
+              <RefreshCw className="h-3 w-3" /> Recurring
+            </span>
+          )}
+          {isOverdue && (
+            <span className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-rose-200 bg-rose-50 text-rose-700 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" /> Overdue
+            </span>
+          )}
+          <span className="text-[11px] text-muted-foreground ml-auto">Open {age}</span>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 space-y-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Description</CardTitle>
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  Issue Description
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm whitespace-pre-wrap">{ticket.description || "No description provided."}</p>
+                <p className="text-sm whitespace-pre-wrap leading-relaxed">{ticket.description || "No description provided."}</p>
               </CardContent>
             </Card>
 
             {(ticket.rootCause || ticket.resolutionSummary) && (
-              <Card>
+              <Card className="border-emerald-200 bg-emerald-50/30 dark:border-emerald-800/40 dark:bg-emerald-950/10">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Resolution</CardTitle>
+                  <CardTitle className="text-sm font-medium text-emerald-800 dark:text-emerald-400">Resolution</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2">
+                <CardContent className="space-y-3">
                   {ticket.rootCause && (
                     <div>
-                      <p className="text-xs font-medium text-muted-foreground">Root Cause</p>
-                      <p className="text-sm">{ticket.rootCause}</p>
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Root Cause</p>
+                      <p className="text-sm mt-0.5">{ticket.rootCause}</p>
                     </div>
                   )}
                   {ticket.resolutionSummary && (
                     <div>
-                      <p className="text-xs font-medium text-muted-foreground">Resolution Summary</p>
-                      <p className="text-sm">{ticket.resolutionSummary}</p>
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Resolution Summary</p>
+                      <p className="text-sm mt-0.5">{ticket.resolutionSummary}</p>
                     </div>
                   )}
                 </CardContent>
@@ -140,159 +223,205 @@ export default function TicketDetail() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Timeline</CardTitle>
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                  Timeline & Notes
+                  {events && events.length > 0 && (
+                    <span className="text-[11px] text-muted-foreground font-normal ml-auto">{events.length} entries</span>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 {!events || events.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No events yet</p>
+                  <p className="text-sm text-muted-foreground text-center py-4">No activity recorded yet</p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {events.map((event) => (
-                      <div key={event.id} className="flex gap-3 items-start" data-testid={`event-${event.id}`}>
-                        <div className="h-2 w-2 rounded-full bg-primary mt-1.5 shrink-0" />
-                        <div>
-                          <p className="text-sm">{event.content || event.type}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {format(new Date(event.createdAt), "MMM d, yyyy h:mm a")}
-                          </p>
-                        </div>
-                      </div>
+                      <TimelineEvent key={event.id} event={event} />
                     ))}
                   </div>
                 )}
 
-                <div className="mt-4 space-y-2 border-t pt-4">
-                  <Textarea
-                    data-testid="input-note"
-                    placeholder="Add an internal note..."
-                    value={noteContent}
-                    onChange={(e) => setNoteContent(e.target.value)}
-                    rows={2}
-                  />
-                  <Button
-                    data-testid="button-add-note"
-                    size="sm"
-                    onClick={() => noteContent.trim() && addNoteMutation.mutate(noteContent.trim())}
-                    disabled={!noteContent.trim() || addNoteMutation.isPending}
-                  >
-                    Add Note
-                  </Button>
-                </div>
+                {canAddNotes(role) && (
+                  <div className="mt-4 space-y-2 border-t pt-4">
+                    <Textarea
+                      data-testid="input-note"
+                      placeholder="Add an internal note..."
+                      value={noteContent}
+                      onChange={(e) => setNoteContent(e.target.value)}
+                      rows={2}
+                      className="resize-none"
+                    />
+                    <Button
+                      data-testid="button-add-note"
+                      size="sm"
+                      onClick={() => noteContent.trim() && addNoteMutation.mutate(noteContent.trim())}
+                      disabled={!noteContent.trim() || addNoteMutation.isPending}
+                    >
+                      {addNoteMutation.isPending ? "Adding..." : "Add Note"}
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
 
           <div className="space-y-4">
+            {canManageTickets(role) && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Actions</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <Label className="text-[11px] text-muted-foreground uppercase tracking-wide">Status</Label>
+                    <Select
+                      value={ticket.status}
+                      onValueChange={(val) => updateMutation.mutate({ status: val as any })}
+                    >
+                      <SelectTrigger className="mt-1" data-testid="select-status">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(TICKET_STATUS_LABELS).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label className="text-[11px] text-muted-foreground uppercase tracking-wide">Priority</Label>
+                    <Select
+                      value={ticket.priority}
+                      onValueChange={(val) => updateMutation.mutate({ priority: val as any })}
+                    >
+                      <SelectTrigger className="mt-1" data-testid="select-priority">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(TICKET_PRIORITY_LABELS).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {canAssignTickets(role) && members && (
+                    <div>
+                      <Label className="text-[11px] text-muted-foreground uppercase tracking-wide">Assign To</Label>
+                      <Select
+                        value={ticket.assignedTo || "unassigned"}
+                        onValueChange={(val) => updateMutation.mutate({ assignedTo: val === "unassigned" ? null : val } as any)}
+                      >
+                        <SelectTrigger className="mt-1" data-testid="select-assigned">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Unassigned</SelectItem>
+                          {members.filter(m => m.role === "technician" || m.role === "admin" || m.role === "supervisor").map((m) => (
+                            <SelectItem key={m.userId} value={m.userId}>
+                              {m.fullName || m.username || m.userId}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {canEscalate(role) && ticket.status !== "escalated" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full border-rose-200 text-rose-700 hover:bg-rose-50"
+                      data-testid="button-escalate"
+                      onClick={() => updateMutation.mutate({ status: "escalated" as any })}
+                    >
+                      <ChevronUp className="h-3.5 w-3.5 mr-1.5" /> Escalate
+                    </Button>
+                  )}
+
+                  {canManageTickets(role) && !ticket.rootCause && !ticket.resolutionSummary && (
+                    <>
+                      {!showResolution ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => setShowResolution(true)}
+                        >
+                          Add Resolution
+                        </Button>
+                      ) : (
+                        <div className="space-y-2 border-t pt-3">
+                          <div>
+                            <Label className="text-[11px]">Root Cause</Label>
+                            <Input value={rootCause} onChange={e => setRootCause(e.target.value)} className="mt-1" />
+                          </div>
+                          <div>
+                            <Label className="text-[11px]">Resolution Summary</Label>
+                            <Textarea value={resolutionSummary} onChange={e => setResolutionSummary(e.target.value)} rows={2} className="mt-1 resize-none" />
+                          </div>
+                          <Button
+                            size="sm"
+                            className="w-full"
+                            onClick={() => {
+                              updateMutation.mutate({ rootCause: rootCause || undefined, resolutionSummary: resolutionSummary || undefined, status: "resolved" as any });
+                              setShowResolution(false);
+                            }}
+                          >
+                            Resolve Ticket
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Details</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">Status</p>
-                  <Select
-                    value={ticket.status}
-                    onValueChange={(val) => updateMutation.mutate({ status: val as any })}
-                  >
-                    <SelectTrigger className="mt-1" data-testid="select-status">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(TICKET_STATUS_LABELS).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <p className="text-xs text-muted-foreground">Priority</p>
-                  <Select
-                    value={ticket.priority}
-                    onValueChange={(val) => updateMutation.mutate({ priority: val as any })}
-                  >
-                    <SelectTrigger className="mt-1" data-testid="select-priority">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(TICKET_PRIORITY_LABELS).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Department</p>
-                    <p className="text-sm">{ticket.departmentName || "Unassigned"}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Location</p>
-                    <p className="text-sm">{ticket.location || "Not specified"}</p>
-                    {(ticket.building || ticket.floor || ticket.room) && (
-                      <p className="text-xs text-muted-foreground">
-                        {[ticket.building && `Bldg ${ticket.building}`, ticket.floor && `Floor ${ticket.floor}`, ticket.room && `Room ${ticket.room}`].filter(Boolean).join(", ")}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <User className="h-3.5 w-3.5 text-muted-foreground" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Reported By</p>
-                    <p className="text-sm">{ticket.reportedByName || "Unknown"}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <User className="h-3.5 w-3.5 text-muted-foreground" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Assigned To</p>
-                    <p className="text-sm">{ticket.assignedToName || "Unassigned"}</p>
-                  </div>
-                </div>
-
+              <CardContent className="divide-y">
+                <DetailRow icon={Building2} label="Department">
+                  {ticket.departmentName || "Unassigned"}
+                </DetailRow>
+                <DetailRow icon={MapPin} label="Location">
+                  <p>{ticket.location || "Not specified"}</p>
+                  {(ticket.building || ticket.floor || ticket.room) && (
+                    <p className="text-xs text-muted-foreground">
+                      {[ticket.building && `Bldg ${ticket.building}`, ticket.floor && `Floor ${ticket.floor}`, ticket.room && `Room ${ticket.room}`].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                </DetailRow>
+                <DetailRow icon={User} label="Reported By">
+                  {ticket.reportedByName || "Unknown"}
+                </DetailRow>
+                <DetailRow icon={User} label="Assigned To">
+                  {ticket.assignedToName || "Unassigned"}
+                </DetailRow>
                 {ticket.dueDate && (
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                    <div>
-                      <p className="text-xs text-muted-foreground">Due Date</p>
-                      <p className="text-sm">{format(new Date(ticket.dueDate), "MMM d, yyyy h:mm a")}</p>
-                    </div>
-                  </div>
+                  <DetailRow icon={Clock} label="Due Date">
+                    <p className={isOverdue ? "text-rose-700 font-medium" : ""}>
+                      {format(new Date(ticket.dueDate), "MMM d, yyyy")}
+                      {isOverdue && " (overdue)"}
+                    </p>
+                  </DetailRow>
                 )}
-
                 {ticket.vendorReference && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Vendor Reference</p>
-                    <p className="text-sm">{ticket.vendorReference}</p>
-                  </div>
+                  <DetailRow icon={ExternalLink} label="Vendor Reference">
+                    {ticket.vendorReference}
+                  </DetailRow>
                 )}
-
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {ticket.isPatientImpacting && (
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-rose-50 text-rose-700 flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3" /> Patient Impacting
-                    </span>
-                  )}
-                  {ticket.isRecurring && (
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-amber-100 text-amber-700">
-                      Recurring
-                    </span>
-                  )}
-                  {ticket.isRepeatIssue && (
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-purple-100 text-purple-700">
-                      Repeat Issue
-                    </span>
-                  )}
-                </div>
+                {ticket.assetId && (
+                  <DetailRow icon={Cpu} label="Related Asset">
+                    <Link href={`/assets`}>
+                      <span className="text-primary underline underline-offset-2 cursor-pointer">View Asset</span>
+                    </Link>
+                  </DetailRow>
+                )}
               </CardContent>
             </Card>
 
@@ -301,31 +430,37 @@ export default function TicketDetail() {
                 <CardTitle className="text-sm font-medium">Timestamps</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <div>
-                  <p className="text-xs text-muted-foreground">Created</p>
-                  <p className="text-sm">{format(new Date(ticket.createdAt), "MMM d, yyyy h:mm a")}</p>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Created</span>
+                  <span>{format(new Date(ticket.createdAt), "MMM d, yyyy h:mm a")}</span>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Last Updated</p>
-                  <p className="text-sm">{format(new Date(ticket.updatedAt), "MMM d, yyyy h:mm a")}</p>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Updated</span>
+                  <span>{format(new Date(ticket.updatedAt), "MMM d, yyyy h:mm a")}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Age</span>
+                  <span>{age}</span>
                 </div>
               </CardContent>
             </Card>
 
-            <Button
-              variant="destructive"
-              size="sm"
-              className="w-full"
-              data-testid="button-delete-ticket"
-              onClick={() => {
-                if (confirm("Delete this ticket? This cannot be undone.")) {
-                  deleteMutation.mutate();
-                }
-              }}
-              disabled={deleteMutation.isPending}
-            >
-              Delete Ticket
-            </Button>
+            {canManageTickets(role) && (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full"
+                data-testid="button-delete-ticket"
+                onClick={() => {
+                  if (confirm("Delete this ticket permanently? This action cannot be undone.")) {
+                    deleteMutation.mutate();
+                  }
+                }}
+                disabled={deleteMutation.isPending}
+              >
+                Delete Ticket
+              </Button>
+            )}
           </div>
         </div>
       </div>

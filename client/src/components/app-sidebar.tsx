@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/lib/auth";
+import { canSubmitIssues, canViewAnalytics, isReadOnly } from "@/lib/permissions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,59 +36,38 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-
-const issueNav = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Ticket Queue", url: "/tickets", icon: Ticket },
-  { title: "Report Issue", url: "/submit", icon: PlusCircle },
-];
-
-const resourceNav = [
-  { title: "Departments", url: "/departments", icon: Building2 },
-  { title: "Equipment", url: "/assets", icon: Cpu },
-  { title: "Vendors", url: "/vendors", icon: Users2 },
-];
-
-const requestNav = [
-  { title: "Supplies", url: "/supply-requests", icon: Package },
-  { title: "Facilities", url: "/facility-requests", icon: Wrench },
-];
-
-const systemNav = [
-  { title: "Analytics", url: "/analytics", icon: BarChart3 },
-  { title: "Settings", url: "/settings", icon: Settings },
-];
+import { ROLE_LABELS } from "@/lib/permissions";
 
 export function AppSidebar() {
   const [location] = useLocation();
-  const { user, org, orgs, logout, switchOrg } = useAuth();
+  const { user, org, orgs, membership, logout, switchOrg } = useAuth();
+  const role = membership?.role;
 
   const isActive = (url: string) => {
     if (url === "/") return location === "/";
     return location.startsWith(url);
   };
 
-  const renderNavGroup = (items: typeof issueNav) =>
-    items.map((item) => (
-      <SidebarMenuItem key={item.title}>
-        <SidebarMenuButton
-          asChild
-          data-active={isActive(item.url)}
-          className="data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium"
-        >
-          <Link href={item.url} data-testid={`nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
-            <item.icon className="h-4 w-4" />
-            <span>{item.title}</span>
-          </Link>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    ));
+  const renderNavItem = (item: { title: string; url: string; icon: any }) => (
+    <SidebarMenuItem key={item.title}>
+      <SidebarMenuButton
+        asChild
+        data-active={isActive(item.url)}
+        className="data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium"
+      >
+        <Link href={item.url} data-testid={`nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
+          <item.icon className="h-4 w-4" />
+          <span>{item.title}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
 
   return (
     <Sidebar>
       <SidebarHeader className="p-4 pb-3">
         <div className="flex items-center gap-2.5">
-          <div className="h-8 w-8 rounded-lg bg-[hsl(174,42%,38%)] flex items-center justify-center">
+          <div className="h-8 w-8 rounded-lg bg-accent flex items-center justify-center">
             <HeartPulse className="h-4 w-4 text-white" />
           </div>
           <div className="flex flex-col">
@@ -115,7 +95,7 @@ export function AppSidebar() {
                   key={o.id}
                   data-testid={`menu-org-${o.id}`}
                   onClick={() => switchOrg(o.id)}
-                  className={o.id === org.id ? "bg-accent" : ""}
+                  className={o.id === org.id ? "bg-accent/10" : ""}
                 >
                   <Building2 className="mr-2 h-3.5 w-3.5" />
                   {o.name}
@@ -129,44 +109,53 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel>Issue Management</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>{renderNavGroup(issueNav)}</SidebarMenu>
+            <SidebarMenu>
+              {renderNavItem({ title: "Dashboard", url: "/", icon: LayoutDashboard })}
+              {renderNavItem({ title: "Ticket Queue", url: "/tickets", icon: Ticket })}
+              {canSubmitIssues(role) && renderNavItem({ title: "Report Issue", url: "/submit", icon: PlusCircle })}
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Requests</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>{renderNavGroup(requestNav)}</SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+
+        {!isReadOnly(role) && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Requests</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {renderNavItem({ title: "Supplies", url: "/supply-requests", icon: Package })}
+                {renderNavItem({ title: "Facilities", url: "/facility-requests", icon: Wrench })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
         <SidebarGroup>
           <SidebarGroupLabel>Resources</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>{renderNavGroup(resourceNav)}</SidebarMenu>
+            <SidebarMenu>
+              {renderNavItem({ title: "Departments", url: "/departments", icon: Building2 })}
+              {renderNavItem({ title: "Equipment", url: "/assets", icon: Cpu })}
+              {renderNavItem({ title: "Vendors", url: "/vendors", icon: Users2 })}
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
         <SidebarGroup>
           <SidebarGroupLabel>System</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>{renderNavGroup(systemNav)}</SidebarMenu>
+            <SidebarMenu>
+              {(canViewAnalytics(role) || role === "admin") && renderNavItem({ title: "Analytics", url: "/analytics", icon: BarChart3 })}
+              {!isReadOnly(role) && renderNavItem({ title: "Settings", url: "/settings", icon: Settings })}
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
         {user?.isSuperAdmin && (
           <SidebarGroup>
             <SidebarGroupLabel>Administration</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    data-active={isActive("/admin")}
-                    className="data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium"
-                  >
-                    <Link href="/admin" data-testid="nav-admin">
-                      <Shield className="h-4 w-4" />
-                      <span>System Admin</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                {renderNavItem({ title: "System Admin", url: "/admin", icon: Shield })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -182,7 +171,9 @@ export function AppSidebar() {
             </Avatar>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate text-sidebar-foreground/90">{user.fullName || user.username}</p>
-              <p className="text-xs text-sidebar-foreground/50 truncate">@{user.username}</p>
+              <p className="text-[10px] text-sidebar-foreground/45 truncate">
+                {role ? ROLE_LABELS[role] || role : `@${user.username}`}
+              </p>
             </div>
             <button
               data-testid="button-logout"

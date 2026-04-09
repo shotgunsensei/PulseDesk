@@ -17,7 +17,7 @@ The application follows a monolithic full-stack architecture with a React fronte
 - Supply request workflow (pending → approved → ordered → fulfilled / denied)
 - Facility request management (HVAC, plumbing, lighting, electrical, etc.)
 - Vendor directory with emergency contacts
-- Dashboard with operational KPIs
+- Dashboard with operational KPIs, aging buckets, performance metrics
 - Analytics page with ticket volume, category breakdown, department distribution
 - Settings for profile, organization, team member management
 - PD-XXXXX auto-generated ticket numbering
@@ -27,7 +27,38 @@ The application follows a monolithic full-stack architecture with a React fronte
 - **Frontend**: React with Vite, TanStack Query, wouter routing, shadcn/ui components, Tailwind CSS
 - **Backend**: Express.js with session-based auth (connect-pg-simple)
 - **Database**: PostgreSQL with Drizzle ORM
-- **Color scheme**: Primary navy blue hsl(213 64% 33%), accent teal hsl(174 55% 40%), light blue-gray background hsl(210 33% 98%)
+- **Color scheme**: Primary navy blue hsl(213 65% 33%), accent teal hsl(177 56% 42%), clinical background hsl(216 60% 97%)
+
+## Design System
+
+### Brand
+- PulseDesk: "digital front desk for internal healthcare ops" — NOT generic IT, NOT startup, NOT patient-facing
+- HeartPulse icon as logo element
+- Calm, authoritative, healthcare-admin appropriate vocabulary
+
+### CSS Variables (index.css)
+- `--primary`: 213 65% 33% (navy blue)
+- `--accent`: 177 56% 42% (teal)
+- `--background`: 216 60% 97% (clinical white-blue)
+- `--sidebar`: 213 64% 16% (dark navy)
+- `--sidebar-primary`: 177 56% 42% (teal accent in sidebar)
+- `--success`: 146 50% 36%
+- `--warning`: 43 100% 44%
+
+### Components
+- `StatusBadge` (`client/src/components/status-badge.tsx`): Unified badge component for ticket-status, ticket-priority, asset-status, supply-status, facility-status, facility-priority. Sizes: xs, sm, md.
+- `PageHeader` (`client/src/components/page-header.tsx`): Standard page header with sidebar trigger, title, description, action/actions slots.
+- `AppSidebar` (`client/src/components/app-sidebar.tsx`): Dark navy sidebar with role-based nav visibility, org switcher, user footer with role label.
+
+### Permissions
+- `client/src/lib/permissions.ts`: Role-based permission utilities
+- 5-tier hierarchy: admin (100) > supervisor (80) > technician (60) > staff (40) > readonly (10)
+- Functions: canManageTickets, canAssignTickets, canManageSettings, canSubmitIssues, canAddNotes, canEscalate, canViewAnalytics, canManageUsers, isReadOnly
+- `ROLE_LABELS`: admin→Administrator, supervisor→Supervisor, technician→Technician, staff→Staff, readonly→Executive (Read-Only)
+
+### Status Vocabulary
+- "Intake" (new), "Triage" (triage), "Assigned" (assigned), "Dept. Pending" (waiting_department), "Vendor Pending" (waiting_vendor), "In Progress" (in_progress), "Escalated" (escalated), "Resolved" (resolved), "Closed" (closed)
+- "Report Issue" (not "Submit Issue"), "Queue" (not "back to tickets")
 
 ## File Structure
 
@@ -39,7 +70,7 @@ The application follows a monolithic full-stack architecture with a React fronte
 - `server/routes/index.ts` - Route registration with session middleware
 - `server/routes/auth.ts` - Auth (login, register, logout, profile, password change, members list)
 - `server/routes/orgs.ts` - Organization CRUD, invite codes, memberships
-- `server/routes/tickets.ts` - Ticket CRUD, dashboard stats, ticket events/notes
+- `server/routes/tickets.ts` - Ticket CRUD, dashboard stats (enhanced with aging/triage/resolution metrics), ticket events/notes
 - `server/routes/departments.ts` - Department CRUD
 - `server/routes/assets.ts` - Equipment/asset CRUD
 - `server/routes/supplyRequests.ts` - Supply request CRUD
@@ -54,9 +85,11 @@ The application follows a monolithic full-stack architecture with a React fronte
 ### Frontend
 - `client/src/App.tsx` - Main app with routing
 - `client/src/lib/auth.tsx` - Auth context provider
+- `client/src/lib/permissions.ts` - Role-based permission utilities
 - `client/src/lib/queryClient.ts` - TanStack Query client
-- `client/src/components/app-sidebar.tsx` - Navigation sidebar
+- `client/src/components/app-sidebar.tsx` - Navigation sidebar with role-based visibility
 - `client/src/components/page-header.tsx` - Reusable page header
+- `client/src/components/status-badge.tsx` - Unified StatusBadge component
 - `client/src/pages/` - All page components (dashboard, tickets, ticket-detail, submit-issue, departments, assets, supply-requests, facility-requests, vendors, analytics, settings, admin, auth-page, org-setup)
 
 ## Demo Credentials
@@ -72,3 +105,6 @@ The application follows a monolithic full-stack architecture with a React fronte
 - Ticket numbering: PD-XXXXX (auto-incrementing counter per org)
 - Organization creation auto-seeds 10 default departments
 - Healthcare-appropriate blue/teal color scheme
+- StatusBadge used across all pages for consistent badge rendering
+- Role-based UI visibility enforced in sidebar, action buttons, and page elements
+- Dashboard enhanced with aging buckets, triage/resolution performance metrics, patient impact indicators

@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Copy, Trash2, UserCog } from "lucide-react";
+import { ROLE_LABELS } from "@/lib/permissions";
 
 interface MemberWithUser {
   userId: string;
@@ -152,8 +153,8 @@ export default function SettingsPage() {
                                 <Select value={m.role} onValueChange={(role) => updateRoleMutation.mutate({ userId: m.userId, role })}>
                                   <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
                                   <SelectContent>
-                                    {["admin", "supervisor", "staff", "technician", "readonly"].map((r) => (
-                                      <SelectItem key={r} value={r}>{r}</SelectItem>
+                                    {Object.entries(ROLE_LABELS).map(([r, label]) => (
+                                      <SelectItem key={r} value={r}>{label}</SelectItem>
                                     ))}
                                   </SelectContent>
                                 </Select>
@@ -162,7 +163,7 @@ export default function SettingsPage() {
                                 </Button>
                               </>
                             ) : (
-                              <span className="text-xs font-medium px-2 py-1 rounded bg-primary/10 text-primary">{m.role} (you)</span>
+                              <span className="text-xs font-medium px-2 py-1 rounded bg-primary/10 text-primary">{ROLE_LABELS[m.role] || m.role} (you)</span>
                             )}
                           </div>
                         </div>
