@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword } from "../middleware";
 import type { ResolvedTenantRequest } from "../middleware";
 import { getAuthProvider, localProvider, encryptSecret, decryptSecret } from "../auth";
 import type { AuthProviderConfig } from "../auth";
+import type { InsertOrgAuthConfig } from "@shared/schema";
 
 const authConfigSchema = z.object({
   authMode: z.enum(["local", "m365", "hybrid"]),
@@ -438,7 +439,8 @@ router.get("/api/auth/m365/callback", async (req: Request, res: Response) => {
         details: { error: result.error },
         success: false,
       });
-      return res.redirect(`/?error=${encodeURIComponent(result.error || "auth_failed")}`);
+      console.error("M365 login failed:", result.error);
+      return res.redirect("/?error=auth_failed");
     }
 
     let user = result.entraObjectId
@@ -809,7 +811,23 @@ router.put("/api/auth/config", requireAuth, requireOrg, requireMinRole("admin"),
     }
     const body = parsed.data;
 
-    const updateData: any = {
+    if (body.authMode === "m365" || body.authMode === "hybrid") {
+      const existingConfig = await storage.getOrgAuthConfig(orgId);
+      const hasExistingSecret = existingConfig?.entraClientSecretEncrypted;
+      const hasNewSecret = body.entraClientSecret && body.entraClientSecret !== "***";
+      const missingFields: string[] = [];
+      if (!body.entraTenantId) missingFields.push("Tenant ID");
+      if (!body.entraClientId) missingFields.push("Client ID");
+      if (!body.entraRedirectUri) missingFields.push("Redirect URI");
+      if (!hasExistingSecret && !hasNewSecret) missingFields.push("Client Secret");
+      if (missingFields.length > 0) {
+        return res.status(400).json({
+          error: `The following fields are required for ${body.authMode === "m365" ? "M365" : "hybrid"} mode: ${missingFields.join(", ")}`,
+        });
+      }
+    }
+
+    const updateData: Partial<InsertOrgAuthConfig> & { entraClientSecretEncrypted?: string } = {
       authMode: body.authMode,
       entraTenantId: body.entraTenantId || null,
       entraTenantDomain: body.entraTenantDomain || null,
