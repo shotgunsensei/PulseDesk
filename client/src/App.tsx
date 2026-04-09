@@ -6,7 +6,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AuthProvider, useAuth } from "@/lib/auth";
-import NotFound from "@/pages/not-found";
+import { ErrorBoundary } from "@/components/error-boundary";
+import { DemoBanner } from "@/components/demo-banner";
+import { NotificationCenter } from "@/components/notification-center";
+import { PulseLoader } from "@/components/pulse-line";
+import NotFound, { Unauthorized } from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
 import OrgSetup from "@/pages/org-setup";
 import Dashboard from "@/pages/dashboard";
@@ -21,19 +25,25 @@ import VendorsPage from "@/pages/vendors";
 import AnalyticsPage from "@/pages/analytics";
 import SettingsPage from "@/pages/settings";
 import AdminPage from "@/pages/admin";
-import { Skeleton } from "@/components/ui/skeleton";
+import { canSubmitIssues, canViewAnalytics, isReadOnly, canManageSettings } from "@/lib/permissions";
+
+function RoleGate({ children, check, fallback }: {
+  children: React.ReactNode;
+  check: boolean;
+  fallback?: React.ReactNode;
+}) {
+  if (!check) return <>{fallback || <Unauthorized />}</>;
+  return <>{children}</>;
+}
 
 function AppContent() {
-  const { user, org, isLoading } = useAuth();
+  const { user, org, membership, isLoading } = useAuth();
+  const role = membership?.role;
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="space-y-4 w-64">
-          <Skeleton className="h-8 w-32 mx-auto" />
-          <Skeleton className="h-4 w-48 mx-auto" />
-          <Skeleton className="h-10 w-full" />
-        </div>
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <PulseLoader />
       </div>
     );
   }
@@ -57,26 +67,58 @@ function AppContent() {
 
   return (
     <SidebarProvider style={sidebarStyle as React.CSSProperties}>
-      <div className="flex h-screen w-full">
-        <AppSidebar />
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <Switch>
-            <Route path="/" component={Dashboard} />
-            <Route path="/dashboard" component={Dashboard} />
-            <Route path="/tickets" component={TicketsPage} />
-            <Route path="/tickets/:id" component={TicketDetail} />
-            <Route path="/submit" component={SubmitIssue} />
-            <Route path="/departments" component={DepartmentsPage} />
-            <Route path="/assets" component={AssetsPage} />
-            <Route path="/supply-requests" component={SupplyRequestsPage} />
-            <Route path="/facility-requests" component={FacilityRequestsPage} />
-            <Route path="/vendors" component={VendorsPage} />
-            <Route path="/analytics" component={AnalyticsPage} />
-            <Route path="/settings" component={SettingsPage} />
-            <Route path="/admin" component={AdminPage} />
-            <Route component={NotFound} />
-          </Switch>
-        </main>
+      <div className="flex flex-col h-screen w-full">
+        <DemoBanner />
+        <div className="flex flex-1 overflow-hidden">
+          <AppSidebar />
+          <main className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-end px-4 py-1.5 border-b bg-background/80 backdrop-blur-sm lg:hidden">
+              <NotificationCenter />
+            </div>
+            <ErrorBoundary>
+              <Switch>
+                <Route path="/" component={Dashboard} />
+                <Route path="/dashboard" component={Dashboard} />
+                <Route path="/tickets" component={TicketsPage} />
+                <Route path="/tickets/:id" component={TicketDetail} />
+                <Route path="/submit">
+                  <RoleGate check={canSubmitIssues(role)}>
+                    <SubmitIssue />
+                  </RoleGate>
+                </Route>
+                <Route path="/departments" component={DepartmentsPage} />
+                <Route path="/assets" component={AssetsPage} />
+                <Route path="/supply-requests">
+                  <RoleGate check={!isReadOnly(role)}>
+                    <SupplyRequestsPage />
+                  </RoleGate>
+                </Route>
+                <Route path="/facility-requests">
+                  <RoleGate check={!isReadOnly(role)}>
+                    <FacilityRequestsPage />
+                  </RoleGate>
+                </Route>
+                <Route path="/vendors" component={VendorsPage} />
+                <Route path="/analytics">
+                  <RoleGate check={canViewAnalytics(role) || role === "admin"}>
+                    <AnalyticsPage />
+                  </RoleGate>
+                </Route>
+                <Route path="/settings">
+                  <RoleGate check={!isReadOnly(role)}>
+                    <SettingsPage />
+                  </RoleGate>
+                </Route>
+                <Route path="/admin">
+                  <RoleGate check={!!user?.isSuperAdmin}>
+                    <AdminPage />
+                  </RoleGate>
+                </Route>
+                <Route component={NotFound} />
+              </Switch>
+            </ErrorBoundary>
+          </main>
+        </div>
       </div>
     </SidebarProvider>
   );
@@ -87,7 +129,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <AppContent />
+          <ErrorBoundary>
+            <AppContent />
+          </ErrorBoundary>
         </AuthProvider>
         <Toaster />
       </TooltipProvider>

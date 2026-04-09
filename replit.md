@@ -105,6 +105,53 @@ The application follows a monolithic full-stack architecture with a React fronte
 - **Reviewer**: username=reviewer, password=Reviewer2026!
 - **Super admin**: username=Johntwms355, password=Admin2026!
 
+## Phase 3 Additions
+
+### API-Level Role Enforcement
+- `requireRole(...roles)` middleware: Checks membership role against exact list (e.g., `requireRole("admin")`)
+- `requireMinRole(role)` middleware: Checks membership role against hierarchy threshold (e.g., `requireMinRole("technician")`)
+- Applied across all CRUD routes: ticket create (staff+), ticket update (technician+), ticket delete (supervisor+), department/asset/vendor write operations (supervisor+ or admin), analytics (supervisor+), org settings (admin), membership management (admin)
+
+### Session & Auth Hardening
+- Session expiration detection via `pulsedesk:session-expired` custom event
+- 401 responses from API automatically trigger toast + redirect to login
+- `sessionExpired` state in AuthContext for UI awareness
+- JSON error responses from all API routes (not plain text)
+
+### Frontend Protection
+- `ErrorBoundary` component wraps the entire app and the main content area
+- `RoleGate` component enforces role-based route access (renders Unauthorized page for insufficient permissions)
+- `Unauthorized` page component for 403 states
+- Improved `NotFound` page with PulseDesk branding
+
+### Demo Mode
+- `VITE_DEMO_MODE=true` environment flag enables demo banner
+- `DemoBanner` component shows subtle amber notification bar
+
+### Notification Center
+- `NotificationCenter` dropdown with placeholder notifications (assignment, overdue, escalation, resolution, supply)
+- Integrated in sidebar header (desktop) and top bar (mobile)
+- "Preview" badge indicates feature is in foundation stage
+
+### Export/Print Readiness
+- Export placeholder button on analytics page
+- Print buttons on analytics and ticket detail pages
+- Print CSS media query already configured in index.css
+
+### Settings Enhancements
+- Preferences tab with notification settings placeholder and account info display
+- Operational settings section (timezone, business hours, SLA placeholder) for admins
+- Organization tab gated to admin role only
+- Team tab gated to admin role only
+- Supervisor invite code generation added
+- Better form validation with inline error messages
+
+### Form Hardening
+- Submit issue form with client-side validation (title length, patient-impact description requirement)
+- Inline `FieldError` component with destructive styling
+- Helper text on form fields for guidance
+- Note content validation on ticket detail
+
 ## Key Design Decisions
 - No Stripe, subscriptions, or Twilio/SMS features
 - Roles: admin, supervisor, staff, technician, readonly (no owner/tech/viewer)
@@ -112,5 +159,6 @@ The application follows a monolithic full-stack architecture with a React fronte
 - Organization creation auto-seeds 10 default departments
 - Healthcare-appropriate blue/teal color scheme
 - StatusBadge used across all pages for consistent badge rendering
-- Role-based UI visibility enforced in sidebar, action buttons, and page elements
+- Role-based UI visibility enforced in sidebar, action buttons, page elements, AND API routes
 - Dashboard enhanced with aging buckets, triage/resolution performance metrics, patient impact indicators
+- API routes return JSON error objects (`{ error: "message" }`) instead of plain text

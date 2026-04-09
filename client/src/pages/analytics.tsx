@@ -4,8 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PulseLoader } from "@/components/pulse-line";
 import {
   BarChart3, TrendingUp, Clock, AlertTriangle,
-  CheckCircle2, RefreshCw, Cpu, Users2,
+  CheckCircle2, RefreshCw, Cpu, Users2, Download, Printer,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { TICKET_CATEGORY_LABELS } from "@shared/schema";
 
 interface AnalyticsData {
@@ -83,6 +85,7 @@ function HorizontalBar({ items, color = "bg-primary" }: { items: [string, number
 }
 
 export default function AnalyticsPage() {
+  const { toast } = useToast();
   const { data, isLoading } = useQuery<AnalyticsData>({ queryKey: ["/api/analytics"] });
 
   if (isLoading) {
@@ -102,7 +105,20 @@ export default function AnalyticsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <PageHeader title="Analytics" description="Issue volume, resolution trends, and department performance" />
+      <PageHeader
+        title="Analytics"
+        description="Issue volume, resolution trends, and department performance"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => { toast({ title: "Export coming soon", description: "Report export will be available in a future update." }); }} data-testid="button-export-analytics">
+              <Download className="h-4 w-4 mr-1.5" /> Export
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="button-print-analytics">
+              <Printer className="h-4 w-4 mr-1.5" /> Print
+            </Button>
+          </div>
+        }
+      />
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-5">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <MetricCard label="Total Issues" value={data.totalTickets} icon={BarChart3} iconColor="text-primary" />

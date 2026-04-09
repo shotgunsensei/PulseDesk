@@ -22,15 +22,22 @@ import {
   Bell,
   UserX,
   RefreshCw,
+  Settings,
+  BarChart3,
+  ClipboardList,
+  Shield,
+  ArrowRight,
+  Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
 import {
   TICKET_STATUS_LABELS,
   TICKET_PRIORITY_LABELS,
   TICKET_CATEGORY_LABELS,
 } from "@shared/schema";
-import { canSubmitIssues, isReadOnly } from "@/lib/permissions";
+import { canSubmitIssues, isReadOnly, ROLE_LABELS } from "@/lib/permissions";
 
 interface DashboardStats {
   totalTickets: number;
@@ -96,35 +103,45 @@ function KpiCard({ label, value, sub, icon: Icon, iconColor = "text-muted-foregr
   return href ? <Link href={href}>{inner}</Link> : inner;
 }
 
-function EmptyState() {
+function AdminOnboarding({ stats }: { stats: DashboardStats }) {
   const steps = [
-    { label: "Report your first issue", href: "/submit" },
-    { label: "Configure departments", href: "/departments" },
-    { label: "Register equipment", href: "/assets" },
-    { label: "Add vendor contacts", href: "/vendors" },
+    { label: "Configure departments", href: "/departments", icon: ClipboardList, done: Object.keys(stats.departmentCounts).length > 0 },
+    { label: "Register equipment & assets", href: "/assets", icon: Cpu, done: stats.totalAssets > 0 },
+    { label: "Add vendor contacts", href: "/vendors", icon: Users, done: false },
+    { label: "Invite team members", href: "/settings", icon: Shield, done: false },
+    { label: "Submit your first issue", href: "/submit", icon: Ticket, done: stats.totalTickets > 0 },
   ];
 
+  const completedCount = steps.filter(s => s.done).length;
+  if (completedCount === steps.length) return null;
+
   return (
-    <Card data-testid="empty-state">
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <CheckCircle2 className="h-5 w-5 text-primary" />
-          Welcome to PulseDesk
+    <Card data-testid="admin-onboarding">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          Getting Started
+          <span className="ml-auto text-xs text-muted-foreground font-normal">{completedCount}/{steps.length} complete</span>
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-sm text-muted-foreground mb-4">
-          Set up your facility's operational workflow with these steps.
+        <p className="text-xs text-muted-foreground mb-3">
+          Set up your facility in a few steps. Completed items are marked with a check.
         </p>
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {steps.map((s) => (
             <Link key={s.label} href={s.href}>
-              <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer group">
-                <div className="flex items-center gap-3">
-                  <div className="h-5 w-5 rounded-full border-2 shrink-0 border-border" />
-                  <span className="text-sm font-medium">{s.label}</span>
+              <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 hover:bg-muted/40 transition-colors cursor-pointer group" data-testid={`onboard-step-${s.label.toLowerCase().replace(/\s/g, "-")}`}>
+                <div className="flex items-center gap-2.5">
+                  {s.done ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <div className="h-4 w-4 rounded-full border-2 shrink-0 border-muted-foreground/30" />
+                  )}
+                  <s.icon className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className={`text-sm ${s.done ? "text-muted-foreground line-through" : "font-medium"}`}>{s.label}</span>
                 </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
             </Link>
           ))}
@@ -134,9 +151,80 @@ function EmptyState() {
   );
 }
 
+function RoleGuidance({ role }: { role: string | undefined }) {
+  if (!role || role === "admin") return null;
+
+  const guidance: Record<string, { title: string; description: string; actions: Array<{ label: string; href: string; icon: any }> }> = {
+    technician: {
+      title: "Your Workbench",
+      description: "Issues assigned to you appear in the ticket queue. Use filters to focus on your department or priority level.",
+      actions: [
+        { label: "View Ticket Queue", href: "/tickets", icon: Ticket },
+        { label: "Equipment Registry", href: "/assets", icon: Cpu },
+      ],
+    },
+    staff: {
+      title: "Report & Track",
+      description: "Submit issues for your department and track their progress. You can also request supplies and facility work.",
+      actions: [
+        { label: "Report an Issue", href: "/submit", icon: Ticket },
+        { label: "Request Supplies", href: "/supply-requests", icon: Package },
+        { label: "Facility Request", href: "/facility-requests", icon: Wrench },
+      ],
+    },
+    supervisor: {
+      title: "Operations Overview",
+      description: "Monitor team performance, manage escalations, and review analytics for your facility.",
+      actions: [
+        { label: "Ticket Queue", href: "/tickets", icon: Ticket },
+        { label: "Analytics", href: "/analytics", icon: BarChart3 },
+        { label: "Settings", href: "/settings", icon: Settings },
+      ],
+    },
+    readonly: {
+      title: "Executive View",
+      description: "Review operational metrics and department performance across your facility.",
+      actions: [
+        { label: "View Analytics", href: "/analytics", icon: BarChart3 },
+        { label: "Ticket Overview", href: "/tickets", icon: Ticket },
+      ],
+    },
+  };
+
+  const g = guidance[role];
+  if (!g) return null;
+
+  return (
+    <Card data-testid="role-guidance" className="border-primary/20 bg-primary/[0.02]">
+      <CardContent className="pt-4 pb-3">
+        <p className="text-sm font-medium mb-0.5">{g.title}</p>
+        <p className="text-xs text-muted-foreground mb-3">{g.description}</p>
+        <div className="flex flex-wrap gap-2">
+          {g.actions.map((a) => (
+            <Link key={a.label} href={a.href}>
+              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" data-testid={`guide-${a.label.toLowerCase().replace(/\s/g, "-")}`}>
+                <a.icon className="h-3.5 w-3.5" />
+                {a.label}
+              </Button>
+            </Link>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 export default function Dashboard() {
-  const { org, membership } = useAuth();
+  const { user, org, membership } = useAuth();
   const role = membership?.role;
+  const firstName = user?.fullName?.split(" ")[0] || user?.username || "";
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard"],
@@ -159,8 +247,8 @@ export default function Dashboard() {
   return (
     <div className="flex flex-col h-full">
       <PageHeader
-        title="Dashboard"
-        description={org ? `${org.name} — operational overview` : "Facility operations at a glance"}
+        title={`${getGreeting()}, ${firstName}`}
+        description={org ? `${org.name} · ${ROLE_LABELS[role || ""] || role || "Member"}` : "Facility operations at a glance"}
       />
 
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-5">
@@ -172,7 +260,8 @@ export default function Dashboard() {
           <KpiCard label="Resolved" value={stats.resolvedThisMonth} sub="this month" icon={CheckCircle2} iconColor="text-emerald-600" />
         </div>
 
-        {stats.isEmpty && <EmptyState />}
+        {role === "admin" && <AdminOnboarding stats={stats} />}
+        {role !== "admin" && <RoleGuidance role={role} />}
 
         {(stats.waitingDeptCount > 0 || stats.waitingVendorCount > 0 || stats.escalatedCount > 0 || stats.patientImpactingCount > 0 || stats.unassignedCount > 0) && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

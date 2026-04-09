@@ -11,7 +11,7 @@ import { useState } from "react";
 import {
   ArrowLeft, Clock, User, MapPin, Building2, AlertTriangle,
   HeartPulse, RefreshCw, ExternalLink, Cpu, FileText,
-  MessageSquare, ChevronUp,
+  MessageSquare, ChevronUp, Printer,
 } from "lucide-react";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -148,12 +148,17 @@ export default function TicketDetail() {
       <PageHeader
         title={ticket.ticketNumber}
         description={ticket.title}
-        action={
-          <Link href="/tickets">
-            <Button variant="outline" size="sm" data-testid="button-back">
-              <ArrowLeft className="h-4 w-4 mr-1.5" /> Queue
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="button-print-ticket">
+              <Printer className="h-4 w-4 mr-1.5" /> Print
             </Button>
-          </Link>
+            <Link href="/tickets">
+              <Button variant="outline" size="sm" data-testid="button-back">
+                <ArrowLeft className="h-4 w-4 mr-1.5" /> Queue
+              </Button>
+            </Link>
+          </div>
         }
       />
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">

@@ -1,13 +1,13 @@
 import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
-import { requireAuth, requireOrg } from "../middleware";
+import { requireAuth, requireOrg, requireMinRole } from "../middleware";
 import { db } from "../db";
 import { tickets, supplyRequests, assets } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 const router = Router();
 
-router.get("/api/analytics", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/analytics", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
   try {
     const orgId = req.session.orgId!;
     const allTickets = await db.select().from(tickets).where(eq(tickets.orgId, orgId));
@@ -77,7 +77,7 @@ router.get("/api/analytics", requireAuth, requireOrg, async (req: Request, res: 
       totalResolved: resolvedTickets.length,
     });
   } catch (err: any) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

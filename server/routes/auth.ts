@@ -8,47 +8,53 @@ const router = Router();
 router.post("/api/auth/register", async (req: Request, res: Response) => {
   try {
     const { username, password, fullName } = req.body;
-    if (!username || !password) {
-      return res.status(400).send("Username and password required");
+    if (!username?.trim() || !password) {
+      return res.status(400).json({ error: "Username and password required" });
     }
     if (password.length < 6) {
-      return res.status(400).send("Password must be at least 6 characters");
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+    if (username.trim().length < 3) {
+      return res.status(400).json({ error: "Username must be at least 3 characters" });
     }
 
-    const existing = await storage.getUserByUsername(username);
+    const existing = await storage.getUserByUsername(username.trim());
     if (existing) {
-      return res.status(400).send("Username already taken");
+      return res.status(400).json({ error: "Username already taken" });
     }
 
     const user = await storage.createUser({
-      username,
+      username: username.trim(),
       password: await hashPassword(password),
-      fullName: fullName || username,
+      fullName: fullName?.trim() || username.trim(),
       phone: "",
       email: "",
     });
 
     req.session.userId = user.id;
     req.session.save((err) => {
-      if (err) return res.status(500).send("Session error");
+      if (err) return res.status(500).json({ error: "Session error" });
       res.json({ user: { ...user, password: undefined } });
     });
   } catch (err: any) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
 router.post("/api/auth/login", async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username and password required" });
+    }
     const user = await storage.getUserByUsername(username);
     if (!user) {
-      return res.status(401).send("Invalid credentials");
+      return res.status(401).json({ error: "Invalid credentials" });
     }
 
     const valid = await verifyPassword(password, user.password);
     if (!valid) {
-      return res.status(401).send("Invalid credentials");
+      return res.status(401).json({ error: "Invalid credentials" });
     }
 
     if (/^[0-9a-f]{64}$/.test(user.password)) {
@@ -64,11 +70,11 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
     }
 
     req.session.save((err) => {
-      if (err) return res.status(500).send("Session error");
+      if (err) return res.status(500).json({ error: "Session error" });
       res.json({ user: { ...user, password: undefined } });
     });
   } catch (err: any) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -93,7 +99,7 @@ router.delete("/api/auth/delete-account", requireAuth, async (req: Request, res:
 router.get("/api/auth/me", requireAuth, async (req: Request, res: Response) => {
   try {
     const user = await storage.getUser(req.session.userId!);
-    if (!user) return res.status(401).send("User not found");
+    if (!user) return res.status(401).json({ error: "User not found" });
 
     const userOrgs = await storage.getUserOrgs(user.id);
 
@@ -124,7 +130,7 @@ router.get("/api/auth/me", requireAuth, async (req: Request, res: Response) => {
       orgCounts,
     });
   } catch (err: any) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -132,21 +138,28 @@ router.post("/api/auth/switch-org", requireAuth, async (req: Request, res: Respo
   try {
     const { orgId } = req.body;
     const membership = await storage.getMembership(orgId, req.session.userId!);
-    if (!membership) return res.status(403).send("Not a member of this organization");
+    if (!membership) return res.status(403).json({ error: "Not a member of this organization" });
     req.session.orgId = orgId;
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
 router.patch("/api/auth/profile", requireAuth, async (req: Request, res: Response) => {
   try {
     const { fullName, phone, email } = req.body;
-    const user = await storage.updateUser(req.session.userId!, { fullName, phone, email });
+    if (!fullName?.trim()) {
+      return res.status(400).json({ error: "Full name is required" });
+    }
+    const user = await storage.updateUser(req.session.userId!, {
+      fullName: fullName.trim(),
+      phone: phone?.trim() || "",
+      email: email?.trim() || "",
+    });
     res.json({ ...user, password: undefined });
   } catch (err: any) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -154,20 +167,20 @@ router.post("/api/auth/change-password", requireAuth, async (req: Request, res: 
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) {
-      return res.status(400).send("Current and new password required");
+      return res.status(400).json({ error: "Current and new password required" });
     }
     if (newPassword.length < 6) {
-      return res.status(400).send("New password must be at least 6 characters");
+      return res.status(400).json({ error: "New password must be at least 6 characters" });
     }
     const user = await storage.getUser(req.session.userId!);
-    if (!user) return res.status(404).send("User not found");
+    if (!user) return res.status(404).json({ error: "User not found" });
     const valid = await verifyPassword(currentPassword, user.password);
-    if (!valid) return res.status(401).send("Current password is incorrect");
+    if (!valid) return res.status(401).json({ error: "Current password is incorrect" });
     const newHash = await hashPassword(newPassword);
     await storage.updateUser(user.id, { password: newHash });
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -188,7 +201,7 @@ router.get("/api/members", requireAuth, requireOrg, async (req: Request, res: Re
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

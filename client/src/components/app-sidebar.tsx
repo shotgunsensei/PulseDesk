@@ -38,6 +38,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ROLE_LABELS } from "@/lib/permissions";
 import { PulseLine } from "@/components/pulse-line";
+import { NotificationCenter } from "@/components/notification-center";
 
 export function AppSidebar() {
   const [location] = useLocation();
@@ -71,11 +72,14 @@ export function AppSidebar() {
           <div className="h-8 w-8 rounded-lg bg-accent flex items-center justify-center">
             <HeartPulse className="h-4 w-4 text-white" />
           </div>
-          <div className="flex flex-col">
+          <div className="flex flex-col flex-1">
             <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">PulseDesk</span>
             <span className="text-[10px] text-sidebar-foreground/50 tracking-wide">
               Ops Management
             </span>
+          </div>
+          <div className="hidden lg:block">
+            <NotificationCenter />
           </div>
         </div>
         {org && orgs.length > 0 && (

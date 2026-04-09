@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import type { User, Org, Membership } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
 
 interface OrgCounts {
   tickets: number;
@@ -15,6 +16,7 @@ interface AuthContextType {
   orgs: Org[];
   orgCounts: OrgCounts | null;
   isLoading: boolean;
+  sessionExpired: boolean;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string, fullName: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -31,6 +33,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [orgCounts, setOrgCounts] = useState<OrgCounts | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const { toast } = useToast();
+  const sessionExpiredRef = useRef(false);
+
+  const clearSession = useCallback(() => {
+    setUser(null);
+    setOrg(null);
+    setMembership(null);
+    setOrgs([]);
+    setOrgCounts(null);
+  }, []);
 
   const refreshAuth = useCallback(async () => {
     try {
@@ -42,27 +55,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setMembership(data.membership);
         setOrgs(data.orgs || []);
         setOrgCounts(data.orgCounts || null);
+        setSessionExpired(false);
+        sessionExpiredRef.current = false;
       } else {
-        setUser(null);
-        setOrg(null);
-        setMembership(null);
-        setOrgs([]);
-        setOrgCounts(null);
+        clearSession();
       }
     } catch {
-      setUser(null);
-      setOrg(null);
-      setMembership(null);
-      setOrgs([]);
-      setOrgCounts(null);
+      clearSession();
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [clearSession]);
 
   useEffect(() => {
     refreshAuth();
   }, [refreshAuth]);
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      if (sessionExpiredRef.current) return;
+      sessionExpiredRef.current = true;
+      setSessionExpired(true);
+      clearSession();
+      toast({
+        title: "Session expired",
+        description: "Your session has ended. Please sign in again.",
+        variant: "destructive",
+      });
+    };
+    window.addEventListener("pulsedesk:session-expired", handleSessionExpired);
+    return () => window.removeEventListener("pulsedesk:session-expired", handleSessionExpired);
+  }, [clearSession, toast]);
 
   const login = async (username: string, password: string) => {
     const res = await fetch("/api/auth/login", {
@@ -75,6 +98,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const err = await res.text();
       throw new Error(err || "Login failed");
     }
+    setSessionExpired(false);
+    sessionExpiredRef.current = false;
     await refreshAuth();
   };
 
@@ -94,11 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-    setUser(null);
-    setOrg(null);
-    setMembership(null);
-    setOrgs([]);
-    setOrgCounts(null);
+    clearSession();
   };
 
   const switchOrg = async (orgId: string) => {
@@ -115,7 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, org, membership, orgs, orgCounts, isLoading, login, register, logout, switchOrg, refreshAuth }}
+      value={{ user, org, membership, orgs, orgCounts, isLoading, sessionExpired, login, register, logout, switchOrg, refreshAuth }}
     >
       {children}
     </AuthContext.Provider>

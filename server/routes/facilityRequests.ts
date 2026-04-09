@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
-import { requireAuth, requireOrg } from "../middleware";
+import { requireAuth, requireOrg, requireMinRole } from "../middleware";
 
 const router = Router();
 
@@ -9,49 +9,50 @@ router.get("/api/facility-requests", requireAuth, requireOrg, async (req: Reques
     const result = await storage.getFacilityRequests(req.session.orgId!);
     res.json(result);
   } catch (err: any) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
 router.get("/api/facility-requests/:id", requireAuth, requireOrg, async (req: Request, res: Response) => {
   try {
     const f = await storage.getFacilityRequest(req.session.orgId!, req.params.id);
-    if (!f) return res.status(404).send("Facility request not found");
+    if (!f) return res.status(404).json({ error: "Facility request not found" });
     res.json(f);
   } catch (err: any) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-router.post("/api/facility-requests", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.post("/api/facility-requests", requireAuth, requireOrg, requireMinRole("staff"), async (req: Request, res: Response) => {
   try {
     const data = { ...req.body };
+    if (!data.title?.trim()) return res.status(400).json({ error: "Title required" });
     data.assignedTo = data.assignedTo || null;
     const f = await storage.createFacilityRequest(req.session.orgId!, data, req.session.userId!);
     res.json(f);
   } catch (err: any) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-router.patch("/api/facility-requests/:id", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.patch("/api/facility-requests/:id", requireAuth, requireOrg, requireMinRole("technician"), async (req: Request, res: Response) => {
   try {
     const data = { ...req.body };
     if ("assignedTo" in data) data.assignedTo = data.assignedTo || null;
     const f = await storage.updateFacilityRequest(req.session.orgId!, req.params.id, data);
-    if (!f) return res.status(404).send("Facility request not found");
+    if (!f) return res.status(404).json({ error: "Facility request not found" });
     res.json(f);
   } catch (err: any) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-router.delete("/api/facility-requests/:id", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.delete("/api/facility-requests/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
   try {
     await storage.deleteFacilityRequest(req.session.orgId!, req.params.id);
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
