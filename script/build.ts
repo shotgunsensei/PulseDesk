@@ -19,7 +19,6 @@ const allowlist = [
   "helmet",
   "jose",
   "jsonwebtoken",
-  "bcrypt",
   "memorystore",
   "multer",
   "nanoid",
