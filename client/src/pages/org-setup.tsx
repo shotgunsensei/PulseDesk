@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { HeartPulse, Building2 } from "lucide-react";
+import { Building2 } from "lucide-react";
+import pulsedeskLogo from "@assets/pulsedesklogo_1775753913991.png";
 
 export default function OrgSetup() {
   const { refreshAuth, logout } = useAuth();
@@ -59,8 +60,8 @@ export default function OrgSetup() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
-          <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-accent mb-4">
-            <HeartPulse className="h-6 w-6 text-white" />
+          <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl mb-4">
+            <img src={pulsedeskLogo} alt="PulseDesk" className="h-12 w-12 object-contain" />
           </div>
           <h1 className="text-xl font-bold tracking-tight">Set Up Your Facility</h1>
           <p className="text-sm text-muted-foreground mt-1">Create a new organization or join an existing one</p>

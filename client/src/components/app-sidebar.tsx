@@ -24,8 +24,8 @@ import {
   LogOut,
   ChevronDown,
   Shield,
-  HeartPulse,
 } from "lucide-react";
+import pulsedeskLogo from "@assets/pulsedesklogo_1775753913991.png";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { canSubmitIssues, canViewAnalytics, isReadOnly } from "@/lib/permissions";
@@ -69,8 +69,8 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4 pb-3">
         <div className="flex items-center gap-2.5">
-          <div className="h-8 w-8 rounded-lg bg-accent flex items-center justify-center">
-            <HeartPulse className="h-4 w-4 text-white" />
+          <div className="h-8 w-8 rounded-lg flex items-center justify-center overflow-hidden">
+            <img src={pulsedeskLogo} alt="PulseDesk" className="h-8 w-8 object-contain" />
           </div>
           <div className="flex flex-col flex-1">
             <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">PulseDesk</span>

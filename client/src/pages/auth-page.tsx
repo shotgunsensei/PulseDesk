@@ -6,7 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { HeartPulse, Shield, Clock, BarChart3, Building2, ArrowLeft } from "lucide-react";
+import { Shield, Clock, BarChart3, Building2, ArrowLeft } from "lucide-react";
+import pulsedeskLogo from "@assets/pulsedesklogo_1775753913991.png";
+import pulsedeskTitleLogo from "@assets/pulsedecktitleandlogo_1775753913991.png";
+import heroImage from "@assets/Modern_healthcare_tech_in_action_1775753913992.png";
 const MicrosoftIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
     <rect x="1" y="1" width="9" height="9" fill="#F25022" />
@@ -142,18 +145,20 @@ export default function AuthPage() {
           <PulseLine variant="minimal" width="100%" height={40} color="white" animate={false} />
         </div>
 
-        <div className="relative max-w-md text-center">
-          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-accent mb-6 shadow-lg shadow-accent/20">
-            <HeartPulse className="h-8 w-8 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight text-white mb-2">PulseDesk</h1>
+        <div className="relative max-w-md text-center flex flex-col items-center">
+          <img src={pulsedeskTitleLogo} alt="PulseDesk" className="h-12 mb-6 drop-shadow-lg" />
           <p className="text-[11px] uppercase tracking-[0.2em] text-accent/80 font-medium mb-4">Operations Management</p>
+
+          <div className="rounded-2xl overflow-hidden shadow-2xl shadow-black/30 mb-8 border border-white/10">
+            <img src={heroImage} alt="Healthcare operations dashboard" className="w-full max-w-sm object-cover" />
+          </div>
+
           <p className="text-primary-foreground/60 text-sm leading-relaxed max-w-xs mx-auto">
             The operational heartbeat of your healthcare facility.
             Clarity, control, and responsiveness — when it matters most.
           </p>
 
-          <div className="my-8">
+          <div className="my-6">
             <PulseDivider className="text-white/30" />
           </div>
 
@@ -183,10 +188,7 @@ export default function AuthPage() {
       <div className="flex-1 flex items-center justify-center p-6 bg-background">
         <div className="w-full max-w-sm space-y-6">
           <div className="lg:hidden text-center mb-2">
-            <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-accent shadow-md shadow-accent/20 mb-3">
-              <HeartPulse className="h-6 w-6 text-white" />
-            </div>
-            <h1 className="text-xl font-bold tracking-tight">PulseDesk</h1>
+            <img src={pulsedeskTitleLogo} alt="PulseDesk" className="h-10 mx-auto mb-3" />
             <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground mt-1 font-medium">Operations Management</p>
           </div>
 

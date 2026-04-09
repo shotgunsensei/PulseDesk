@@ -1,13 +1,14 @@
-import { HeartPulse, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+import pulsedeskLogo from "@assets/pulsedesklogo_1775753913991.png";
 
 export default function NotFound() {
   return (
     <div className="flex-1 flex items-center justify-center p-6">
       <div className="max-w-sm text-center space-y-4">
         <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-muted mx-auto">
-          <HeartPulse className="h-7 w-7 text-muted-foreground" />
+          <img src={pulsedeskLogo} alt="PulseDesk" className="h-10 w-10 object-contain opacity-50" />
         </div>
         <div>
           <h1 className="text-2xl font-bold mb-1">Page not found</h1>
@@ -31,7 +32,7 @@ export function Unauthorized() {
     <div className="flex-1 flex items-center justify-center p-6">
       <div className="max-w-sm text-center space-y-4">
         <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-amber-100 dark:bg-amber-900/20 mx-auto">
-          <HeartPulse className="h-7 w-7 text-amber-600 dark:text-amber-400" />
+          <img src={pulsedeskLogo} alt="PulseDesk" className="h-10 w-10 object-contain opacity-60" />
         </div>
         <div>
           <h1 className="text-2xl font-bold mb-1">Access restricted</h1>
