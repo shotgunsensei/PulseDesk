@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PulseLoader } from "@/components/pulse-line";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -142,7 +142,7 @@ export default function AssetsPage() {
         </div>
 
         {isLoading ? (
-          <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)}</div>
+          <div className="flex items-center justify-center py-16"><PulseLoader /></div>
         ) : filtered.length === 0 ? (
           <Card><CardContent className="flex flex-col items-center justify-center py-16"><Cpu className="h-8 w-8 text-muted-foreground mb-2" /><p className="text-sm text-muted-foreground">{assets && assets.length > 0 ? "No equipment matches your search" : "No equipment registered yet"}</p></CardContent></Card>
         ) : (

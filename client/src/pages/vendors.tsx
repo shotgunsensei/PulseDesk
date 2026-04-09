@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PulseLoader } from "@/components/pulse-line";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,10 +11,14 @@ import { useState } from "react";
 import { PlusCircle, Users2, Trash2, Phone, Mail, AlertCircle } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { canAssignTickets, canManageSettings } from "@/lib/permissions";
 import type { Vendor } from "@shared/schema";
 
 export default function VendorsPage() {
   const { toast } = useToast();
+  const { membership } = useAuth();
+  const role = membership?.role;
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", serviceType: "", phone: "", email: "", emergencyContact: "", contractNotes: "" });
 
@@ -44,6 +48,7 @@ export default function VendorsPage() {
         title="Vendor Directory"
         description="External service providers and emergency contacts"
         action={
+          canAssignTickets(role) ? (
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button data-testid="button-add-vendor"><PlusCircle className="h-4 w-4 mr-2" /> Add Vendor</Button>
@@ -68,11 +73,12 @@ export default function VendorsPage() {
               </div>
             </DialogContent>
           </Dialog>
+          ) : undefined
         }
       />
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         {isLoading ? (
-          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24" />)}</div>
+          <div className="flex items-center justify-center py-16"><PulseLoader /></div>
         ) : !vendors || vendors.length === 0 ? (
           <Card><CardContent className="flex flex-col items-center justify-center py-12"><Users2 className="h-8 w-8 text-muted-foreground mb-2" /><p className="text-sm text-muted-foreground">No vendors registered yet</p></CardContent></Card>
         ) : (
@@ -84,9 +90,11 @@ export default function VendorsPage() {
                     <p className="text-sm font-medium">{vendor.name}</p>
                     {vendor.serviceType && <p className="text-xs text-muted-foreground mt-0.5">{vendor.serviceType}</p>}
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => { if (confirm("Remove this vendor?")) deleteMutation.mutate(vendor.id); }}>
-                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                  </Button>
+                  {canManageSettings(role) && (
+                    <Button variant="ghost" size="sm" onClick={() => { if (confirm("Remove this vendor?")) deleteMutation.mutate(vendor.id); }}>
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  )}
                 </div>
                 <div className="mt-3 space-y-1">
                   {vendor.phone && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Phone className="h-3 w-3" />{vendor.phone}</div>}

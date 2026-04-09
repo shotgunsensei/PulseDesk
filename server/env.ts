@@ -28,5 +28,5 @@ export function getEnv(): Env {
 
 export function getSessionSecret(): string {
   const env = getEnv();
-  return env.SESSION_SECRET || "tradeflow-dev-secret-change-me-in-production";
+  return env.SESSION_SECRET || "pulsedesk-dev-secret-change-me-in-production";
 }

@@ -3,17 +3,21 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PulseLoader } from "@/components/pulse-line";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { PlusCircle, Trash2, Building2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { canAssignTickets, canManageSettings } from "@/lib/permissions";
 import type { Department } from "@shared/schema";
 
 export default function DepartmentsPage() {
   const { toast } = useToast();
+  const { membership } = useAuth();
+  const role = membership?.role;
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -47,6 +51,7 @@ export default function DepartmentsPage() {
         title="Departments"
         description="Manage organizational departments"
         action={
+          canAssignTickets(role) ? (
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button data-testid="button-add-dept"><PlusCircle className="h-4 w-4 mr-2" /> Add Department</Button>
@@ -75,11 +80,12 @@ export default function DepartmentsPage() {
               </div>
             </DialogContent>
           </Dialog>
+          ) : undefined
         }
       />
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         {isLoading ? (
-          <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14" />)}</div>
+          <div className="flex items-center justify-center py-16"><PulseLoader /></div>
         ) : !departments || departments.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -95,16 +101,18 @@ export default function DepartmentsPage() {
                   <p className="text-sm font-medium">{dept.name}</p>
                   {dept.description && <p className="text-xs text-muted-foreground mt-0.5">{dept.description}</p>}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  data-testid={`button-delete-dept-${dept.id}`}
-                  onClick={() => {
-                    if (confirm(`Delete "${dept.name}"?`)) deleteMutation.mutate(dept.id);
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                </Button>
+                {canManageSettings(role) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid={`button-delete-dept-${dept.id}`}
+                    onClick={() => {
+                      if (confirm(`Delete "${dept.name}"?`)) deleteMutation.mutate(dept.id);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                )}
               </div>
             ))}
           </div>

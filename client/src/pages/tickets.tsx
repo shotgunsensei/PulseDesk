@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PulseLoader } from "@/components/pulse-line";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -138,8 +138,8 @@ export default function TicketsPage() {
         </div>
 
         {isLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[72px]" />)}
+          <div className="flex items-center justify-center py-16">
+            <PulseLoader />
           </div>
         ) : filtered.length === 0 ? (
           <Card>

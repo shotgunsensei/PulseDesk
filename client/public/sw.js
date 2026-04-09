@@ -1,9 +1,5 @@
-const CACHE_NAME = 'tradeflow-v2';
+const CACHE_NAME = 'pulsedesk-v1';
 
-// Only cache true static assets — never the HTML entry point.
-// The HTML file references hashed JS/CSS bundle filenames that change
-// on every deploy. If the old HTML is served from cache it will reference
-// JS files that no longer exist, producing a blank white page.
 const STATIC_ASSETS = [
   '/favicon.png',
   '/manifest.json',
@@ -33,7 +29,6 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // API requests: network only, never cache
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
       fetch(request).catch(() =>
@@ -46,9 +41,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // HTML navigation requests (e.g. loading the app URL): network first.
-  // Always fetch a fresh copy so the page gets the current JS/CSS references.
-  // Only fall back to cache when the network is genuinely unavailable.
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
@@ -64,8 +56,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // All other assets (JS bundles, CSS, images): stale-while-revalidate.
-  // Return the cached version immediately (fast) while updating in the background.
   event.respondWith(
     caches.match(request).then((cached) => {
       const networkFetch = fetch(request).then((response) => {

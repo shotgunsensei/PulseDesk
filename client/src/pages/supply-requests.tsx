@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PulseLoader } from "@/components/pulse-line";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -140,7 +140,7 @@ export default function SupplyRequestsPage() {
         </div>
 
         {isLoading ? (
-          <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[72px]" />)}</div>
+          <div className="flex items-center justify-center py-16"><PulseLoader /></div>
         ) : filtered.length === 0 ? (
           <Card><CardContent className="flex flex-col items-center justify-center py-16"><Package className="h-8 w-8 text-muted-foreground mb-2" /><p className="text-sm text-muted-foreground">{requests && requests.length > 0 ? "No requests match your filters" : "No supply requests yet"}</p></CardContent></Card>
         ) : (

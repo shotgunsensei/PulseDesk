@@ -162,3 +162,7 @@ The application follows a monolithic full-stack architecture with a React fronte
 - Role-based UI visibility enforced in sidebar, action buttons, page elements, AND API routes
 - Dashboard enhanced with aging buckets, triage/resolution performance metrics, patient impact indicators
 - API routes return JSON error objects (`{ error: "message" }`) instead of plain text
+- PulseLoader used consistently across all pages as the branded loading indicator (no Skeleton loading states)
+- Department/vendor create gated to supervisor+ (matches API requireMinRole("supervisor"))
+- Department/vendor delete gated to admin only (matches API requireMinRole("admin"))
+- All PWA/manifest/service-worker references use PulseDesk branding (no TradeFlowKit remnants)

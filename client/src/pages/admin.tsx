@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PulseLoader } from "@/components/pulse-line";
 import { Trash2, Shield } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
@@ -68,7 +68,7 @@ export default function AdminPage() {
           </CardHeader>
           <CardContent>
             {orgsLoading ? (
-              <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
+              <div className="flex items-center justify-center py-8"><PulseLoader /></div>
             ) : !orgs || orgs.length === 0 ? (
               <p className="text-sm text-muted-foreground">No organizations</p>
             ) : (
@@ -95,7 +95,7 @@ export default function AdminPage() {
           </CardHeader>
           <CardContent>
             {usersLoading ? (
-              <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10" />)}</div>
+              <div className="flex items-center justify-center py-8"><PulseLoader /></div>
             ) : !users || users.length === 0 ? (
               <p className="text-sm text-muted-foreground">No users</p>
             ) : (
