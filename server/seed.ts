@@ -451,6 +451,10 @@ async function seedFullDemo() {
     assignedTo: techUser.id,
   }, demoUser.id);
 
+  await storage.upsertOrgAuthConfig(org.id, {
+    authMode: "local" as any,
+  });
+
   console.log("PulseDesk demo data seeded successfully!");
   console.log("Demo login: username=demo, password=demo123");
 }

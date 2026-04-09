@@ -47,6 +47,7 @@ export async function requireSuperAdmin(req: Request, res: Response, next: NextF
 }
 
 const ROLE_HIERARCHY: Record<string, number> = {
+  owner: 120,
   admin: 100,
   supervisor: 80,
   technician: 60,

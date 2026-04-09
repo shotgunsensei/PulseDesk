@@ -12,6 +12,9 @@ import {
   supplyRequests,
   facilityRequests,
   vendors,
+  orgAuthConfig,
+  orgRoleMappings,
+  authAuditLog,
   type User,
   type InsertUser,
   type Org,
@@ -31,6 +34,9 @@ import {
   type Vendor,
   type InsertVendor,
   type InviteCode,
+  type OrgAuthConfig,
+  type OrgRoleMapping,
+  type AuthAuditLogEntry,
 } from "@shared/schema";
 import { randomBytes } from "crypto";
 
@@ -101,6 +107,29 @@ export interface IStorage {
 
   getDashboardStats(orgId: string): Promise<any>;
   getOrgCounts(orgId: string): Promise<{ tickets: number; departments: number; assets: number; members: number }>;
+
+  getOrgAuthConfig(orgId: string): Promise<OrgAuthConfig | undefined>;
+  upsertOrgAuthConfig(orgId: string, data: Partial<OrgAuthConfig>): Promise<OrgAuthConfig>;
+  getOrgBySlug(slug: string): Promise<Org | undefined>;
+  getUserByEntraObjectId(entraObjectId: string, orgId: string): Promise<User | undefined>;
+
+  getOrgRoleMappings(orgId: string): Promise<OrgRoleMapping[]>;
+  createOrgRoleMapping(orgId: string, entraGroupId: string, pulsedeskRole: string, displayLabel?: string): Promise<OrgRoleMapping>;
+  deleteOrgRoleMapping(orgId: string, id: string): Promise<void>;
+  deleteAllOrgRoleMappings(orgId: string): Promise<void>;
+
+  createAuthAuditLog(entry: {
+    orgId?: string | null;
+    userId?: string | null;
+    eventType: string;
+    authSource?: string | null;
+    tenantResolved?: string | null;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    details?: any;
+    success: boolean;
+  }): Promise<AuthAuditLogEntry>;
+  getAuthAuditLog(orgId: string, limit?: number): Promise<AuthAuditLogEntry[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -160,6 +189,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteOrg(id: string): Promise<void> {
+    await db.delete(authAuditLog).where(eq(authAuditLog.orgId, id));
+    await db.delete(orgRoleMappings).where(eq(orgRoleMappings.orgId, id));
+    await db.delete(orgAuthConfig).where(eq(orgAuthConfig.orgId, id));
     await db.delete(ticketEvents).where(eq(ticketEvents.orgId, id));
     await db.delete(tickets).where(eq(tickets.orgId, id));
     await db.delete(supplyRequests).where(eq(supplyRequests.orgId, id));
@@ -621,6 +653,95 @@ export class DatabaseStorage implements IStorage {
       recentActivity,
       isEmpty: allTickets.length === 0,
     };
+  }
+
+  async getOrgAuthConfig(orgId: string): Promise<OrgAuthConfig | undefined> {
+    const [config] = await db.select().from(orgAuthConfig).where(eq(orgAuthConfig.orgId, orgId));
+    return config;
+  }
+
+  async upsertOrgAuthConfig(orgId: string, data: Partial<OrgAuthConfig>): Promise<OrgAuthConfig> {
+    const existing = await this.getOrgAuthConfig(orgId);
+    if (existing) {
+      const [updated] = await db.update(orgAuthConfig)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(orgAuthConfig.orgId, orgId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(orgAuthConfig)
+      .values({ ...data, orgId } as any)
+      .returning();
+    return created;
+  }
+
+  async getOrgBySlug(slug: string): Promise<Org | undefined> {
+    const [org] = await db.select().from(orgs).where(eq(orgs.slug, slug));
+    return org;
+  }
+
+  async getUserByEntraObjectId(entraObjectId: string, orgId: string): Promise<User | undefined> {
+    const allUsers = await db.select().from(users).where(eq(users.entraObjectId, entraObjectId));
+    if (allUsers.length === 0) return undefined;
+    for (const u of allUsers) {
+      const mem = await this.getMembership(orgId, u.id);
+      if (mem) return u;
+    }
+    return undefined;
+  }
+
+  async getOrgRoleMappings(orgId: string): Promise<OrgRoleMapping[]> {
+    return db.select().from(orgRoleMappings).where(eq(orgRoleMappings.orgId, orgId)).orderBy(orgRoleMappings.createdAt);
+  }
+
+  async createOrgRoleMapping(orgId: string, entraGroupId: string, pulsedeskRole: string, displayLabel?: string): Promise<OrgRoleMapping> {
+    const [m] = await db.insert(orgRoleMappings).values({
+      orgId,
+      entraGroupId,
+      pulsedeskRole: pulsedeskRole as any,
+      displayLabel: displayLabel || null,
+    }).returning();
+    return m;
+  }
+
+  async deleteOrgRoleMapping(orgId: string, id: string): Promise<void> {
+    await db.delete(orgRoleMappings).where(and(eq(orgRoleMappings.orgId, orgId), eq(orgRoleMappings.id, id)));
+  }
+
+  async deleteAllOrgRoleMappings(orgId: string): Promise<void> {
+    await db.delete(orgRoleMappings).where(eq(orgRoleMappings.orgId, orgId));
+  }
+
+  async createAuthAuditLog(entry: {
+    orgId?: string | null;
+    userId?: string | null;
+    eventType: string;
+    authSource?: string | null;
+    tenantResolved?: string | null;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    details?: any;
+    success: boolean;
+  }): Promise<AuthAuditLogEntry> {
+    const [log] = await db.insert(authAuditLog).values({
+      orgId: entry.orgId || null,
+      userId: entry.userId || null,
+      eventType: entry.eventType,
+      authSource: entry.authSource || null,
+      tenantResolved: entry.tenantResolved || null,
+      ipAddress: entry.ipAddress || null,
+      userAgent: entry.userAgent || null,
+      details: entry.details || null,
+      success: entry.success,
+    }).returning();
+    return log;
+  }
+
+  async getAuthAuditLog(orgId: string, limit: number = 50): Promise<AuthAuditLogEntry[]> {
+    return db.select().from(authAuditLog)
+      .where(eq(authAuditLog.orgId, orgId))
+      .orderBy(desc(authAuditLog.createdAt))
+      .limit(limit);
   }
 }
 

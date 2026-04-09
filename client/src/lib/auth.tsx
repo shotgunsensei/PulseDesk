@@ -17,7 +17,7 @@ interface AuthContextType {
   orgCounts: OrgCounts | null;
   isLoading: boolean;
   sessionExpired: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, orgSlug?: string) => Promise<void>;
   register: (username: string, password: string, fullName: string) => Promise<void>;
   logout: () => Promise<void>;
   switchOrg: (orgId: string) => Promise<void>;
@@ -87,16 +87,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("pulsedesk:session-expired", handleSessionExpired);
   }, [clearSession, toast]);
 
-  const login = async (username: string, password: string) => {
+  const login = async (username: string, password: string, orgSlug?: string) => {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, orgSlug }),
       credentials: "include",
     });
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error(err || "Login failed");
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error || "Login failed");
     }
     setSessionExpired(false);
     sessionExpiredRef.current = false;

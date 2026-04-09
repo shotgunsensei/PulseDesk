@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Trash2, UserCog, Clock, Building2, Shield, Bell } from "lucide-react";
+import { Copy, Trash2, UserCog, Clock, Building2, Shield, Bell, KeyRound, Plus, CheckCircle2, XCircle, AlertTriangle, Globe, RefreshCw } from "lucide-react";
+import { SiMicrosoft } from "react-icons/si";
 import { ROLE_LABELS, canManageSettings } from "@/lib/permissions";
 
 interface MemberWithUser {
@@ -25,6 +27,57 @@ interface InviteCode {
   code: string;
   role: string;
 }
+
+interface AuthConfig {
+  authMode: string;
+  entraTenantId: string | null;
+  entraTenantDomain: string | null;
+  entraClientId: string | null;
+  hasClientSecret: boolean;
+  entraRedirectUri: string | null;
+  entraPostLogoutRedirectUri: string | null;
+  entraAllowedDomains: string[];
+  entraJitProvisioningEnabled: boolean;
+  entraRequireAdminConsent: boolean;
+  entraLastTestStatus: string | null;
+  entraLastTestedAt: string | null;
+  graphEnabled: boolean;
+  graphScopes: string[];
+  graphSyncInterval: number | null;
+}
+
+interface RoleMapping {
+  id: string;
+  orgId: string;
+  entraGroupId: string;
+  displayLabel: string | null;
+  pulsedeskRole: string;
+  createdAt: string;
+}
+
+interface AuditLogEntry {
+  id: string;
+  eventType: string;
+  authSource: string | null;
+  ipAddress: string | null;
+  details: any;
+  success: boolean;
+  createdAt: string;
+}
+
+const AUTH_MODE_OPTIONS = [
+  { value: "local", label: "Local Only", description: "Username/password authentication only" },
+  { value: "hybrid", label: "Hybrid (M365 + Local)", description: "Microsoft 365 with local admin fallback" },
+  { value: "m365", label: "Microsoft 365 Only", description: "All users must sign in via Microsoft 365" },
+];
+
+const PULSEDESK_ROLES = [
+  { value: "readonly", label: "Read Only" },
+  { value: "staff", label: "Staff" },
+  { value: "technician", label: "Technician" },
+  { value: "supervisor", label: "Supervisor" },
+  { value: "admin", label: "Admin" },
+];
 
 export default function SettingsPage() {
   const { user, org, membership, refreshAuth } = useAuth();
@@ -112,10 +165,11 @@ export default function SettingsPage() {
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         <div className="max-w-2xl mx-auto">
           <Tabs defaultValue="profile">
-            <TabsList className={`w-full grid ${isAdmin ? "grid-cols-4" : "grid-cols-2"}`}>
+            <TabsList className={`w-full grid ${isAdmin ? "grid-cols-5" : "grid-cols-2"}`}>
               <TabsTrigger value="profile" data-testid="tab-profile">Profile</TabsTrigger>
               {isAdmin && <TabsTrigger value="organization" data-testid="tab-organization">Organization</TabsTrigger>}
               {isAdmin && <TabsTrigger value="team" data-testid="tab-team">Team</TabsTrigger>}
+              {isAdmin && <TabsTrigger value="authentication" data-testid="tab-authentication">Auth</TabsTrigger>}
               <TabsTrigger value="preferences" data-testid="tab-preferences">Preferences</TabsTrigger>
             </TabsList>
 
@@ -342,6 +396,12 @@ export default function SettingsPage() {
               </TabsContent>
             )}
 
+            {isAdmin && (
+              <TabsContent value="authentication" className="space-y-4 mt-4">
+                <AuthenticationSettings />
+              </TabsContent>
+            )}
+
             <TabsContent value="preferences" className="space-y-4 mt-4">
               <Card>
                 <CardHeader>
@@ -386,5 +446,498 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function AuthenticationSettings() {
+  const { toast } = useToast();
+  const [newMapping, setNewMapping] = useState({ entraGroupId: "", pulsedeskRole: "staff", displayLabel: "" });
+  const [clientSecretField, setClientSecretField] = useState("");
+  const [showAuditLog, setShowAuditLog] = useState(false);
+
+  const { data: authConfig, isLoading: configLoading } = useQuery<AuthConfig>({
+    queryKey: ["/api/auth/config"],
+  });
+
+  const { data: roleMappings, isLoading: mappingsLoading } = useQuery<RoleMapping[]>({
+    queryKey: ["/api/auth/role-mappings"],
+  });
+
+  const { data: auditLog } = useQuery<AuditLogEntry[]>({
+    queryKey: ["/api/auth/audit-log"],
+    enabled: showAuditLog,
+  });
+
+  const [configForm, setConfigForm] = useState<Partial<AuthConfig>>({});
+
+  const form = authConfig ? { ...authConfig, ...configForm } : null;
+
+  const updateConfigMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("PUT", "/api/auth/config", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/config"] });
+      setConfigForm({});
+      setClientSecretField("");
+      toast({ title: "Authentication configuration saved" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const testConfigMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/auth/config/test"),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/config"] });
+      if (data.success) {
+        toast({ title: "Connection test passed", description: "Microsoft Entra ID configuration is valid." });
+      } else {
+        toast({ title: "Connection test failed", description: data.issues?.join("; ") || "Check configuration", variant: "destructive" });
+      }
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const createMappingMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", "/api/auth/role-mappings", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/role-mappings"] });
+      setNewMapping({ entraGroupId: "", pulsedeskRole: "staff", displayLabel: "" });
+      toast({ title: "Role mapping added" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMappingMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/auth/role-mappings/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/role-mappings"] });
+      toast({ title: "Role mapping removed" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const handleSaveConfig = () => {
+    if (!form) return;
+    const payload: any = {
+      authMode: form.authMode,
+      entraTenantId: form.entraTenantId || "",
+      entraTenantDomain: form.entraTenantDomain || "",
+      entraClientId: form.entraClientId || "",
+      entraRedirectUri: form.entraRedirectUri || "",
+      entraPostLogoutRedirectUri: form.entraPostLogoutRedirectUri || "",
+      entraAllowedDomains: form.entraAllowedDomains || [],
+      entraJitProvisioningEnabled: form.entraJitProvisioningEnabled,
+      entraRequireAdminConsent: form.entraRequireAdminConsent,
+    };
+    if (clientSecretField) {
+      payload.entraClientSecret = clientSecretField;
+    }
+    updateConfigMutation.mutate(payload);
+  };
+
+  const updateField = (field: string, value: any) => {
+    setConfigForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  if (configLoading) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center">
+          <RefreshCw className="h-5 w-5 animate-spin mx-auto text-muted-foreground mb-2" />
+          <p className="text-sm text-muted-foreground">Loading authentication settings...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const showEntraConfig = form && form.authMode !== "local";
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <KeyRound className="h-4 w-4" />
+            Authentication Mode
+          </CardTitle>
+          <CardDescription>Configure how users sign in to your organization</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            {AUTH_MODE_OPTIONS.map((opt) => (
+              <label
+                key={opt.value}
+                className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                  form?.authMode === opt.value ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                }`}
+                data-testid={`radio-auth-mode-${opt.value}`}
+              >
+                <input
+                  type="radio"
+                  name="authMode"
+                  value={opt.value}
+                  checked={form?.authMode === opt.value}
+                  onChange={() => updateField("authMode", opt.value)}
+                  className="mt-0.5"
+                />
+                <div>
+                  <p className="text-sm font-medium">{opt.label}</p>
+                  <p className="text-xs text-muted-foreground">{opt.description}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {showEntraConfig && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <SiMicrosoft className="h-4 w-4" />
+              Microsoft Entra ID Configuration
+            </CardTitle>
+            <CardDescription>
+              Connect to your Azure AD / Entra ID tenant for single sign-on
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="entra-tenant-id">Tenant ID *</Label>
+                <Input
+                  id="entra-tenant-id"
+                  data-testid="input-entra-tenant-id"
+                  value={form?.entraTenantId || ""}
+                  onChange={(e) => updateField("entraTenantId", e.target.value)}
+                  className="mt-1 font-mono text-xs"
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                />
+              </div>
+              <div>
+                <Label htmlFor="entra-tenant-domain">Tenant Domain</Label>
+                <Input
+                  id="entra-tenant-domain"
+                  data-testid="input-entra-tenant-domain"
+                  value={form?.entraTenantDomain || ""}
+                  onChange={(e) => updateField("entraTenantDomain", e.target.value)}
+                  className="mt-1 text-xs"
+                  placeholder="yourorg.onmicrosoft.com"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="entra-client-id">Application (Client) ID *</Label>
+              <Input
+                id="entra-client-id"
+                data-testid="input-entra-client-id"
+                value={form?.entraClientId || ""}
+                onChange={(e) => updateField("entraClientId", e.target.value)}
+                className="mt-1 font-mono text-xs"
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="entra-client-secret">
+                Client Secret *
+                {authConfig?.hasClientSecret && !clientSecretField && (
+                  <span className="ml-2 text-[11px] text-green-600 font-normal">(configured)</span>
+                )}
+              </Label>
+              <Input
+                id="entra-client-secret"
+                data-testid="input-entra-client-secret"
+                type="password"
+                value={clientSecretField}
+                onChange={(e) => setClientSecretField(e.target.value)}
+                className="mt-1 font-mono text-xs"
+                placeholder={authConfig?.hasClientSecret ? "Enter new secret to update" : "Paste client secret value"}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Encrypted at rest using AES-256-GCM. Never transmitted in plaintext.
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="entra-redirect-uri">Redirect URI *</Label>
+              <Input
+                id="entra-redirect-uri"
+                data-testid="input-entra-redirect-uri"
+                value={form?.entraRedirectUri || ""}
+                onChange={(e) => updateField("entraRedirectUri", e.target.value)}
+                className="mt-1 text-xs"
+                placeholder="https://your-domain.com/api/auth/m365/callback"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Must match the redirect URI configured in your Azure App Registration
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+              <div>
+                <p className="text-sm font-medium">Just-in-Time Provisioning</p>
+                <p className="text-xs text-muted-foreground">Automatically create PulseDesk accounts when users sign in via M365</p>
+              </div>
+              <Switch
+                checked={form?.entraJitProvisioningEnabled ?? true}
+                onCheckedChange={(val) => updateField("entraJitProvisioningEnabled", val)}
+                data-testid="switch-jit-provisioning"
+              />
+            </div>
+
+            {form?.authMode === "m365" && (
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-medium text-amber-800 dark:text-amber-200">M365-only mode</p>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                    Local password login will be completely disabled. Ensure at least one admin account is accessible via M365 before enabling.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              {authConfig?.entraLastTestStatus && (
+                <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${
+                  authConfig.entraLastTestStatus === "passed"
+                    ? "bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400"
+                    : "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400"
+                }`}>
+                  {authConfig.entraLastTestStatus === "passed" ? (
+                    <CheckCircle2 className="h-3 w-3" />
+                  ) : (
+                    <XCircle className="h-3 w-3" />
+                  )}
+                  Last test: {authConfig.entraLastTestStatus}
+                  {authConfig.entraLastTestedAt && (
+                    <span className="text-[10px] opacity-70 ml-1">
+                      {new Date(authConfig.entraLastTestedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                onClick={handleSaveConfig}
+                disabled={updateConfigMutation.isPending}
+                data-testid="button-save-auth-config"
+              >
+                {updateConfigMutation.isPending ? "Saving..." : "Save Configuration"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => testConfigMutation.mutate()}
+                disabled={testConfigMutation.isPending}
+                data-testid="button-test-auth-config"
+              >
+                {testConfigMutation.isPending ? (
+                  <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Testing...</>
+                ) : (
+                  "Test Connection"
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {showEntraConfig && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              Group-to-Role Mappings
+            </CardTitle>
+            <CardDescription>
+              Map Entra ID security groups (by Object ID) to PulseDesk roles. When multiple groups match, the highest-level role wins.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {mappingsLoading ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Loading mappings...</p>
+            ) : roleMappings && roleMappings.length > 0 ? (
+              <div className="space-y-2">
+                {roleMappings.map((m) => (
+                  <div key={m.id} className="flex items-center gap-3 rounded-lg border p-3" data-testid={`mapping-${m.id}`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-mono truncate" title={m.entraGroupId}>{m.entraGroupId}</p>
+                      {m.displayLabel && (
+                        <p className="text-[11px] text-muted-foreground">{m.displayLabel}</p>
+                      )}
+                    </div>
+                    <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-primary/10 text-primary shrink-0">
+                      {ROLE_LABELS[m.pulsedeskRole] || m.pulsedeskRole}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 shrink-0"
+                      onClick={() => deleteMappingMutation.mutate(m.id)}
+                      disabled={deleteMappingMutation.isPending}
+                      data-testid={`button-delete-mapping-${m.id}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg bg-muted/50 border p-4 text-center">
+                <p className="text-sm text-muted-foreground">No role mappings configured</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">
+                  Users without group matches will default to the Staff role
+                </p>
+              </div>
+            )}
+
+            <div className="rounded-lg border p-3 space-y-3">
+              <p className="text-xs font-medium flex items-center gap-1.5">
+                <Plus className="h-3 w-3" /> Add Role Mapping
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-[11px]">Entra Group Object ID *</Label>
+                  <Input
+                    value={newMapping.entraGroupId}
+                    onChange={(e) => setNewMapping({ ...newMapping, entraGroupId: e.target.value })}
+                    className="mt-1 font-mono text-xs"
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    data-testid="input-mapping-group-id"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[11px]">Display Label</Label>
+                  <Input
+                    value={newMapping.displayLabel}
+                    onChange={(e) => setNewMapping({ ...newMapping, displayLabel: e.target.value })}
+                    className="mt-1 text-xs"
+                    placeholder="e.g. IT Supervisors"
+                    data-testid="input-mapping-label"
+                  />
+                </div>
+              </div>
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <Label className="text-[11px]">PulseDesk Role *</Label>
+                  <Select value={newMapping.pulsedeskRole} onValueChange={(val) => setNewMapping({ ...newMapping, pulsedeskRole: val })}>
+                    <SelectTrigger className="mt-1 h-9 text-xs" data-testid="select-mapping-role">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PULSEDESK_ROLES.map((r) => (
+                        <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => createMappingMutation.mutate(newMapping)}
+                  disabled={!newMapping.entraGroupId.trim() || createMappingMutation.isPending}
+                  data-testid="button-add-mapping"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Add
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {showEntraConfig && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Globe className="h-4 w-4" />
+              Microsoft Graph Integration
+            </CardTitle>
+            <CardDescription>Sync organizational data from Microsoft 365</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-lg bg-muted/50 border p-4 text-center">
+              <Globe className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+              <p className="text-sm font-medium text-muted-foreground">Graph Sync</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">
+                Automatic directory sync, org chart import, and department mapping will be available in a future update.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                Authentication Audit Log
+              </CardTitle>
+              <CardDescription>Recent login and configuration events</CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setShowAuditLog(true);
+                queryClient.invalidateQueries({ queryKey: ["/api/auth/audit-log"] });
+              }}
+              data-testid="button-load-audit-log"
+            >
+              {showAuditLog ? "Refresh" : "Load Log"}
+            </Button>
+          </div>
+        </CardHeader>
+        {showAuditLog && (
+          <CardContent>
+            {!auditLog ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Loading...</p>
+            ) : auditLog.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No authentication events recorded yet</p>
+            ) : (
+              <div className="space-y-1.5 max-h-64 overflow-auto">
+                {auditLog.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className={`flex items-start gap-2 rounded border p-2 text-xs ${
+                      entry.success ? "" : "border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20"
+                    }`}
+                    data-testid={`audit-entry-${entry.id}`}
+                  >
+                    {entry.success ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0 mt-0.5" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{entry.eventType.replace(/_/g, " ")}</span>
+                        {entry.authSource && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                            {entry.authSource}
+                          </span>
+                        )}
+                      </div>
+                      {entry.ipAddress && (
+                        <span className="text-muted-foreground">{entry.ipAddress}</span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground shrink-0">
+                      {new Date(entry.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+    </>
   );
 }

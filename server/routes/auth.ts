@@ -1,9 +1,77 @@
 import { Router, type Request, type Response } from "express";
+import { z } from "zod";
 import { storage } from "../storage";
-import { requireAuth, requireOrg } from "../middleware";
+import { requireAuth, requireOrg, requireMinRole } from "../middleware";
 import { hashPassword, verifyPassword } from "../middleware";
+import { getAuthProvider, encryptSecret, decryptSecret } from "../auth";
+import type { AuthProviderConfig } from "../auth";
+
+const authConfigSchema = z.object({
+  authMode: z.enum(["local", "m365", "hybrid"]),
+  entraTenantId: z.string().optional().default(""),
+  entraTenantDomain: z.string().optional().default(""),
+  entraClientId: z.string().optional().default(""),
+  entraClientSecret: z.string().optional(),
+  entraRedirectUri: z.string().optional().default(""),
+  entraPostLogoutRedirectUri: z.string().optional().default(""),
+  entraAllowedDomains: z.array(z.string()).optional().default([]),
+  entraJitProvisioningEnabled: z.boolean().optional().default(true),
+  entraRequireAdminConsent: z.boolean().optional().default(false),
+});
+
+const roleMappingSchema = z.object({
+  entraGroupId: z.string().min(1, "Entra Group Object ID is required").trim(),
+  pulsedeskRole: z.enum(["readonly", "staff", "technician", "supervisor", "admin"]),
+  displayLabel: z.string().optional(),
+});
 
 const router = Router();
+
+function getClientIp(req: Request): string {
+  return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
+}
+
+async function logAuthEvent(req: Request, params: {
+  orgId?: string | null;
+  userId?: string | null;
+  eventType: string;
+  authSource?: string;
+  tenantResolved?: string;
+  details?: any;
+  success: boolean;
+}) {
+  try {
+    await storage.createAuthAuditLog({
+      ...params,
+      orgId: params.orgId || null,
+      userId: params.userId || null,
+      ipAddress: getClientIp(req),
+      userAgent: req.headers["user-agent"] || null,
+    });
+  } catch (err) {
+    console.error("Failed to log auth event:", err);
+  }
+}
+
+router.get("/api/auth/tenant/:slug", async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+    const org = await storage.getOrgBySlug(slug);
+    if (!org) {
+      return res.status(404).json({ error: "Organization not found" });
+    }
+    const authConfig = await storage.getOrgAuthConfig(org.id);
+    res.json({
+      orgId: org.id,
+      orgName: org.name,
+      orgSlug: org.slug,
+      authMode: authConfig?.authMode || "local",
+      logoUrl: org.logoUrl || null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.post("/api/auth/register", async (req: Request, res: Response) => {
   try {
@@ -32,8 +100,10 @@ router.post("/api/auth/register", async (req: Request, res: Response) => {
     });
 
     req.session.userId = user.id;
+    req.session.authSource = "local";
     req.session.save((err) => {
       if (err) return res.status(500).json({ error: "Session error" });
+      logAuthEvent(req, { userId: user.id, eventType: "register", authSource: "local", success: true });
       res.json({ user: { ...user, password: undefined } });
     });
   } catch (err: any) {
@@ -43,17 +113,77 @@ router.post("/api/auth/register", async (req: Request, res: Response) => {
 
 router.post("/api/auth/login", async (req: Request, res: Response) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, orgSlug } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: "Username and password required" });
     }
+
+    let org = null;
+    let authConfig = null;
+    if (orgSlug) {
+      org = await storage.getOrgBySlug(orgSlug);
+      if (org) {
+        authConfig = await storage.getOrgAuthConfig(org.id);
+        if (authConfig?.authMode === "m365") {
+          await logAuthEvent(req, {
+            orgId: org.id,
+            eventType: "login_rejected",
+            authSource: "local",
+            tenantResolved: orgSlug,
+            details: { reason: "Local login not allowed in M365-only mode" },
+            success: false,
+          });
+          return res.status(403).json({ error: "This organization requires Microsoft 365 sign-in" });
+        }
+      }
+    }
+
+    if (org && authConfig?.authMode === "hybrid") {
+      const userToCheck = await storage.getUserByUsername(username);
+      if (userToCheck) {
+        const mem = await storage.getMembership(org.id, userToCheck.id);
+        if (mem) {
+          const adminRoles = ["admin", "owner"];
+          if (!adminRoles.includes(mem.role)) {
+            await logAuthEvent(req, {
+              orgId: org.id,
+              userId: userToCheck.id,
+              eventType: "login_rejected",
+              authSource: "local",
+              tenantResolved: orgSlug || undefined,
+              details: { reason: "Hybrid mode: local login restricted to admin/owner roles", role: mem.role },
+              success: false,
+            });
+            return res.status(403).json({ error: "This organization requires Microsoft 365 sign-in. Local login is available only for administrators." });
+          }
+        }
+      }
+    }
+
     const user = await storage.getUserByUsername(username);
     if (!user) {
+      await logAuthEvent(req, {
+        orgId: org?.id,
+        eventType: "login_failed",
+        authSource: "local",
+        tenantResolved: orgSlug || undefined,
+        details: { reason: "User not found", username },
+        success: false,
+      });
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
     const valid = await verifyPassword(password, user.password);
     if (!valid) {
+      await logAuthEvent(req, {
+        orgId: org?.id,
+        userId: user.id,
+        eventType: "login_failed",
+        authSource: "local",
+        tenantResolved: orgSlug || undefined,
+        details: { reason: "Invalid password" },
+        success: false,
+      });
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -62,15 +192,34 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
       await storage.updateUser(user.id, { password: newHash });
     }
 
+    await storage.updateUser(user.id, { lastLoginAt: new Date() });
+
     req.session.userId = user.id;
+    req.session.authSource = "local";
 
     const userOrgs = await storage.getUserOrgs(user.id);
-    if (userOrgs.length > 0) {
+
+    if (org) {
+      const membership = await storage.getMembership(org.id, user.id);
+      if (membership) {
+        req.session.orgId = org.id;
+      } else if (userOrgs.length > 0) {
+        req.session.orgId = userOrgs[0].id;
+      }
+    } else if (userOrgs.length > 0) {
       req.session.orgId = userOrgs[0].id;
     }
 
     req.session.save((err) => {
       if (err) return res.status(500).json({ error: "Session error" });
+      logAuthEvent(req, {
+        orgId: req.session.orgId,
+        userId: user.id,
+        eventType: "login_success",
+        authSource: "local",
+        tenantResolved: orgSlug || undefined,
+        success: true,
+      });
       res.json({ user: { ...user, password: undefined } });
     });
   } catch (err: any) {
@@ -78,8 +227,270 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
   }
 });
 
+router.get("/api/auth/m365/login", async (req: Request, res: Response) => {
+  try {
+    const orgSlug = req.query.org as string;
+    if (!orgSlug) {
+      return res.status(400).json({ error: "Organization identifier required" });
+    }
+
+    const org = await storage.getOrgBySlug(orgSlug);
+    if (!org) {
+      return res.status(404).json({ error: "Organization not found" });
+    }
+
+    const authConfig = await storage.getOrgAuthConfig(org.id);
+    if (!authConfig || authConfig.authMode === "local") {
+      return res.status(400).json({ error: "Microsoft 365 login is not enabled for this organization" });
+    }
+
+    let clientSecret = null;
+    if (authConfig.entraClientSecretEncrypted) {
+      try {
+        clientSecret = decryptSecret(authConfig.entraClientSecretEncrypted);
+      } catch {
+        return res.status(500).json({ error: "Auth configuration error" });
+      }
+    }
+
+    const providerConfig: AuthProviderConfig = {
+      orgId: org.id,
+      authMode: authConfig.authMode,
+      entraTenantId: authConfig.entraTenantId,
+      entraClientId: authConfig.entraClientId,
+      entraClientSecret: clientSecret,
+      entraRedirectUri: authConfig.entraRedirectUri,
+      entraAllowedDomains: authConfig.entraAllowedDomains,
+      entraJitProvisioningEnabled: authConfig.entraJitProvisioningEnabled,
+    };
+
+    const provider = getAuthProvider(authConfig.authMode);
+    const result = await provider.initiateLogin(req, providerConfig);
+
+    req.session.entraState = result.state;
+    req.session.entraNonce = result.nonce;
+    req.session.entraOrgId = org.id;
+
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: "Session error" });
+      res.json({ redirectUrl: result.redirectUrl });
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/api/auth/m365/callback", async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.entraOrgId;
+    const savedState = req.session.entraState;
+
+    if (!orgId) {
+      return res.redirect("/?error=invalid_session");
+    }
+
+    const receivedState = req.query.state as string;
+    if (savedState && receivedState !== savedState) {
+      await logAuthEvent(req, {
+        orgId,
+        eventType: "m365_callback_failed",
+        authSource: "m365",
+        details: { reason: "State mismatch" },
+        success: false,
+      });
+      return res.redirect("/?error=state_mismatch");
+    }
+
+    const org = await storage.getOrg(orgId);
+    if (!org) {
+      return res.redirect("/?error=org_not_found");
+    }
+
+    const authConfig = await storage.getOrgAuthConfig(orgId);
+    if (!authConfig) {
+      return res.redirect("/?error=auth_not_configured");
+    }
+
+    let clientSecret = null;
+    if (authConfig.entraClientSecretEncrypted) {
+      try {
+        clientSecret = decryptSecret(authConfig.entraClientSecretEncrypted);
+      } catch {
+        return res.redirect("/?error=config_error");
+      }
+    }
+
+    const providerConfig: AuthProviderConfig = {
+      orgId: org.id,
+      authMode: authConfig.authMode,
+      entraTenantId: authConfig.entraTenantId,
+      entraClientId: authConfig.entraClientId,
+      entraClientSecret: clientSecret,
+      entraRedirectUri: authConfig.entraRedirectUri,
+      entraAllowedDomains: authConfig.entraAllowedDomains,
+      entraJitProvisioningEnabled: authConfig.entraJitProvisioningEnabled,
+    };
+
+    const provider = getAuthProvider(authConfig.authMode);
+    const result = await provider.handleCallback(req, providerConfig);
+
+    delete req.session.entraState;
+    delete req.session.entraNonce;
+    delete req.session.entraOrgId;
+
+    if (!result.success) {
+      await logAuthEvent(req, {
+        orgId,
+        eventType: "m365_login_failed",
+        authSource: "m365",
+        details: { error: result.error },
+        success: false,
+      });
+      return res.redirect(`/?error=${encodeURIComponent(result.error || "auth_failed")}`);
+    }
+
+    let user = result.entraObjectId
+      ? await storage.getUserByEntraObjectId(result.entraObjectId, orgId)
+      : null;
+
+    const roleMappings = await storage.getOrgRoleMappings(orgId);
+    let mappedRole = "staff";
+    const matchedGroups: string[] = [];
+
+    if (result.groups && roleMappings.length > 0) {
+      const roleHierarchy: Record<string, number> = {
+        owner: 120, admin: 100, supervisor: 80, technician: 60, staff: 40, readonly: 10,
+      };
+      let highestLevel = 0;
+
+      for (const mapping of roleMappings) {
+        if (result.groups.includes(mapping.entraGroupId)) {
+          matchedGroups.push(mapping.entraGroupId);
+          const level = roleHierarchy[mapping.pulsedeskRole] || 0;
+          if (level > highestLevel) {
+            highestLevel = level;
+            mappedRole = mapping.pulsedeskRole;
+          }
+        }
+      }
+    }
+
+    if (user) {
+      await storage.updateUser(user.id, {
+        fullName: result.displayName || user.fullName,
+        email: result.email || user.email,
+        entraUPN: result.upn || user.entraUPN,
+        entraDepartment: result.department || user.entraDepartment,
+        entraJobTitle: result.jobTitle || user.entraJobTitle,
+        lastLoginAt: new Date(),
+      });
+
+      const membership = await storage.getMembership(orgId, user.id);
+      if (membership) {
+        if (roleMappings.length > 0 && matchedGroups.length > 0) {
+          await storage.updateMembershipRole(orgId, user.id, mappedRole);
+        }
+      }
+    } else if (authConfig.entraJitProvisioningEnabled) {
+      const username = (result.upn || result.email || result.entraObjectId || "").split("@")[0].toLowerCase().replace(/[^a-z0-9_.-]/g, "");
+      if (!username) {
+        await logAuthEvent(req, {
+          orgId,
+          eventType: "jit_provision_failed",
+          authSource: "m365",
+          details: { reason: "Could not determine username", entraObjectId: result.entraObjectId },
+          success: false,
+        });
+        return res.redirect("/?error=provisioning_failed");
+      }
+
+      const existingByUsername = await storage.getUserByUsername(username);
+      const finalUsername = existingByUsername ? `${username}_${Date.now()}` : username;
+
+      user = await storage.createUser({
+        username: finalUsername,
+        password: await hashPassword(require("crypto").randomBytes(32).toString("hex")),
+        fullName: result.displayName || finalUsername,
+        phone: "",
+        email: result.email || "",
+      });
+
+      await storage.updateUser(user.id, {
+        authSource: "m365",
+        entraObjectId: result.entraObjectId || null,
+        entraUPN: result.upn || null,
+        entraDepartment: result.department || null,
+        entraJobTitle: result.jobTitle || null,
+        lastLoginAt: new Date(),
+      });
+
+      await storage.createMembership(orgId, user.id, mappedRole);
+
+      await logAuthEvent(req, {
+        orgId,
+        userId: user.id,
+        eventType: "jit_provisioned",
+        authSource: "m365",
+        details: {
+          entraObjectId: result.entraObjectId,
+          mappedRole,
+          matchedGroups,
+          username: finalUsername,
+        },
+        success: true,
+      });
+    } else {
+      await logAuthEvent(req, {
+        orgId,
+        eventType: "m365_login_denied",
+        authSource: "m365",
+        details: {
+          reason: "JIT provisioning disabled and user not found",
+          entraObjectId: result.entraObjectId,
+        },
+        success: false,
+      });
+      return res.redirect("/?error=user_not_provisioned");
+    }
+
+    req.session.userId = user.id;
+    req.session.orgId = orgId;
+    req.session.authSource = "m365";
+    req.session.entraTenantId = result.entraTenantId || undefined;
+
+    req.session.save((err) => {
+      if (err) {
+        console.error("Session save error after M365 callback:", err);
+        return res.redirect("/?error=session_error");
+      }
+      logAuthEvent(req, {
+        orgId,
+        userId: user!.id,
+        eventType: "m365_login_success",
+        authSource: "m365",
+        details: {
+          entraObjectId: result.entraObjectId,
+          mappedRole,
+          matchedGroups,
+        },
+        success: true,
+      });
+      res.redirect("/");
+    });
+  } catch (err: any) {
+    console.error("M365 callback error:", err);
+    res.redirect("/?error=callback_error");
+  }
+});
+
 router.post("/api/auth/logout", (req: Request, res: Response) => {
+  const orgId = req.session.orgId;
+  const userId = req.session.userId;
+  const authSource = req.session.authSource;
   req.session.destroy(() => {
+    if (userId) {
+      logAuthEvent(req, { orgId, userId, eventType: "logout", authSource, success: true });
+    }
     res.json({ ok: true });
   });
 });
@@ -122,12 +533,22 @@ router.get("/api/auth/me", requireAuth, async (req: Request, res: Response) => {
       orgCounts = await storage.getOrgCounts(org.id);
     }
 
+    let authConfig = null;
+    if (org) {
+      const config = await storage.getOrgAuthConfig(org.id);
+      if (config) {
+        authConfig = { authMode: config.authMode };
+      }
+    }
+
     res.json({
       user: { ...user, password: undefined },
       org,
       membership,
       orgs: userOrgs,
       orgCounts,
+      authConfig,
+      authSource: req.session.authSource || "local",
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -174,6 +595,9 @@ router.post("/api/auth/change-password", requireAuth, async (req: Request, res: 
     }
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(404).json({ error: "User not found" });
+    if (user.authSource === "m365") {
+      return res.status(400).json({ error: "Password changes are not available for Microsoft 365 accounts" });
+    }
     const valid = await verifyPassword(currentPassword, user.password);
     if (!valid) return res.status(401).json({ error: "Current password is incorrect" });
     const newHash = await hashPassword(newPassword);
@@ -196,10 +620,230 @@ router.get("/api/members", requireAuth, requireOrg, async (req: Request, res: Re
           fullName: u.fullName,
           username: u.username,
           email: u.email,
+          authSource: u.authSource || "local",
         });
       }
     }
     res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/api/auth/config", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const config = await storage.getOrgAuthConfig(orgId);
+    if (!config) {
+      return res.json({
+        authMode: "local",
+        entraTenantId: null,
+        entraTenantDomain: null,
+        entraClientId: null,
+        hasClientSecret: false,
+        entraRedirectUri: null,
+        entraPostLogoutRedirectUri: null,
+        entraAllowedDomains: [],
+        entraJitProvisioningEnabled: true,
+        entraRequireAdminConsent: false,
+        entraLastTestStatus: null,
+        entraLastTestedAt: null,
+        graphEnabled: false,
+        graphScopes: [],
+        graphSyncInterval: null,
+      });
+    }
+
+    res.json({
+      authMode: config.authMode,
+      entraTenantId: config.entraTenantId,
+      entraTenantDomain: config.entraTenantDomain,
+      entraClientId: config.entraClientId,
+      hasClientSecret: !!config.entraClientSecretEncrypted,
+      entraRedirectUri: config.entraRedirectUri,
+      entraPostLogoutRedirectUri: config.entraPostLogoutRedirectUri,
+      entraAllowedDomains: config.entraAllowedDomains || [],
+      entraJitProvisioningEnabled: config.entraJitProvisioningEnabled,
+      entraRequireAdminConsent: config.entraRequireAdminConsent,
+      entraLastTestStatus: config.entraLastTestStatus,
+      entraLastTestedAt: config.entraLastTestedAt,
+      graphEnabled: config.graphEnabled,
+      graphScopes: config.graphScopes || [],
+      graphSyncInterval: config.graphSyncInterval,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put("/api/auth/config", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const parsed = authConfigSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid configuration", details: parsed.error.flatten().fieldErrors });
+    }
+    const body = parsed.data;
+
+    const updateData: any = {
+      authMode: body.authMode,
+      entraTenantId: body.entraTenantId || null,
+      entraTenantDomain: body.entraTenantDomain || null,
+      entraClientId: body.entraClientId || null,
+      entraRedirectUri: body.entraRedirectUri || null,
+      entraPostLogoutRedirectUri: body.entraPostLogoutRedirectUri || null,
+      entraAllowedDomains: body.entraAllowedDomains || [],
+      entraJitProvisioningEnabled: body.entraJitProvisioningEnabled,
+      entraRequireAdminConsent: body.entraRequireAdminConsent,
+    };
+
+    if (body.entraClientSecret && body.entraClientSecret !== "***") {
+      updateData.entraClientSecretEncrypted = encryptSecret(body.entraClientSecret);
+    }
+
+    const config = await storage.upsertOrgAuthConfig(orgId, updateData);
+
+    await logAuthEvent(req, {
+      orgId,
+      userId: req.session.userId,
+      eventType: "auth_config_updated",
+      authSource: "local",
+      details: { authMode: updateData.authMode },
+      success: true,
+    });
+
+    res.json({
+      authMode: config.authMode,
+      entraTenantId: config.entraTenantId,
+      entraTenantDomain: config.entraTenantDomain,
+      entraClientId: config.entraClientId,
+      hasClientSecret: !!config.entraClientSecretEncrypted,
+      entraRedirectUri: config.entraRedirectUri,
+      entraPostLogoutRedirectUri: config.entraPostLogoutRedirectUri,
+      entraAllowedDomains: config.entraAllowedDomains || [],
+      entraJitProvisioningEnabled: config.entraJitProvisioningEnabled,
+      entraRequireAdminConsent: config.entraRequireAdminConsent,
+      entraLastTestStatus: config.entraLastTestStatus,
+      entraLastTestedAt: config.entraLastTestedAt,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/api/auth/config/test", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const config = await storage.getOrgAuthConfig(orgId);
+
+    if (!config || config.authMode === "local") {
+      return res.status(400).json({ error: "Microsoft 365 is not configured" });
+    }
+
+    const issues: string[] = [];
+    if (!config.entraTenantId) issues.push("Entra Tenant ID is required");
+    if (!config.entraClientId) issues.push("Client ID is required");
+    if (!config.entraClientSecretEncrypted) issues.push("Client Secret is required");
+    if (!config.entraRedirectUri) issues.push("Redirect URI is required");
+
+    if (issues.length > 0) {
+      await storage.upsertOrgAuthConfig(orgId, {
+        entraLastTestStatus: "failed",
+        entraLastTestedAt: new Date(),
+      });
+      return res.json({ success: false, issues });
+    }
+
+    try {
+      const oidcUrl = `https://login.microsoftonline.com/${config.entraTenantId}/v2.0/.well-known/openid-configuration`;
+      const oidcResponse = await fetch(oidcUrl);
+      if (!oidcResponse.ok) {
+        issues.push("Could not reach Microsoft Entra OIDC discovery endpoint. Check Tenant ID.");
+      }
+    } catch {
+      issues.push("Network error reaching Microsoft Entra. Check Tenant ID.");
+    }
+
+    const status = issues.length === 0 ? "passed" : "failed";
+    await storage.upsertOrgAuthConfig(orgId, {
+      entraLastTestStatus: status,
+      entraLastTestedAt: new Date(),
+    });
+
+    await logAuthEvent(req, {
+      orgId,
+      userId: req.session.userId,
+      eventType: "auth_config_test",
+      details: { status, issues },
+      success: issues.length === 0,
+    });
+
+    res.json({ success: issues.length === 0, issues, status });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/api/auth/role-mappings", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+  try {
+    const mappings = await storage.getOrgRoleMappings(req.session.orgId!);
+    res.json(mappings);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/api/auth/role-mappings", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+  try {
+    const parsed = roleMappingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid role mapping", details: parsed.error.flatten().fieldErrors });
+    }
+    const { entraGroupId, pulsedeskRole, displayLabel } = parsed.data;
+    const mapping = await storage.createOrgRoleMapping(
+      req.session.orgId!,
+      entraGroupId,
+      pulsedeskRole,
+      displayLabel?.trim() || undefined,
+    );
+
+    await logAuthEvent(req, {
+      orgId: req.session.orgId,
+      userId: req.session.userId,
+      eventType: "role_mapping_created",
+      details: { entraGroupId: entraGroupId.trim(), pulsedeskRole, displayLabel },
+      success: true,
+    });
+
+    res.json(mapping);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/api/auth/role-mappings/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+  try {
+    await storage.deleteOrgRoleMapping(req.session.orgId!, req.params.id);
+
+    await logAuthEvent(req, {
+      orgId: req.session.orgId,
+      userId: req.session.userId,
+      eventType: "role_mapping_deleted",
+      details: { mappingId: req.params.id },
+      success: true,
+    });
+
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/api/auth/audit-log", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const logs = await storage.getAuthAuditLog(req.session.orgId!, Math.min(limit, 200));
+    res.json(logs);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -20,6 +20,11 @@ declare module "express-session" {
   interface SessionData {
     userId?: string;
     orgId?: string;
+    authSource?: string;
+    entraTenantId?: string;
+    entraState?: string;
+    entraNonce?: string;
+    entraOrgId?: string;
   }
 }
 

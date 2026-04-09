@@ -1,6 +1,7 @@
-export type Role = "admin" | "supervisor" | "staff" | "technician" | "readonly";
+export type Role = "owner" | "admin" | "supervisor" | "staff" | "technician" | "readonly";
 
 const ROLE_HIERARCHY: Record<Role, number> = {
+  owner: 120,
   admin: 100,
   supervisor: 80,
   technician: 60,
@@ -50,6 +51,7 @@ export function isReadOnly(role: string | undefined): boolean {
 }
 
 export const ROLE_LABELS: Record<string, string> = {
+  owner: "Owner",
   admin: "Administrator",
   supervisor: "Supervisor",
   staff: "Staff",

@@ -7,6 +7,7 @@ import {
   integer,
   boolean,
   pgEnum,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -78,6 +79,12 @@ export const facilityRequestTypeEnum = pgEnum("facility_request_type", [
   "other",
 ]);
 
+export const authModeEnum = pgEnum("auth_mode", [
+  "local",
+  "m365",
+  "hybrid",
+]);
+
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
@@ -86,6 +93,14 @@ export const users = pgTable("users", {
   phone: text("phone").default(""),
   email: text("email").default(""),
   isSuperAdmin: boolean("is_super_admin").default(false).notNull(),
+  authSource: text("auth_source").default("local"),
+  entraObjectId: text("entra_object_id"),
+  entraUPN: text("entra_upn"),
+  entraDepartment: text("entra_department"),
+  entraJobTitle: text("entra_job_title"),
+  entraManagerId: text("entra_manager_id"),
+  graphLastSyncedAt: timestamp("graph_last_synced_at"),
+  lastLoginAt: timestamp("last_login_at"),
 });
 
 export const orgs = pgTable("orgs", {
@@ -249,6 +264,55 @@ export const vendors = pgTable("vendors", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const orgAuthConfig = pgTable("org_auth_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id)
+    .unique(),
+  authMode: authModeEnum("auth_mode").notNull().default("local"),
+  entraTenantId: text("entra_tenant_id"),
+  entraTenantDomain: text("entra_tenant_domain"),
+  entraClientId: text("entra_client_id"),
+  entraClientSecretEncrypted: text("entra_client_secret_encrypted"),
+  entraRedirectUri: text("entra_redirect_uri"),
+  entraPostLogoutRedirectUri: text("entra_post_logout_redirect_uri"),
+  entraAllowedDomains: text("entra_allowed_domains").array(),
+  entraJitProvisioningEnabled: boolean("entra_jit_provisioning_enabled").default(true).notNull(),
+  entraRequireAdminConsent: boolean("entra_require_admin_consent").default(false).notNull(),
+  entraLastTestStatus: text("entra_last_test_status"),
+  entraLastTestedAt: timestamp("entra_last_tested_at"),
+  graphEnabled: boolean("graph_enabled").default(false).notNull(),
+  graphScopes: text("graph_scopes").array(),
+  graphSyncInterval: integer("graph_sync_interval"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const orgRoleMappings = pgTable("org_role_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id),
+  entraGroupId: text("entra_group_id").notNull(),
+  displayLabel: text("display_label"),
+  pulsedeskRole: text("pulsedesk_role").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const authAuditLog = pgTable("auth_audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id").references(() => orgs.id),
+  userId: varchar("user_id").references(() => users.id),
+  eventType: text("event_type").notNull(),
+  authSource: text("auth_source"),
+  tenantResolved: text("tenant_resolved"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  details: jsonb("details"),
+  success: boolean("success").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -366,6 +430,27 @@ export type InsertFacilityRequest = z.infer<typeof insertFacilityRequestSchema>;
 export type Vendor = typeof vendors.$inferSelect;
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type InviteCode = typeof inviteCodes.$inferSelect;
+export type OrgAuthConfig = typeof orgAuthConfig.$inferSelect;
+export type OrgRoleMapping = typeof orgRoleMappings.$inferSelect;
+export type AuthAuditLogEntry = typeof authAuditLog.$inferSelect;
+
+export const insertOrgAuthConfigSchema = createInsertSchema(orgAuthConfig).omit({
+  id: true,
+  updatedAt: true,
+});
+export type InsertOrgAuthConfig = z.infer<typeof insertOrgAuthConfigSchema>;
+
+export const insertOrgRoleMappingSchema = createInsertSchema(orgRoleMappings).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertOrgRoleMapping = z.infer<typeof insertOrgRoleMappingSchema>;
+
+export const AUTH_MODE_LABELS: Record<string, string> = {
+  local: "Local Authentication",
+  m365: "Microsoft 365 Only",
+  hybrid: "Hybrid (M365 + Local Fallback)",
+};
 
 export const TICKET_PRIORITY_LABELS: Record<string, string> = {
   critical: "Critical",

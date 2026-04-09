@@ -1,0 +1,262 @@
+Take the existing PulseDesk multi-tenant application and build a polished MICROSOFT 365 / ENTRA ID VALIDATION ENGINE plus a TENANT ONBOARDING CHECKLIST PROGRESS TRACKER for the tenant admin experience.
+
+IMPORTANT:
+This is not a redesign.
+This is a product-hardening and onboarding-acceleration pass focused on making Microsoft 365 integration easier to validate, easier to understand, and easier to operationalize across many healthcare tenants.
+
+PRIMARY GOAL:
+Create a tenant-scoped validation and readiness system that helps a PulseDesk tenant admin determine whether their Microsoft 365 / Entra integration is fully configured and ready for real user sign-in.
+
+SECONDARY GOAL:
+Create an onboarding checklist progress tracker that makes implementation status visible and reduces confusion for both client admins and PulseDesk implementers.
+
+MULTI-TENANT SAFETY REQUIREMENTS:
+- all validation results must be tenant-scoped
+- all onboarding progress data must be tenant-scoped
+- no tenant can see another tenant’s readiness state, auth config, test results, mappings, or onboarding notes
+- all test actions must execute only against the active tenant’s configuration
+
+MAIN FEATURES TO BUILD:
+1. Microsoft 365 Configuration Validation Engine
+2. Onboarding Checklist Progress Tracker
+3. Readiness Status / Readiness Score Card
+4. Copy-Friendly Implementation Summary
+5. Guided Troubleshooting States
+6. Tenant Admin UX improvements around setup confidence
+
+VALIDATION ENGINE REQUIREMENTS:
+Build a tenant-scoped validation engine that can assess whether the Microsoft 365 / Entra integration appears correctly configured.
+
+The validation engine should support checks such as:
+- auth mode selected
+- tenant ID present
+- primary domain present
+- client ID present
+- client secret configured
+- redirect URI present and well-formed
+- post-logout redirect URI present if required
+- at least one allowed domain configured if that control is enabled
+- role mappings present
+- all core PulseDesk roles mapped or intentionally left unmapped with warning
+- JIT provisioning setting configured
+- local fallback admin presence if hybrid mode is enabled
+- config save state is valid
+- last successful configuration test exists
+- last successful sign-in test exists if implemented later
+
+VALIDATION OUTPUT REQUIREMENTS:
+For each validation item, provide:
+- status: passed / warning / failed / not configured
+- short explanation
+- recommended next step
+- quick link to the relevant section if possible
+
+Do NOT expose raw underlying system errors if avoidable.
+Translate validation output into clean tenant-admin-friendly language.
+
+READINESS STATUS / SCORE REQUIREMENTS:
+Create a readiness card or dashboard section that summarizes setup health.
+
+Examples:
+- Not Started
+- In Progress
+- Needs Attention
+- Nearly Ready
+- Ready for Pilot
+- Production Ready (optional if appropriate)
+
+Include:
+- overall readiness state
+- readiness percentage or progress bar
+- count of passed checks
+- count of warnings
+- count of failed checks
+- “next best action” guidance
+
+The readiness experience should feel polished and helpful, not gimmicky.
+
+ONBOARDING CHECKLIST TRACKER REQUIREMENTS:
+Create a structured onboarding checklist for tenant admins implementing Microsoft 365 sign-in.
+
+Checklist items should include steps such as:
+1. Choose auth mode
+2. Enter Entra tenant details
+3. Provide application credentials
+4. Confirm redirect URI / callback setup
+5. Create or verify PulseDesk role groups
+6. Map Microsoft groups to PulseDesk roles
+7. Configure allowed domains if used
+8. Enable JIT provisioning if desired
+9. Set up fallback local admin if using hybrid mode
+10. Run configuration test
+11. Test sign-in with admin user
+12. Test sign-in with staff/technician user
+13. Test unauthorized user behavior
+14. Review troubleshooting or warnings
+15. Mark tenant ready for go-live
+
+TRACKER BEHAVIOR REQUIREMENTS:
+- automatically mark steps complete where possible based on actual configuration state
+- allow manual notes or manual confirmation where appropriate
+- visually show complete / incomplete / warning states
+- show step descriptions and why each step matters
+- show blockers clearly
+- support progress persistence for the tenant
+
+CHECKLIST UX REQUIREMENTS:
+- clean visual checklist layout
+- collapsible step details if helpful
+- progress bar or completion count
+- quick links to settings sections
+- helpful inline guidance
+- no clutter
+- desktop and tablet friendly
+
+CONFIGURATION TEST ENGINE REQUIREMENTS:
+Improve the existing Microsoft 365 configuration testing experience.
+
+Add a test workflow that can validate, at minimum:
+- required fields exist
+- tenant config looks structurally valid
+- redirect URI/callback configuration is present
+- secret is configured
+- role mapping appears complete
+- hybrid local fallback requirements are satisfied if enabled
+
+If possible within the current implementation architecture, support or prepare for:
+- initiating a tenant-scoped Microsoft sign-in test flow
+- recording test success/failure
+- recording timestamp of last test
+- recording result summary
+
+Show clean test states such as:
+- not yet tested
+- test passed
+- test passed with warnings
+- test failed
+- configuration incomplete
+
+TROUBLESHOOTING EXPERIENCE REQUIREMENTS:
+Create guided troubleshooting messages based on validation outcomes.
+
+Examples:
+- missing tenant ID
+- missing client secret
+- role mapping incomplete
+- no admin role mapping configured
+- hybrid mode enabled but no fallback admin exists
+- allowed domains enabled but none configured
+- configuration saved but never tested
+- sign-in may work but authorization mapping is incomplete
+
+Each troubleshooting message should include:
+- what the issue means
+- what the tenant admin should check next
+- link to the section that needs attention
+
+IMPLEMENTATION SUMMARY REQUIREMENTS:
+Create a tenant-facing copy-friendly “Implementation Summary” panel that collects the most important onboarding values and statuses in one place.
+
+Include examples such as:
+- organization name
+- PulseDesk subdomain
+- auth mode
+- Entra tenant ID
+- primary domain
+- redirect URI
+- post-logout redirect URI
+- allowed domains
+- role mapping status
+- fallback admin enabled yes/no
+- last config test result
+- current readiness state
+
+Support:
+- copy-to-clipboard button
+- easy formatting for pasting into tickets/emails/internal docs
+- clean presentation
+- optionally export/print placeholder for future expansion
+
+This summary should help both tenant admins and PulseDesk implementation staff move faster.
+
+TENANT ADMIN DASHBOARD ENHANCEMENT:
+If it fits cleanly, add a small integration readiness widget to the tenant admin home/settings dashboard showing:
+- auth mode
+- readiness state
+- last test result
+- checklist completion percentage
+- quick action button such as “Resume Setup”
+
+AUDIT / HISTORY SUPPORT:
+Where practical, track tenant-scoped events such as:
+- auth settings changed
+- group mappings changed
+- test run executed
+- readiness state changed
+- onboarding step confirmed
+- fallback admin configured
+
+Show a light history or recent activity feed if this can be done cleanly.
+
+DOCUMENTATION INTEGRATION REQUIREMENTS:
+Integrate the previously embedded client-facing Microsoft 365 setup guide into the validation/checklist flow.
+
+Support:
+- contextual links from checklist steps to guide sections
+- “Learn More” actions on warnings/failures
+- quick access to troubleshooting section from failed validation items
+- seamless movement between config UI, checklist, validation, and guide content
+
+UX / PRODUCT QUALITY REQUIREMENTS:
+The overall experience should:
+- reduce onboarding friction
+- reduce support dependency
+- make implementation status obvious
+- feel polished and enterprise-credible
+- help non-developer tenant admins succeed
+- fit PulseDesk’s modern clinical visual style
+- stay consistent with the rest of the app
+
+VALIDATION LOGIC REQUIREMENTS:
+Build the validation engine so it is maintainable and extensible.
+Do not hardcode brittle one-off checks inside the UI.
+Create structured validation rules or services that can evolve later.
+
+Examples:
+- validation rule definitions
+- tenant readiness evaluator
+- onboarding progress evaluator
+- structured status objects for the UI
+
+CODE STRUCTURE REQUIREMENTS:
+Refactor cleanly and modularly.
+Create or improve:
+- validation service layer
+- readiness evaluator
+- onboarding checklist model
+- checklist UI component
+- validation result component
+- readiness score/status card
+- implementation summary card
+- troubleshooting callout component
+- step-to-doc linking helpers
+- copy-to-clipboard support
+
+BRANDING REQUIREMENTS:
+- preserve PulseDesk branding
+- preserve the modern clinical palette
+- keep all validation and onboarding UI consistent with the existing product
+- avoid generic developer-console styling
+- keep it healthcare-internal and operationally polished
+
+OPTIONAL NICE-TO-HAVE IMPROVEMENTS IF THEY FIT CLEANLY:
+- readiness state badge on the auth settings page
+- “what’s left to finish” summary
+- onboarding notes field for tenant admins
+- admin action banner such as “3 steps remaining before pilot readiness”
+- printable onboarding summary placeholder
+- sign-in test history placeholder
+- role mapping completeness visualization
+
+FINAL DELIVERABLE EXPECTATION:
+The result should add a polished Microsoft 365 validation engine and tenant onboarding checklist tracker to PulseDesk, helping tenant admins understand exactly what is configured, what is missing, what to test next, and when their organization is ready for pilot use.

@@ -7,7 +7,7 @@ PulseDesk is a multi-tenant healthcare operations ticketing system for hospitals
 The application follows a monolithic full-stack architecture with a React frontend served by an Express backend, backed by PostgreSQL via Drizzle ORM. It supports multi-tenancy through organizations with role-based memberships (admin, supervisor, staff, technician, readonly).
 
 **Core features:**
-- Authentication (username/password with session-based auth)
+- Authentication (local username/password + Microsoft 365 / Entra ID SSO with tenant-aware login)
 - Organization creation and invite-code-based joining
 - Ticket management with 9 statuses (new, triage, assigned, waiting_department, waiting_vendor, in_progress, escalated, resolved, closed)
 - 4 priority levels (critical, high, normal, low)
@@ -58,9 +58,9 @@ The application follows a monolithic full-stack architecture with a React fronte
 
 ### Permissions
 - `client/src/lib/permissions.ts`: Role-based permission utilities
-- 5-tier hierarchy: admin (100) > supervisor (80) > technician (60) > staff (40) > readonly (10)
+- 6-tier hierarchy: owner (120) > admin (100) > supervisor (80) > technician (60) > staff (40) > readonly (10)
 - Functions: canManageTickets, canAssignTickets, canManageSettings, canSubmitIssues, canAddNotes, canEscalate, canViewAnalytics, canManageUsers, isReadOnly
-- `ROLE_LABELS`: admin→Administrator, supervisor→Supervisor, technician→Technician, staff→Staff, readonly→Executive (Read-Only)
+- `ROLE_LABELS`: owner→Owner, admin→Administrator, supervisor→Supervisor, technician→Technician, staff→Staff, readonly→Executive (Read-Only)
 
 ### Status Vocabulary
 - "Intake" (new), "Triage" (triage), "Assigned" (assigned), "Dept. Pending" (waiting_department), "Vendor Pending" (waiting_vendor), "In Progress" (in_progress), "Escalated" (escalated), "Resolved" (resolved), "Closed" (closed)
@@ -74,7 +74,13 @@ The application follows a monolithic full-stack architecture with a React fronte
 ### Server
 - `server/index.ts` - Express app entry point
 - `server/routes/index.ts` - Route registration with session middleware
-- `server/routes/auth.ts` - Auth (login, register, logout, profile, password change, members list)
+- `server/routes/auth.ts` - Auth (login, register, logout, profile, password change, members list, M365 SSO, auth config, role mappings, audit log)
+- `server/auth/index.ts` - Auth provider registry and re-exports
+- `server/auth/providers.ts` - AuthProvider interface, AuthProviderConfig, result types
+- `server/auth/local-provider.ts` - Local (bcrypt) authentication provider
+- `server/auth/entra-provider.ts` - Microsoft Entra ID / OIDC authorization code flow provider
+- `server/auth/crypto.ts` - AES-256-GCM encryption for client secrets (key derived from SESSION_SECRET via scrypt)
+- `server/auth/graph-service.ts` - IGraphService interface placeholder for future Microsoft Graph integration
 - `server/routes/orgs.ts` - Organization CRUD, invite codes, memberships
 - `server/routes/tickets.ts` - Ticket CRUD, dashboard stats (enhanced with aging/triage/resolution metrics), ticket events/notes
 - `server/routes/departments.ts` - Department CRUD
@@ -152,9 +158,63 @@ The application follows a monolithic full-stack architecture with a React fronte
 - Helper text on form fields for guidance
 - Note content validation on ticket detail
 
+## Microsoft 365 / Entra ID Authentication
+
+### Architecture
+- **Provider abstraction**: `AuthProvider` interface with `LocalAuthProvider` and `EntraAuthProvider` implementations
+- **Auth modes per org**: `local` (passwords only), `m365` (Microsoft SSO only), `hybrid` (both, with local fallback for admins)
+- **Tenant-aware login**: Login page resolves org by slug, shows appropriate sign-in options
+- **OIDC authorization code flow**: Entra provider constructs OIDC authorize URL with state/nonce, handles callback token exchange + userinfo via Microsoft Graph
+
+### Role Mapping
+- Maps Entra ID security group Object IDs to PulseDesk roles
+- Highest-level matching role wins when user belongs to multiple groups
+- `entraGroupId` is the stable UUID from Azure AD (not display name)
+- `displayLabel` is optional human-readable label for admin UI
+- Unmapped users default to `staff` role
+
+### JIT Provisioning
+- Creates user + org membership on first M365 login when enabled
+- Generates username from UPN prefix (e.g., `john.doe@org.com` → `john.doe`)
+- Refreshes profile (name, email, department, job title) on subsequent logins
+- Updates role mapping on each login if group memberships change
+
+### Security
+- Client secrets encrypted at rest with AES-256-GCM (key derived from SESSION_SECRET via scrypt)
+- Stored as `iv:tag:ciphertext` hex format in `org_auth_config.entra_client_secret_encrypted`
+- State parameter validated on callback to prevent CSRF
+- Session stores `authSource` to distinguish local vs M365 users
+
+### Database Tables
+- `org_auth_config`: Per-org auth configuration (mode, Entra tenant/client IDs, encrypted secret, JIT toggle, test status, Graph placeholders)
+- `org_role_mappings`: Entra group ID → PulseDesk role mappings with optional display labels
+- `auth_audit_log`: Login events, config changes, JIT provisioning events with IP/user-agent tracking
+- Extended `users`: `auth_source`, `entra_object_id`, `entra_upn`, `entra_department`, `entra_job_title`, `entra_manager_id`, `graph_last_synced_at`, `last_login_at`
+
+### API Endpoints
+- `GET /api/auth/tenant/:slug` - Public: resolve org auth mode for login page
+- `GET /api/auth/m365/login?org=<slug>` - Initiate M365 OIDC flow
+- `GET /api/auth/m365/callback` - Handle OIDC callback + JIT provisioning
+- `GET /api/auth/config` - Admin: get org auth configuration
+- `PUT /api/auth/config` - Admin: update org auth configuration
+- `POST /api/auth/config/test` - Admin: test Entra connection (OIDC discovery check)
+- `GET /api/auth/role-mappings` - Admin: list role mappings
+- `POST /api/auth/role-mappings` - Admin: create role mapping
+- `DELETE /api/auth/role-mappings/:id` - Admin: delete role mapping
+- `GET /api/auth/audit-log` - Admin: view auth events
+
+### Admin UI (Settings → Auth tab)
+- Auth mode selector (local/hybrid/m365)
+- Entra configuration form (tenant ID, client ID, client secret, redirect URI)
+- JIT provisioning toggle
+- Connection test button with status display
+- Group-to-role mapping editor (add/remove mappings with group Object ID + display label)
+- Graph integration placeholder section
+- Auth audit log viewer
+
 ## Key Design Decisions
 - No Stripe, subscriptions, or Twilio/SMS features
-- Roles: admin, supervisor, staff, technician, readonly (no owner/tech/viewer)
+- Roles: owner, admin, supervisor, staff, technician, readonly
 - Ticket numbering: PD-XXXXX (auto-incrementing counter per org)
 - Organization creation auto-seeds 10 default departments
 - Healthcare-appropriate blue/teal color scheme
