@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Trash2, UserCog, Clock, Building2, Shield, Bell, KeyRound, Plus, CheckCircle2, XCircle, AlertTriangle, Globe, RefreshCw } from "lucide-react";
+import { Copy, Check, Trash2, UserCog, Clock, Building2, Shield, Bell, KeyRound, Plus, CheckCircle2, XCircle, AlertTriangle, Globe, RefreshCw, Users, Info } from "lucide-react";
 const MicrosoftIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
     <rect x="1" y="1" width="9" height="9" fill="#F25022" />
@@ -78,6 +78,33 @@ const AUTH_MODE_OPTIONS = [
   { value: "m365", label: "Microsoft 365 Only", description: "All users must sign in via Microsoft 365" },
 ];
 
+function CopyButton({ text, className }: { text: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    toast({ title: "Copied to clipboard" });
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <Button variant="ghost" size="sm" className={`h-7 w-7 p-0 ${className || ""}`} onClick={handleCopy} data-testid="button-copy">
+      {copied ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
+    </Button>
+  );
+}
+
 const PULSEDESK_ROLES = [
   { value: "readonly", label: "Read Only" },
   { value: "staff", label: "Staff" },
@@ -131,6 +158,7 @@ export default function SettingsPage() {
   const createInviteMutation = useMutation({
     mutationFn: (role: string) => apiRequest("POST", "/api/invite-codes", { role }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/invite-codes"] }); toast({ title: "Invite code created" }); },
+    onError: (err: Error) => toast({ title: "Failed to create invite code", description: err.message, variant: "destructive" }),
   });
 
   const updateRoleMutation = useMutation({
@@ -323,14 +351,18 @@ export default function SettingsPage() {
                   </CardHeader>
                   <CardContent>
                     {!members || members.length === 0 ? (
-                      <p className="text-sm text-muted-foreground py-4 text-center">No team members yet. Generate invite codes below to add your team.</p>
+                      <div className="flex flex-col items-center justify-center py-6 text-center">
+                        <Users className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                        <p className="text-sm font-medium text-muted-foreground">No team members yet</p>
+                        <p className="text-[11px] text-muted-foreground/70 mt-0.5">Generate invite codes below to add your team</p>
+                      </div>
                     ) : (
                       <div className="space-y-2">
                         {members.map((m) => (
-                          <div key={m.userId} className="flex items-center justify-between gap-3 rounded-lg border p-3" data-testid={`member-${m.userId}`}>
+                          <div key={m.userId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 rounded-lg border p-3" data-testid={`member-${m.userId}`}>
                             <div className="min-w-0">
                               <p className="text-sm font-medium truncate">{m.user?.fullName || m.user?.username || "Unknown"}</p>
-                              <p className="text-xs text-muted-foreground">@{m.user?.username}{m.user?.email ? ` · ${m.user.email}` : ""}</p>
+                              <p className="text-xs text-muted-foreground truncate">@{m.user?.username}{m.user?.email ? ` · ${m.user.email}` : ""}</p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               {m.userId !== user?.id ? (
@@ -382,17 +414,7 @@ export default function SettingsPage() {
                             <code className="text-xs font-mono bg-muted px-2 py-0.5 rounded">{ic.code}</code>
                             <div className="flex items-center gap-2">
                               <span className="text-[11px] text-muted-foreground font-medium">{ROLE_LABELS[ic.role] || ic.role}</span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 w-7 p-0"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(ic.code);
-                                  toast({ title: "Code copied to clipboard" });
-                                }}
-                              >
-                                <Copy className="h-3 w-3" />
-                              </Button>
+                              <CopyButton text={ic.code} />
                             </div>
                           </div>
                         ))}
@@ -613,7 +635,7 @@ function AuthenticationSettings() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="entra-tenant-id">Tenant ID *</Label>
                 <Input
@@ -626,7 +648,10 @@ function AuthenticationSettings() {
                 />
               </div>
               <div>
-                <Label htmlFor="entra-tenant-domain">Tenant Domain</Label>
+                <Label htmlFor="entra-tenant-domain">
+                  Tenant Domain
+                  <span className="text-[10px] text-muted-foreground font-normal ml-1">(optional)</span>
+                </Label>
                 <Input
                   id="entra-tenant-domain"
                   data-testid="input-entra-tenant-domain"
@@ -635,6 +660,9 @@ function AuthenticationSettings() {
                   className="mt-1 text-xs"
                   placeholder="yourorg.onmicrosoft.com"
                 />
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Your primary domain ending in .onmicrosoft.com, found in Entra ID &gt; Overview
+                </p>
               </div>
             </div>
 
@@ -673,16 +701,27 @@ function AuthenticationSettings() {
 
             <div>
               <Label htmlFor="entra-redirect-uri">Redirect URI *</Label>
-              <Input
-                id="entra-redirect-uri"
-                data-testid="input-entra-redirect-uri"
-                value={form?.entraRedirectUri || ""}
-                onChange={(e) => updateField("entraRedirectUri", e.target.value)}
-                className="mt-1 text-xs"
-                placeholder="https://your-domain.com/api/auth/m365/callback"
-              />
+              <div className="flex gap-2 mt-1">
+                <Input
+                  id="entra-redirect-uri"
+                  data-testid="input-entra-redirect-uri"
+                  value={form?.entraRedirectUri || ""}
+                  onChange={(e) => updateField("entraRedirectUri", e.target.value)}
+                  className="text-xs"
+                  placeholder={`${window.location.origin}/api/auth/m365/callback`}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 text-[11px] h-9"
+                  onClick={() => updateField("entraRedirectUri", `${window.location.origin}/api/auth/m365/callback`)}
+                  data-testid="button-autofill-redirect-uri"
+                >
+                  Auto-fill
+                </Button>
+              </div>
               <p className="text-[11px] text-muted-foreground mt-1">
-                Must match the redirect URI configured in your Azure App Registration
+                Must match the redirect URI configured in your Azure App Registration. Click "Auto-fill" to use this site's URL.
               </p>
             </div>
 
@@ -719,7 +758,7 @@ function AuthenticationSettings() {
             <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
               <div>
                 <p className="text-sm font-medium">Just-in-Time Provisioning</p>
-                <p className="text-xs text-muted-foreground">Automatically create PulseDesk accounts when users sign in via M365</p>
+                <p className="text-xs text-muted-foreground">When enabled, a PulseDesk account is automatically created the first time someone signs in with Microsoft 365 — no manual setup needed</p>
               </div>
               <Switch
                 checked={form?.entraJitProvisioningEnabled ?? true}
@@ -855,7 +894,11 @@ function AuthenticationSettings() {
                       variant="ghost"
                       size="sm"
                       className="h-7 w-7 p-0 shrink-0"
-                      onClick={() => deleteMappingMutation.mutate(m.id)}
+                      onClick={() => {
+                        if (confirm(`Remove this role mapping${m.displayLabel ? ` (${m.displayLabel})` : ""}?`)) {
+                          deleteMappingMutation.mutate(m.id);
+                        }
+                      }}
                       disabled={deleteMappingMutation.isPending}
                       data-testid={`button-delete-mapping-${m.id}`}
                     >
@@ -877,7 +920,7 @@ function AuthenticationSettings() {
               <p className="text-xs font-medium flex items-center gap-1.5">
                 <Plus className="h-3 w-3" /> Add Role Mapping
               </p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-[11px]">Entra Group Object ID *</Label>
                   <Input
@@ -889,7 +932,10 @@ function AuthenticationSettings() {
                   />
                 </div>
                 <div>
-                  <Label className="text-[11px]">Display Label</Label>
+                  <Label className="text-[11px] flex items-center gap-1">
+                    Display Label
+                    <span className="text-[9px] text-muted-foreground font-normal" title="A human-readable name for this group mapping, shown in this list for reference">(optional — for your reference)</span>
+                  </Label>
                   <Input
                     value={newMapping.displayLabel}
                     onChange={(e) => setNewMapping({ ...newMapping, displayLabel: e.target.value })}
@@ -977,7 +1023,11 @@ function AuthenticationSettings() {
             {!auditLog ? (
               <p className="text-sm text-muted-foreground text-center py-4">Loading...</p>
             ) : auditLog.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">No authentication events recorded yet</p>
+              <div className="flex flex-col items-center justify-center py-6 text-center">
+                <Clock className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                <p className="text-sm font-medium text-muted-foreground">No authentication events recorded yet</p>
+                <p className="text-[11px] text-muted-foreground/70 mt-0.5">Login attempts and configuration changes will appear here</p>
+              </div>
             ) : (
               <div className="space-y-1.5 max-h-64 overflow-auto">
                 {auditLog.map((entry) => (

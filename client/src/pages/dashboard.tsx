@@ -104,11 +104,14 @@ function KpiCard({ label, value, sub, icon: Icon, iconColor = "text-muted-foregr
 }
 
 function AdminOnboarding({ stats }: { stats: DashboardStats }) {
+  const { data: vendors } = useQuery<{ id: string }[]>({ queryKey: ["/api/vendors"] });
+  const { data: members } = useQuery<{ userId: string }[]>({ queryKey: ["/api/memberships"] });
+
   const steps = [
     { label: "Configure departments", href: "/departments", icon: ClipboardList, done: Object.keys(stats.departmentCounts).length > 0 },
     { label: "Register equipment & assets", href: "/assets", icon: Cpu, done: stats.totalAssets > 0 },
-    { label: "Add vendor contacts", href: "/vendors", icon: Users, done: false },
-    { label: "Invite team members", href: "/settings", icon: Shield, done: false },
+    { label: "Add vendor contacts", href: "/vendors", icon: Users, done: (vendors?.length || 0) > 0 },
+    { label: "Invite team members", href: "/settings", icon: Shield, done: (members?.length || 0) > 1 },
     { label: "Submit your first issue", href: "/submit", icon: Ticket, done: stats.totalTickets > 0 },
   ];
 
@@ -491,7 +494,11 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent className="px-3">
                 {stats.recentActivity.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">No recent activity</p>
+                  <div className="flex flex-col items-center justify-center py-6 text-center">
+                    <Clock className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                    <p className="text-sm font-medium text-muted-foreground">No recent activity</p>
+                    <p className="text-[11px] text-muted-foreground/70 mt-0.5">New activity will appear here as issues are created and updated</p>
+                  </div>
                 ) : (
                   <div className="space-y-1">
                     {stats.recentActivity.slice(0, 6).map((item) => (

@@ -59,7 +59,7 @@ export default function OrgSetup() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
-          <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-[hsl(174,42%,38%)] mb-4">
+          <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-accent mb-4">
             <HeartPulse className="h-6 w-6 text-white" />
           </div>
           <h1 className="text-xl font-bold tracking-tight">Set Up Your Facility</h1>
