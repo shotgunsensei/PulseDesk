@@ -1,0 +1,363 @@
+Use the existing TradeFlowKit project as the design and code foundation, but transform it into a fully functional INTERNAL TICKETING AND OPERATIONS MANAGEMENT SYSTEM for a healthcare organization called PulseDesk.
+
+IMPORTANT:
+- Reuse as much of the existing UI structure, design language, layout system, component styling, code patterns, navigation framework, and reusable architecture from TradeFlowKit as possible.
+- Do NOT reinvent the design from scratch unless necessary.
+- Preserve the polished look, responsiveness, and architectural quality of TradeFlowKit while changing the business purpose, workflows, terminology, data model, branding, and content to fit a healthcare internal operations environment.
+- The result should feel like a professional, modern healthcare operations SaaS platform used internally by clinics, imaging centers, hospitals, specialty practices, or multi-site healthcare organizations.
+
+PRODUCT NAME:
+PulseDesk
+
+PRODUCT POSITIONING:
+PulseDesk is an internal healthcare operations and issue tracking platform designed to help administrative staff and support teams track, triage, assign, and resolve day-to-day problems involving:
+- infrastructure
+- supplies
+- medical equipment failures
+- facilities/building issues
+- vendor service needs
+- department requests
+- compliance-related operational tasks
+- routine internal support issues
+
+The product should feel like a hybrid of:
+- internal ticketing system
+- healthcare operations dashboard
+- administrative support portal
+- facilities/equipment issue tracker
+- internal workflow management system
+
+BRAND DIRECTION:
+Use a Modern Clinical branding style.
+
+The product should feel:
+- trustworthy
+- calm
+- efficient
+- polished
+- operationally sharp
+- healthcare-appropriate
+- clean and modern without being flashy
+- easy for busy administrative staff to understand at a glance
+
+Avoid:
+- consumer startup vibes
+- ecommerce-style design language
+- overly playful visuals
+- neon cyber aesthetics
+- cluttered dashboards
+- tech jargon-heavy user language
+
+MODERN CLINICAL COLOR PALETTE:
+- Primary: #1E4E8C
+- Primary Dark: #163B69
+- Secondary: #5B6B7A
+- Accent: #2FA7A0
+- Background: #F6F9FC
+- Surface: #FFFFFF
+- Border: #D9E2EC
+- Text Main: #243B53
+- Text Muted: #6B7C93
+- Success: #2E8B57
+- Warning: #E0A100
+- Danger: #C9485B
+
+THEME IMPLEMENTATION RULES:
+- Apply the color palette consistently across navigation, buttons, badges, cards, tables, filters, forms, dashboards, charts, empty states, and alerts
+- Primary blue should drive the app identity and key CTAs
+- Accent teal should be used selectively for highlights, active indicators, and workflow emphasis
+- Backgrounds should remain airy and clean
+- Cards and surfaces should stay white with subtle borders and very light shadows
+- Danger/warning/success should be used sparingly and clearly for ticket states and issue severity
+- Ensure strong contrast and accessibility
+- Avoid oversaturating the interface
+
+TYPOGRAPHY / UI STYLE:
+- Keep the interface crisp, modern, and highly readable
+- Preserve the strongest elements of TradeFlowKit’s spacing, cards, menus, responsive behavior, and reusable components
+- Maintain a professional dashboard feel
+- Use subtle rounded corners
+- Use subtle shadows
+- Keep animations minimal and purposeful
+- Use iconography where helpful, but keep it clean and clinical
+- Prioritize fast scanning for busy staff
+
+APP IDENTITY:
+PulseDesk should present as a centralized internal system for healthcare operations support.
+
+Suggested internal tagline options to use in UI copy if needed:
+- Internal Healthcare Operations, Organized
+- Operational Visibility for Healthcare Teams
+- Track, Triage, Resolve
+- Clear Workflows for Daily Healthcare Operations
+
+TARGET USERS:
+- administrative staff
+- office managers
+- operations coordinators
+- department supervisors
+- IT support staff
+- facilities/admin teams
+- biomedical/service coordinators
+- compliance-adjacent operations staff
+- executive/leadership viewers
+
+CORE APP MODULES:
+1. Dashboard
+2. Ticket Queue
+3. Submit New Issue
+4. Departments
+5. Equipment / Assets
+6. Supply Requests
+7. Facilities Requests
+8. Vendors / Service Contacts
+9. Reporting / Analytics
+10. User / Role Management
+11. Admin Settings
+
+REQUIRED ISSUE CATEGORIES:
+- IT / Infrastructure
+- Medical Equipment
+- Supplies / Inventory
+- Facilities / Building
+- Housekeeping / Environmental
+- Safety / Compliance
+- Vendor / External Service
+- Administrative Request
+- HR / Staff Operations
+- Other
+
+REQUIRED PRIORITY LEVELS:
+- Critical
+- High
+- Normal
+- Low
+
+REQUIRED STATUSES:
+- New
+- Triage
+- Assigned
+- Waiting on Department
+- Waiting on Vendor
+- In Progress
+- Escalated
+- Resolved
+- Closed
+
+REQUIRED TICKET FIELDS:
+- ticket number
+- title
+- detailed description
+- category
+- priority
+- status
+- department
+- location
+- building / floor / room if applicable
+- asset ID or equipment ID
+- reported by
+- assigned to
+- due date
+- created timestamp
+- last updated timestamp
+- attachment support
+- internal notes / updates
+- vendor reference if applicable
+- root cause
+- resolution summary
+- recurring yes/no
+- patient-impacting yes/no
+- repeat issue yes/no
+
+DASHBOARD REQUIREMENTS:
+Create a polished operational dashboard for PulseDesk showing:
+- open tickets by priority
+- open tickets by category
+- tickets by department
+- overdue issues
+- equipment-related incidents
+- facilities-related incidents
+- supply shortages / pending requests
+- recent activity feed
+- SLA / response trend widgets
+- quick actions panel
+- high-priority unresolved issues
+- summary cards for New / In Progress / Waiting / Resolved
+
+The dashboard should feel executive-friendly but still useful for frontline coordinators.
+
+TICKET QUEUE REQUIREMENTS:
+- searchable and filterable table
+- filter by department, category, status, priority, assignee, location, date range
+- quick actions for open, assign, update, resolve, close
+- ticket detail drawer or modal
+- timeline/history view for each ticket
+- internal notes section
+- attachment support
+- easy reassignment workflow
+- clear badge styling using the PulseDesk color system
+
+SUBMIT ISSUE EXPERIENCE:
+Build a fast and simple submission flow optimized for non-technical healthcare staff.
+The form should be extremely easy to understand.
+
+Include:
+- issue title
+- category
+- department
+- location
+- description
+- urgency
+- upload photo or attachment
+- affected equipment or asset if applicable
+- option to mark patient-impacting issue
+- option to mark repeat issue
+
+The submit experience should feel approachable and low-friction.
+
+DEPARTMENTS MODULE:
+Allow tracking/filtering by editable departments such as:
+- Radiology
+- Front Desk
+- Billing
+- Administration
+- Nursing
+- Lab
+- Maintenance
+- IT
+- Facilities
+- Clinical Operations
+
+This list should be manageable in admin settings.
+
+EQUIPMENT / ASSET MODULE:
+Include:
+- asset ID
+- asset name
+- asset type
+- location
+- department
+- service vendor
+- warranty / support notes
+- linked incident history
+- maintenance notes
+- operational status
+
+Operational statuses can include:
+- Active
+- Under Service
+- Retired
+- Offline
+
+SUPPLY REQUESTS MODULE:
+Include:
+- request type
+- item name
+- quantity
+- urgency
+- department
+- justification
+- approval status
+- ordered status
+- fulfilled status
+
+This module must visually align with the rest of PulseDesk and not feel bolted on.
+
+FACILITIES REQUESTS MODULE:
+Support items such as:
+- HVAC
+- plumbing
+- lighting
+- doors / locks
+- electrical
+- room condition issues
+- furniture / workspace
+- cleaning / environmental concerns
+
+VENDORS MODULE:
+Store:
+- vendor name
+- service type
+- phone
+- email
+- emergency contact
+- contract notes
+- linked tickets/incidents
+
+REPORTING / ANALYTICS MODULE:
+Include polished reports/charts for:
+- issue volume over time
+- top issue categories
+- recurring issues
+- most impacted departments
+- average resolution time
+- overdue tickets
+- vendor-related incidents
+- equipment downtime summaries
+- supply request trends
+
+AUTH / ROLES:
+Create role-based access with at minimum:
+- Admin
+- Supervisor
+- Staff
+- Technician
+- Read-Only Executive
+
+ROLE GUIDELINES:
+- Admin: full access
+- Supervisor: manage tickets, assign work, view reports
+- Staff: submit and view tickets they created or are allowed to access
+- Technician: manage assigned issues and document resolution
+- Read-Only Executive: dashboards and reporting only
+
+HEALTHCARE CONTEXT / SECURITY DIRECTION:
+- This is for internal healthcare organizational operations use
+- Design with privacy, professionalism, and auditability in mind
+- Do NOT position this as an EMR/EHR or patient charting platform
+- Keep language focused on internal operations, requests, incidents, coordination, and issue tracking
+- Structure the codebase so it could later support:
+  - audit logs
+  - SSO
+  - multi-location organizations
+  - stronger role granularity
+  - notification workflows
+  - reporting exports
+  - compliance-adjacent controls
+
+TECHNICAL / PRODUCT CONVERSION REQUIREMENTS:
+- Refactor all existing TradeFlowKit naming, labels, routes, modules, and sample content to match PulseDesk
+- Remove any original industry assumptions that do not fit this healthcare internal operations use case
+- Replace dummy/sample data with realistic healthcare administrative and operations examples
+- Keep the code modular and production-minded
+- Keep components reusable
+- Preserve responsive design
+- Ensure the tables, forms, dashboards, metrics, and modules all feel like one coherent platform
+- Update all navigation and labels to align to the new product identity
+
+COPY / CONTENT DIRECTION:
+Rewrite all UI copy and content to reflect PulseDesk as a healthcare internal operations system.
+Use concise, professional, healthcare-appropriate wording.
+The interface should feel immediately usable by a real clinic, imaging center, or healthcare group.
+
+VISUAL BRANDING TASKS:
+- Rebrand the product everywhere to PulseDesk
+- Create a matching in-app logo concept if possible
+- Update favicon/app icon treatment
+- Use a modern clinical visual style throughout
+- Ensure empty states, charts, badges, status indicators, and dashboard widgets all match the PulseDesk brand
+
+SEED DATA:
+Create realistic demo data including:
+- departments
+- users by role
+- tickets across different categories
+- supply requests
+- facilities issues
+- equipment incidents
+- vendor records
+- status variations
+- overdue and resolved examples
+
+DELIVERABLE EXPECTATION:
+I want a polished MVP that feels production-ready in structure, UX, naming, and brand coherence, using TradeFlowKit as the underlying design/code DNA but fully transformed into PulseDesk, a modern clinical internal operations and ticketing platform for healthcare organizations.
