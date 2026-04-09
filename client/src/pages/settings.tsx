@@ -466,6 +466,10 @@ function AuthenticationSettings() {
     queryKey: ["/api/auth/config"],
   });
 
+  const { data: members } = useQuery<MemberWithUser[]>({
+    queryKey: ["/api/memberships"],
+  });
+
   const { data: roleMappings, isLoading: mappingsLoading } = useQuery<RoleMapping[]>({
     queryKey: ["/api/auth/role-mappings"],
   });
