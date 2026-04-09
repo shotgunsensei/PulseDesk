@@ -1,39 +1,36 @@
-import { eq, and, desc, sql, inArray, count, ilike, or } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, count, ilike, or, gte, lte } from "drizzle-orm";
 import { db } from "./db";
 import {
   users,
   orgs,
   memberships,
   inviteCodes,
-  customers,
-  jobs,
-  jobEvents,
-  quotes,
-  quoteItems,
-  invoices,
-  invoiceItems,
-  missedCalls,
-  aiMessages,
-  callRecoverySubscriptions,
-  type CallRecoveryPlan,
+  departments,
+  tickets,
+  ticketEvents,
+  assets,
+  supplyRequests,
+  facilityRequests,
+  vendors,
   type User,
   type InsertUser,
   type Org,
   type InsertOrg,
   type Membership,
-  type Customer,
-  type InsertCustomer,
-  type Job,
-  type InsertJob,
-  type JobEvent,
-  type Quote,
-  type QuoteItem,
-  type Invoice,
-  type InvoiceItem,
+  type Department,
+  type InsertDepartment,
+  type Ticket,
+  type InsertTicket,
+  type TicketEvent,
+  type Asset,
+  type InsertAsset,
+  type SupplyRequest,
+  type InsertSupplyRequest,
+  type FacilityRequest,
+  type InsertFacilityRequest,
+  type Vendor,
+  type InsertVendor,
   type InviteCode,
-  type MissedCall,
-  type AiMessage,
-  type CallRecoverySubscription,
 } from "@shared/schema";
 import { randomBytes } from "crypto";
 
@@ -43,6 +40,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
+  deleteUser(userId: string): Promise<void>;
 
   createOrg(org: InsertOrg): Promise<Org>;
   getOrg(id: string): Promise<Org | undefined>;
@@ -50,7 +48,6 @@ export interface IStorage {
   getUserOrgs(userId: string): Promise<Org[]>;
   getAllOrgs(): Promise<Org[]>;
   deleteOrg(id: string): Promise<void>;
-  getOrgByStripeCustomerId(stripeCustomerId: string): Promise<Org | undefined>;
 
   createMembership(orgId: string, userId: string, role: string): Promise<Membership>;
   getMembership(orgId: string, userId: string): Promise<Membership | undefined>;
@@ -62,66 +59,48 @@ export interface IStorage {
   getInviteCodeByCode(code: string): Promise<InviteCode | undefined>;
   getOrgInviteCodes(orgId: string): Promise<InviteCode[]>;
 
-  getCustomers(orgId: string, search?: string): Promise<Customer[]>;
-  getCustomer(orgId: string, id: string): Promise<Customer | undefined>;
-  createCustomer(orgId: string, data: InsertCustomer): Promise<Customer>;
-  updateCustomer(orgId: string, id: string, data: Partial<Customer>): Promise<Customer | undefined>;
-  deleteCustomer(orgId: string, id: string): Promise<void>;
+  getDepartments(orgId: string): Promise<Department[]>;
+  getDepartment(orgId: string, id: string): Promise<Department | undefined>;
+  createDepartment(orgId: string, data: InsertDepartment): Promise<Department>;
+  updateDepartment(orgId: string, id: string, data: Partial<Department>): Promise<Department | undefined>;
+  deleteDepartment(orgId: string, id: string): Promise<void>;
 
-  getJobs(orgId: string): Promise<(Job & { customerName?: string })[]>;
-  getJob(orgId: string, id: string): Promise<(Job & { customerName?: string }) | undefined>;
-  getCustomerJobs(orgId: string, customerId: string): Promise<Job[]>;
-  createJob(orgId: string, data: InsertJob, createdBy: string | null): Promise<Job>;
-  updateJob(orgId: string, id: string, data: Partial<Job>): Promise<Job | undefined>;
-  deleteJob(orgId: string, id: string): Promise<void>;
+  getTickets(orgId: string): Promise<(Ticket & { departmentName?: string; reportedByName?: string; assignedToName?: string })[]>;
+  getTicket(orgId: string, id: string): Promise<(Ticket & { departmentName?: string; reportedByName?: string; assignedToName?: string }) | undefined>;
+  createTicket(orgId: string, data: InsertTicket, reportedBy: string): Promise<Ticket>;
+  updateTicket(orgId: string, id: string, data: Partial<Ticket>): Promise<Ticket | undefined>;
+  deleteTicket(orgId: string, id: string): Promise<void>;
+  getNextTicketNumber(orgId: string): Promise<string>;
 
-  getJobEvents(orgId: string, jobId: string): Promise<JobEvent[]>;
-  createJobEvent(orgId: string, jobId: string, type: string, payload: any, createdBy: string | null): Promise<JobEvent>;
+  getTicketEvents(orgId: string, ticketId: string): Promise<TicketEvent[]>;
+  createTicketEvent(orgId: string, ticketId: string, type: string, content: string, createdBy: string | null): Promise<TicketEvent>;
 
-  getQuotes(orgId: string): Promise<(Quote & { customerName?: string; total?: number })[]>;
-  getQuote(orgId: string, id: string): Promise<(Quote & { items?: QuoteItem[]; customerName?: string }) | undefined>;
-  getQuotePublic(id: string): Promise<(Quote & { items?: QuoteItem[]; customerName?: string; customer?: Customer; org?: Org }) | undefined>;
-  createQuote(orgId: string, data: any, createdBy: string): Promise<Quote>;
-  updateQuote(orgId: string, id: string, data: any): Promise<Quote | undefined>;
-  deleteQuote(orgId: string, id: string): Promise<void>;
+  getAssets(orgId: string): Promise<(Asset & { departmentName?: string })[]>;
+  getAsset(orgId: string, id: string): Promise<(Asset & { departmentName?: string }) | undefined>;
+  createAsset(orgId: string, data: InsertAsset): Promise<Asset>;
+  updateAsset(orgId: string, id: string, data: Partial<Asset>): Promise<Asset | undefined>;
+  deleteAsset(orgId: string, id: string): Promise<void>;
 
-  getInvoices(orgId: string): Promise<(Invoice & { customerName?: string; total?: number })[]>;
-  getInvoice(orgId: string, id: string): Promise<(Invoice & { items?: InvoiceItem[]; customerName?: string }) | undefined>;
-  getCustomerInvoices(orgId: string, customerId: string): Promise<Invoice[]>;
-  createInvoice(orgId: string, data: any, createdBy: string): Promise<Invoice>;
-  updateInvoice(orgId: string, id: string, data: any): Promise<Invoice | undefined>;
-  deleteInvoice(orgId: string, id: string): Promise<void>;
+  getSupplyRequests(orgId: string): Promise<(SupplyRequest & { departmentName?: string; requestedByName?: string })[]>;
+  getSupplyRequest(orgId: string, id: string): Promise<(SupplyRequest & { departmentName?: string; requestedByName?: string }) | undefined>;
+  createSupplyRequest(orgId: string, data: InsertSupplyRequest, requestedBy: string): Promise<SupplyRequest>;
+  updateSupplyRequest(orgId: string, id: string, data: Partial<SupplyRequest>): Promise<SupplyRequest | undefined>;
+  deleteSupplyRequest(orgId: string, id: string): Promise<void>;
+
+  getFacilityRequests(orgId: string): Promise<(FacilityRequest & { requestedByName?: string; assignedToName?: string })[]>;
+  getFacilityRequest(orgId: string, id: string): Promise<(FacilityRequest & { requestedByName?: string; assignedToName?: string }) | undefined>;
+  createFacilityRequest(orgId: string, data: InsertFacilityRequest, requestedBy: string): Promise<FacilityRequest>;
+  updateFacilityRequest(orgId: string, id: string, data: Partial<FacilityRequest>): Promise<FacilityRequest | undefined>;
+  deleteFacilityRequest(orgId: string, id: string): Promise<void>;
+
+  getVendors(orgId: string): Promise<Vendor[]>;
+  getVendor(orgId: string, id: string): Promise<Vendor | undefined>;
+  createVendor(orgId: string, data: InsertVendor): Promise<Vendor>;
+  updateVendor(orgId: string, id: string, data: Partial<Vendor>): Promise<Vendor | undefined>;
+  deleteVendor(orgId: string, id: string): Promise<void>;
 
   getDashboardStats(orgId: string): Promise<any>;
-
-  getOrgCounts(orgId: string): Promise<{ customers: number; jobs: number; quotes: number; invoices: number; members: number }>;
-
-  deleteUser(userId: string): Promise<void>;
-
-  createMissedCall(orgId: string, data: { callerPhone: string; callerName?: string; twilioCallSid?: string }): Promise<MissedCall>;
-  getMissedCall(id: string): Promise<MissedCall | undefined>;
-  getMissedCallByPhone(orgId: string, phone: string): Promise<MissedCall | undefined>;
-  getMissedCalls(orgId: string, limit?: number, offset?: number): Promise<MissedCall[]>;
-  updateMissedCall(id: string, data: Partial<MissedCall>): Promise<MissedCall | undefined>;
-  getMissedCallCount(orgId: string, since: Date): Promise<number>;
-
-  createAiMessage(missedCallId: string, role: "system" | "assistant" | "user", content: string): Promise<AiMessage>;
-  getAiMessages(missedCallId: string): Promise<AiMessage[]>;
-
-  getOrgByCallRecoveryPhone(phone: string): Promise<Org | undefined>;
-  findMissedCallByCallerPhone(phone: string): Promise<(MissedCall & { orgId: string }) | undefined>;
-
-  createCallRecoverySubscription(data: {
-    orgId: string;
-    plan: CallRecoveryPlan;
-    stripeSubscriptionId?: string;
-    stripeCustomerId?: string;
-    currentPeriodStart?: Date;
-    currentPeriodEnd?: Date;
-  }): Promise<CallRecoverySubscription>;
-  getCallRecoverySubscription(orgId: string): Promise<CallRecoverySubscription | undefined>;
-  updateCallRecoverySubscription(id: string, data: Partial<CallRecoverySubscription>): Promise<CallRecoverySubscription | undefined>;
-  incrementCallRecoveryUsage(orgId: string): Promise<void>;
+  getOrgCounts(orgId: string): Promise<{ tickets: number; departments: number; assets: number; members: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -147,6 +126,11 @@ export class DatabaseStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return db.select().from(users).orderBy(desc(users.username));
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    await db.delete(memberships).where(eq(memberships.userId, userId));
+    await db.delete(users).where(eq(users.id, userId));
   }
 
   async createOrg(data: InsertOrg): Promise<Org> {
@@ -176,53 +160,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteOrg(id: string): Promise<void> {
-    await db.delete(callRecoverySubscriptions).where(eq(callRecoverySubscriptions.orgId, id));
-    const orgMissedCalls = await db.select({ id: missedCalls.id }).from(missedCalls).where(eq(missedCalls.orgId, id));
-    for (const mc of orgMissedCalls) {
-      await db.delete(aiMessages).where(eq(aiMessages.missedCallId, mc.id));
-    }
-    await db.delete(missedCalls).where(eq(missedCalls.orgId, id));
+    await db.delete(ticketEvents).where(eq(ticketEvents.orgId, id));
+    await db.delete(tickets).where(eq(tickets.orgId, id));
+    await db.delete(supplyRequests).where(eq(supplyRequests.orgId, id));
+    await db.delete(facilityRequests).where(eq(facilityRequests.orgId, id));
+    await db.delete(assets).where(eq(assets.orgId, id));
+    await db.delete(vendors).where(eq(vendors.orgId, id));
+    await db.delete(departments).where(eq(departments.orgId, id));
     await db.delete(inviteCodes).where(eq(inviteCodes.orgId, id));
     await db.delete(memberships).where(eq(memberships.orgId, id));
-    await db.delete(quoteItems).where(eq(quoteItems.orgId, id));
-    await db.delete(quotes).where(eq(quotes.orgId, id));
-    await db.delete(invoiceItems).where(eq(invoiceItems.orgId, id));
-    await db.delete(invoices).where(eq(invoices.orgId, id));
-    await db.delete(jobEvents).where(eq(jobEvents.orgId, id));
-    await db.delete(jobs).where(eq(jobs.orgId, id));
-    await db.delete(customers).where(eq(customers.orgId, id));
     await db.delete(orgs).where(eq(orgs.id, id));
   }
 
-  async getOrgByStripeCustomerId(stripeCustomerId: string): Promise<Org | undefined> {
-    const [org] = await db.select().from(orgs).where(eq(orgs.stripeCustomerId, stripeCustomerId));
-    return org;
-  }
-
-  async deleteMembership(orgId: string, userId: string): Promise<void> {
-    await db.delete(memberships).where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId)));
-  }
-
-  async updateMembershipRole(orgId: string, userId: string, role: string): Promise<void> {
-    await db
-      .update(memberships)
-      .set({ role: role as any })
-      .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId)));
-  }
-
   async createMembership(orgId: string, userId: string, role: string): Promise<Membership> {
-    const [mem] = await db
-      .insert(memberships)
-      .values({ orgId, userId, role: role as any })
-      .returning();
+    const [mem] = await db.insert(memberships).values({ orgId, userId, role: role as any }).returning();
     return mem;
   }
 
   async getMembership(orgId: string, userId: string): Promise<Membership | undefined> {
-    const [mem] = await db
-      .select()
-      .from(memberships)
-      .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId)));
+    const [mem] = await db.select().from(memberships).where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId)));
     return mem;
   }
 
@@ -230,12 +186,17 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(memberships).where(eq(memberships.orgId, orgId));
   }
 
+  async deleteMembership(orgId: string, userId: string): Promise<void> {
+    await db.delete(memberships).where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId)));
+  }
+
+  async updateMembershipRole(orgId: string, userId: string, role: string): Promise<void> {
+    await db.update(memberships).set({ role: role as any }).where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId)));
+  }
+
   async createInviteCode(orgId: string, role: string, createdBy: string): Promise<InviteCode> {
     const code = randomBytes(4).toString("hex").toUpperCase();
-    const [ic] = await db
-      .insert(inviteCodes)
-      .values({ orgId, code, role: role as any, createdBy })
-      .returning();
+    const [ic] = await db.insert(inviteCodes).values({ orgId, code, role: role as any, createdBy }).returning();
     return ic;
   }
 
@@ -245,774 +206,373 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getOrgInviteCodes(orgId: string): Promise<InviteCode[]> {
-    return db
-      .select()
-      .from(inviteCodes)
-      .where(eq(inviteCodes.orgId, orgId))
-      .orderBy(desc(inviteCodes.createdAt));
+    return db.select().from(inviteCodes).where(eq(inviteCodes.orgId, orgId)).orderBy(desc(inviteCodes.createdAt));
   }
 
-  async getCustomers(orgId: string, search?: string): Promise<Customer[]> {
-    const baseWhere = eq(customers.orgId, orgId);
-    const where = search
-      ? and(baseWhere, or(
-          ilike(customers.name, `%${search}%`),
-          ilike(customers.phone, `%${search}%`),
-          ilike(customers.email, `%${search}%`)
-        ))
-      : baseWhere;
-    return db
-      .select()
-      .from(customers)
-      .where(where)
-      .orderBy(desc(customers.createdAt));
+  async getDepartments(orgId: string): Promise<Department[]> {
+    return db.select().from(departments).where(eq(departments.orgId, orgId)).orderBy(departments.name);
   }
 
-  async getCustomer(orgId: string, id: string): Promise<Customer | undefined> {
-    const [c] = await db
-      .select()
-      .from(customers)
-      .where(and(eq(customers.orgId, orgId), eq(customers.id, id)));
-    return c;
+  async getDepartment(orgId: string, id: string): Promise<Department | undefined> {
+    const [d] = await db.select().from(departments).where(and(eq(departments.orgId, orgId), eq(departments.id, id)));
+    return d;
   }
 
-  async createCustomer(orgId: string, data: InsertCustomer): Promise<Customer> {
-    const [c] = await db.insert(customers).values({ ...data, orgId }).returning();
-    return c;
+  async createDepartment(orgId: string, data: InsertDepartment): Promise<Department> {
+    const [d] = await db.insert(departments).values({ ...data, orgId }).returning();
+    return d;
   }
 
-  async updateCustomer(orgId: string, id: string, data: Partial<Customer>): Promise<Customer | undefined> {
-    const payload: Partial<Customer> = { ...data };
-    if ("notes" in data) {
-      payload.notesUpdatedAt = new Date();
-    }
-    const [c] = await db
-      .update(customers)
-      .set(payload)
-      .where(and(eq(customers.orgId, orgId), eq(customers.id, id)))
-      .returning();
-    return c;
+  async updateDepartment(orgId: string, id: string, data: Partial<Department>): Promise<Department | undefined> {
+    const [d] = await db.update(departments).set(data).where(and(eq(departments.orgId, orgId), eq(departments.id, id))).returning();
+    return d;
   }
 
-  async deleteCustomer(orgId: string, id: string): Promise<void> {
-    await db.delete(customers).where(and(eq(customers.orgId, orgId), eq(customers.id, id)));
+  async deleteDepartment(orgId: string, id: string): Promise<void> {
+    await db.delete(departments).where(and(eq(departments.orgId, orgId), eq(departments.id, id)));
   }
 
-  async getJobs(orgId: string): Promise<(Job & { customerName?: string })[]> {
-    const allJobs = await db
-      .select()
-      .from(jobs)
-      .where(eq(jobs.orgId, orgId))
-      .orderBy(desc(jobs.createdAt));
+  async getTickets(orgId: string): Promise<(Ticket & { departmentName?: string; reportedByName?: string; assignedToName?: string })[]> {
+    const allTickets = await db.select().from(tickets).where(eq(tickets.orgId, orgId)).orderBy(desc(tickets.createdAt));
 
-    const customerIds = [...new Set(allJobs.filter((j) => j.customerId).map((j) => j.customerId!))];
-    let customerMap: Record<string, string> = {};
-    if (customerIds.length > 0) {
-      const custs = await db
-        .select({ id: customers.id, name: customers.name })
-        .from(customers)
-        .where(inArray(customers.id, customerIds));
-      customerMap = Object.fromEntries(custs.map((c) => [c.id, c.name]));
+    const deptIds = [...new Set(allTickets.filter(t => t.departmentId).map(t => t.departmentId!))];
+    let deptMap: Record<string, string> = {};
+    if (deptIds.length > 0) {
+      const depts = await db.select({ id: departments.id, name: departments.name }).from(departments).where(inArray(departments.id, deptIds));
+      deptMap = Object.fromEntries(depts.map(d => [d.id, d.name]));
     }
 
-    return allJobs.map((j) => ({
-      ...j,
-      customerName: j.customerId ? customerMap[j.customerId] : undefined,
+    const userIds = [...new Set([
+      ...allTickets.filter(t => t.reportedBy).map(t => t.reportedBy!),
+      ...allTickets.filter(t => t.assignedTo).map(t => t.assignedTo!),
+    ])];
+    let userMap: Record<string, string> = {};
+    if (userIds.length > 0) {
+      const usrs = await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, userIds));
+      userMap = Object.fromEntries(usrs.map(u => [u.id, u.fullName]));
+    }
+
+    return allTickets.map(t => ({
+      ...t,
+      departmentName: t.departmentId ? deptMap[t.departmentId] : undefined,
+      reportedByName: t.reportedBy ? userMap[t.reportedBy] : undefined,
+      assignedToName: t.assignedTo ? userMap[t.assignedTo] : undefined,
     }));
   }
 
-  async getJob(orgId: string, id: string): Promise<(Job & { customerName?: string }) | undefined> {
-    const [j] = await db
-      .select()
-      .from(jobs)
-      .where(and(eq(jobs.orgId, orgId), eq(jobs.id, id)));
-    if (!j) return undefined;
+  async getTicket(orgId: string, id: string): Promise<(Ticket & { departmentName?: string; reportedByName?: string; assignedToName?: string }) | undefined> {
+    const [t] = await db.select().from(tickets).where(and(eq(tickets.orgId, orgId), eq(tickets.id, id)));
+    if (!t) return undefined;
 
-    let customerName: string | undefined;
-    if (j.customerId) {
-      const [c] = await db
-        .select({ name: customers.name })
-        .from(customers)
-        .where(eq(customers.id, j.customerId));
-      customerName = c?.name;
+    let departmentName: string | undefined;
+    if (t.departmentId) {
+      const [d] = await db.select({ name: departments.name }).from(departments).where(eq(departments.id, t.departmentId));
+      departmentName = d?.name;
     }
-    return { ...j, customerName };
-  }
 
-  async getCustomerJobs(orgId: string, customerId: string): Promise<Job[]> {
-    return db
-      .select()
-      .from(jobs)
-      .where(and(eq(jobs.orgId, orgId), eq(jobs.customerId, customerId)))
-      .orderBy(desc(jobs.createdAt));
-  }
-
-  async createJob(orgId: string, data: InsertJob, createdBy: string | null): Promise<Job> {
-    const [j] = await db
-      .insert(jobs)
-      .values({ ...data, orgId, createdBy })
-      .returning();
-    await this.createJobEvent(orgId, j.id, "created", {}, createdBy);
-    return j;
-  }
-
-  async updateJob(orgId: string, id: string, data: Partial<Job>): Promise<Job | undefined> {
-    const existing = await this.getJob(orgId, id);
-    if (!existing) return undefined;
-
-    const [j] = await db
-      .update(jobs)
-      .set(data)
-      .where(and(eq(jobs.orgId, orgId), eq(jobs.id, id)))
-      .returning();
-
-    if (data.status && data.status !== existing.status) {
-      await this.createJobEvent(orgId, id, "status_change", {
-        from: existing.status,
-        to: data.status,
-      }, "");
+    let reportedByName: string | undefined;
+    if (t.reportedBy) {
+      const [u] = await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, t.reportedBy));
+      reportedByName = u?.fullName;
     }
-    return j;
+
+    let assignedToName: string | undefined;
+    if (t.assignedTo) {
+      const [u] = await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, t.assignedTo));
+      assignedToName = u?.fullName;
+    }
+
+    return { ...t, departmentName, reportedByName, assignedToName };
   }
 
-  async deleteJob(orgId: string, id: string): Promise<void> {
-    await db.delete(jobEvents).where(and(eq(jobEvents.orgId, orgId), eq(jobEvents.jobId, id)));
-    await db.delete(jobs).where(and(eq(jobs.orgId, orgId), eq(jobs.id, id)));
+  async getNextTicketNumber(orgId: string): Promise<string> {
+    const [result] = await db.select({ cnt: count() }).from(tickets).where(eq(tickets.orgId, orgId));
+    const num = (result?.cnt || 0) as number;
+    return `PD-${String(num + 1).padStart(5, "0")}`;
   }
 
-  async getJobEvents(orgId: string, jobId: string): Promise<JobEvent[]> {
-    return db
-      .select()
-      .from(jobEvents)
-      .where(and(eq(jobEvents.orgId, orgId), eq(jobEvents.jobId, jobId)))
-      .orderBy(desc(jobEvents.createdAt));
+  async createTicket(orgId: string, data: InsertTicket, reportedBy: string): Promise<Ticket> {
+    const ticketNumber = await this.getNextTicketNumber(orgId);
+    const [t] = await db.insert(tickets).values({
+      ...data,
+      orgId,
+      ticketNumber,
+      reportedBy,
+      dueDate: data.dueDate ? new Date(data.dueDate as any) : null,
+    }).returning();
+    await this.createTicketEvent(orgId, t.id, "created", "Ticket created", reportedBy);
+    return t;
   }
 
-  async createJobEvent(orgId: string, jobId: string, type: string, payload: any, createdBy: string | null): Promise<JobEvent> {
-    const [e] = await db
-      .insert(jobEvents)
-      .values({ orgId, jobId, type, payload, createdBy: createdBy || null })
-      .returning();
+  async updateTicket(orgId: string, id: string, data: Partial<Ticket>): Promise<Ticket | undefined> {
+    const updateData: any = { ...data, updatedAt: new Date() };
+    if (updateData.dueDate && typeof updateData.dueDate === "string") {
+      updateData.dueDate = new Date(updateData.dueDate);
+    }
+    const [t] = await db.update(tickets).set(updateData).where(and(eq(tickets.orgId, orgId), eq(tickets.id, id))).returning();
+    return t;
+  }
+
+  async deleteTicket(orgId: string, id: string): Promise<void> {
+    await db.delete(ticketEvents).where(and(eq(ticketEvents.orgId, orgId), eq(ticketEvents.ticketId, id)));
+    await db.delete(tickets).where(and(eq(tickets.orgId, orgId), eq(tickets.id, id)));
+  }
+
+  async getTicketEvents(orgId: string, ticketId: string): Promise<TicketEvent[]> {
+    return db.select().from(ticketEvents).where(and(eq(ticketEvents.orgId, orgId), eq(ticketEvents.ticketId, ticketId))).orderBy(desc(ticketEvents.createdAt));
+  }
+
+  async createTicketEvent(orgId: string, ticketId: string, type: string, content: string, createdBy: string | null): Promise<TicketEvent> {
+    const [e] = await db.insert(ticketEvents).values({ orgId, ticketId, type, content, createdBy: createdBy || null }).returning();
     return e;
   }
 
-  async getQuotes(orgId: string): Promise<(Quote & { customerName?: string; total?: number })[]> {
-    const allQuotes = await db
-      .select()
-      .from(quotes)
-      .where(eq(quotes.orgId, orgId))
-      .orderBy(desc(quotes.createdAt));
-
-    const results = [];
-    for (const q of allQuotes) {
-      let customerName: string | undefined;
-      if (q.customerId) {
-        const [c] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, q.customerId));
-        customerName = c?.name;
-      }
-      const items = await db.select().from(quoteItems).where(eq(quoteItems.quoteId, q.id));
-      const subtotal = items.reduce((sum, it) => sum + Number(it.qty) * Number(it.unitPrice), 0);
-      const tax = subtotal * (Number(q.taxRate) / 100);
-      const total = subtotal + tax - Number(q.discount);
-      results.push({ ...q, customerName, total });
+  async getAssets(orgId: string): Promise<(Asset & { departmentName?: string })[]> {
+    const allAssets = await db.select().from(assets).where(eq(assets.orgId, orgId)).orderBy(desc(assets.createdAt));
+    const deptIds = [...new Set(allAssets.filter(a => a.departmentId).map(a => a.departmentId!))];
+    let deptMap: Record<string, string> = {};
+    if (deptIds.length > 0) {
+      const depts = await db.select({ id: departments.id, name: departments.name }).from(departments).where(inArray(departments.id, deptIds));
+      deptMap = Object.fromEntries(depts.map(d => [d.id, d.name]));
     }
-    return results;
+    return allAssets.map(a => ({ ...a, departmentName: a.departmentId ? deptMap[a.departmentId] : undefined }));
   }
 
-  async getQuote(orgId: string, id: string): Promise<(Quote & { items?: QuoteItem[]; customerName?: string; customer?: Customer }) | undefined> {
-    const [q] = await db
-      .select()
-      .from(quotes)
-      .where(and(eq(quotes.orgId, orgId), eq(quotes.id, id)));
-    if (!q) return undefined;
-
-    const items = await db.select().from(quoteItems).where(eq(quoteItems.quoteId, id));
-    let customerName: string | undefined;
-    let customer: Customer | undefined;
-    if (q.customerId) {
-      const [c] = await db.select().from(customers).where(eq(customers.id, q.customerId));
-      customerName = c?.name;
-      customer = c;
+  async getAsset(orgId: string, id: string): Promise<(Asset & { departmentName?: string }) | undefined> {
+    const [a] = await db.select().from(assets).where(and(eq(assets.orgId, orgId), eq(assets.id, id)));
+    if (!a) return undefined;
+    let departmentName: string | undefined;
+    if (a.departmentId) {
+      const [d] = await db.select({ name: departments.name }).from(departments).where(eq(departments.id, a.departmentId));
+      departmentName = d?.name;
     }
-    return { ...q, items, customerName, customer };
+    return { ...a, departmentName };
   }
 
-  async getQuotePublic(id: string): Promise<(Quote & { items?: QuoteItem[]; customerName?: string; customer?: Customer; org?: Org }) | undefined> {
-    const [q] = await db.select().from(quotes).where(eq(quotes.id, id));
-    if (!q) return undefined;
-    const items = await db.select().from(quoteItems).where(eq(quoteItems.quoteId, id));
-    let customerName: string | undefined;
-    let customer: Customer | undefined;
-    if (q.customerId) {
-      const [c] = await db.select().from(customers).where(eq(customers.id, q.customerId));
-      customerName = c?.name;
-      customer = c;
-    }
-    const org = await this.getOrg(q.orgId);
-    return { ...q, items, customerName, customer, org: org ?? undefined };
+  async createAsset(orgId: string, data: InsertAsset): Promise<Asset> {
+    const [a] = await db.insert(assets).values({ ...data, orgId }).returning();
+    return a;
   }
 
-  async createQuote(orgId: string, data: any, createdBy: string): Promise<Quote> {
-    const { items: itemsData, ...quoteData } = data;
-    if (quoteData.expiresAt && typeof quoteData.expiresAt === "string") {
-      quoteData.expiresAt = new Date(quoteData.expiresAt);
-    }
-    const [q] = await db
-      .insert(quotes)
-      .values({ ...quoteData, orgId, createdBy, status: quoteData.status || "draft" })
-      .returning();
-
-    if (itemsData && itemsData.length > 0) {
-      await db.insert(quoteItems).values(
-        itemsData.map((it: any) => ({
-          orgId,
-          quoteId: q.id,
-          description: it.description,
-          qty: String(it.qty),
-          unitPrice: String(it.unitPrice),
-        }))
-      );
-    }
-    return q;
+  async updateAsset(orgId: string, id: string, data: Partial<Asset>): Promise<Asset | undefined> {
+    const [a] = await db.update(assets).set(data).where(and(eq(assets.orgId, orgId), eq(assets.id, id))).returning();
+    return a;
   }
 
-  async updateQuote(orgId: string, id: string, data: any): Promise<Quote | undefined> {
-    const { items: itemsData, ...quoteData } = data;
-    if (quoteData.expiresAt && typeof quoteData.expiresAt === "string") {
-      quoteData.expiresAt = new Date(quoteData.expiresAt);
-    }
-    const [q] = await db
-      .update(quotes)
-      .set(quoteData)
-      .where(and(eq(quotes.orgId, orgId), eq(quotes.id, id)))
-      .returning();
-    if (!q) return undefined;
-
-    if (itemsData) {
-      await db.delete(quoteItems).where(eq(quoteItems.quoteId, id));
-      if (itemsData.length > 0) {
-        await db.insert(quoteItems).values(
-          itemsData.map((it: any) => ({
-            orgId,
-            quoteId: id,
-            description: it.description,
-            qty: String(it.qty),
-            unitPrice: String(it.unitPrice),
-          }))
-        );
-      }
-    }
-    return q;
+  async deleteAsset(orgId: string, id: string): Promise<void> {
+    await db.delete(assets).where(and(eq(assets.orgId, orgId), eq(assets.id, id)));
   }
 
-  async deleteQuote(orgId: string, id: string): Promise<void> {
-    await db.delete(quoteItems).where(eq(quoteItems.quoteId, id));
-    await db.delete(quotes).where(and(eq(quotes.orgId, orgId), eq(quotes.id, id)));
+  async getSupplyRequests(orgId: string): Promise<(SupplyRequest & { departmentName?: string; requestedByName?: string })[]> {
+    const all = await db.select().from(supplyRequests).where(eq(supplyRequests.orgId, orgId)).orderBy(desc(supplyRequests.createdAt));
+    const deptIds = [...new Set(all.filter(s => s.departmentId).map(s => s.departmentId!))];
+    let deptMap: Record<string, string> = {};
+    if (deptIds.length > 0) {
+      const depts = await db.select({ id: departments.id, name: departments.name }).from(departments).where(inArray(departments.id, deptIds));
+      deptMap = Object.fromEntries(depts.map(d => [d.id, d.name]));
+    }
+    const userIds = [...new Set(all.filter(s => s.requestedBy).map(s => s.requestedBy!))];
+    let userMap: Record<string, string> = {};
+    if (userIds.length > 0) {
+      const usrs = await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, userIds));
+      userMap = Object.fromEntries(usrs.map(u => [u.id, u.fullName]));
+    }
+    return all.map(s => ({
+      ...s,
+      departmentName: s.departmentId ? deptMap[s.departmentId] : undefined,
+      requestedByName: s.requestedBy ? userMap[s.requestedBy] : undefined,
+    }));
   }
 
-  async getInvoices(orgId: string): Promise<(Invoice & { customerName?: string; total?: number })[]> {
-    const allInvoices = await db
-      .select()
-      .from(invoices)
-      .where(eq(invoices.orgId, orgId))
-      .orderBy(desc(invoices.createdAt));
-
-    const results = [];
-    for (const inv of allInvoices) {
-      let customerName: string | undefined;
-      if (inv.customerId) {
-        const [c] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, inv.customerId));
-        customerName = c?.name;
-      }
-      const items = await db.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, inv.id));
-      const subtotal = items.reduce((sum, it) => sum + Number(it.qty) * Number(it.unitPrice), 0);
-      const tax = subtotal * (Number(inv.taxRate) / 100);
-      const total = subtotal + tax - Number(inv.discount);
-      results.push({ ...inv, customerName, total });
+  async getSupplyRequest(orgId: string, id: string): Promise<(SupplyRequest & { departmentName?: string; requestedByName?: string }) | undefined> {
+    const [s] = await db.select().from(supplyRequests).where(and(eq(supplyRequests.orgId, orgId), eq(supplyRequests.id, id)));
+    if (!s) return undefined;
+    let departmentName: string | undefined;
+    if (s.departmentId) {
+      const [d] = await db.select({ name: departments.name }).from(departments).where(eq(departments.id, s.departmentId));
+      departmentName = d?.name;
     }
-    return results;
+    let requestedByName: string | undefined;
+    if (s.requestedBy) {
+      const [u] = await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, s.requestedBy));
+      requestedByName = u?.fullName;
+    }
+    return { ...s, departmentName, requestedByName };
   }
 
-  async getInvoice(orgId: string, id: string): Promise<(Invoice & { items?: InvoiceItem[]; customerName?: string; customer?: Customer }) | undefined> {
-    const [inv] = await db
-      .select()
-      .from(invoices)
-      .where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
-    if (!inv) return undefined;
-
-    const items = await db.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, id));
-    let customerName: string | undefined;
-    let customer: Customer | undefined;
-    if (inv.customerId) {
-      const [c] = await db.select().from(customers).where(eq(customers.id, inv.customerId));
-      customerName = c?.name;
-      customer = c;
-    }
-    return { ...inv, items, customerName, customer };
+  async createSupplyRequest(orgId: string, data: InsertSupplyRequest, requestedBy: string): Promise<SupplyRequest> {
+    const [s] = await db.insert(supplyRequests).values({ ...data, orgId, requestedBy }).returning();
+    return s;
   }
 
-  async getCustomerInvoices(orgId: string, customerId: string): Promise<Invoice[]> {
-    return db
-      .select()
-      .from(invoices)
-      .where(and(eq(invoices.orgId, orgId), eq(invoices.customerId, customerId)))
-      .orderBy(desc(invoices.createdAt));
+  async updateSupplyRequest(orgId: string, id: string, data: Partial<SupplyRequest>): Promise<SupplyRequest | undefined> {
+    const [s] = await db.update(supplyRequests).set({ ...data, updatedAt: new Date() }).where(and(eq(supplyRequests.orgId, orgId), eq(supplyRequests.id, id))).returning();
+    return s;
   }
 
-  async createInvoice(orgId: string, data: any, createdBy: string): Promise<Invoice> {
-    const { items: itemsData, ...invoiceData } = data;
-    const [inv] = await db
-      .insert(invoices)
-      .values({
-        ...invoiceData,
-        orgId,
-        createdBy,
-        status: invoiceData.status || "draft",
-        dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : null,
-      })
-      .returning();
-
-    if (itemsData && itemsData.length > 0) {
-      await db.insert(invoiceItems).values(
-        itemsData.map((it: any) => ({
-          orgId,
-          invoiceId: inv.id,
-          description: it.description,
-          qty: String(it.qty),
-          unitPrice: String(it.unitPrice),
-        }))
-      );
-    }
-    return inv;
+  async deleteSupplyRequest(orgId: string, id: string): Promise<void> {
+    await db.delete(supplyRequests).where(and(eq(supplyRequests.orgId, orgId), eq(supplyRequests.id, id)));
   }
 
-  async updateInvoice(orgId: string, id: string, data: any): Promise<Invoice | undefined> {
-    const { items: itemsData, ...invoiceData } = data;
-    if (invoiceData.dueDate) {
-      invoiceData.dueDate = new Date(invoiceData.dueDate);
+  async getFacilityRequests(orgId: string): Promise<(FacilityRequest & { requestedByName?: string; assignedToName?: string })[]> {
+    const all = await db.select().from(facilityRequests).where(eq(facilityRequests.orgId, orgId)).orderBy(desc(facilityRequests.createdAt));
+    const userIds = [...new Set([
+      ...all.filter(f => f.requestedBy).map(f => f.requestedBy!),
+      ...all.filter(f => f.assignedTo).map(f => f.assignedTo!),
+    ])];
+    let userMap: Record<string, string> = {};
+    if (userIds.length > 0) {
+      const usrs = await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, userIds));
+      userMap = Object.fromEntries(usrs.map(u => [u.id, u.fullName]));
     }
-    if (invoiceData.status === "paid" && !invoiceData.paidAt) {
-      invoiceData.paidAt = new Date();
-    }
-    const [inv] = await db
-      .update(invoices)
-      .set(invoiceData)
-      .where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)))
-      .returning();
-    if (!inv) return undefined;
-
-    if (itemsData) {
-      await db.delete(invoiceItems).where(eq(invoiceItems.invoiceId, id));
-      if (itemsData.length > 0) {
-        await db.insert(invoiceItems).values(
-          itemsData.map((it: any) => ({
-            orgId,
-            invoiceId: id,
-            description: it.description,
-            qty: String(it.qty),
-            unitPrice: String(it.unitPrice),
-          }))
-        );
-      }
-    }
-    return inv;
+    return all.map(f => ({
+      ...f,
+      requestedByName: f.requestedBy ? userMap[f.requestedBy] : undefined,
+      assignedToName: f.assignedTo ? userMap[f.assignedTo] : undefined,
+    }));
   }
 
-  async deleteInvoice(orgId: string, id: string): Promise<void> {
-    await db.delete(invoiceItems).where(eq(invoiceItems.invoiceId, id));
-    await db.delete(invoices).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
+  async getFacilityRequest(orgId: string, id: string): Promise<(FacilityRequest & { requestedByName?: string; assignedToName?: string }) | undefined> {
+    const [f] = await db.select().from(facilityRequests).where(and(eq(facilityRequests.orgId, orgId), eq(facilityRequests.id, id)));
+    if (!f) return undefined;
+    let requestedByName: string | undefined;
+    if (f.requestedBy) {
+      const [u] = await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, f.requestedBy));
+      requestedByName = u?.fullName;
+    }
+    let assignedToName: string | undefined;
+    if (f.assignedTo) {
+      const [u] = await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, f.assignedTo));
+      assignedToName = u?.fullName;
+    }
+    return { ...f, requestedByName, assignedToName };
+  }
+
+  async createFacilityRequest(orgId: string, data: InsertFacilityRequest, requestedBy: string): Promise<FacilityRequest> {
+    const [f] = await db.insert(facilityRequests).values({ ...data, orgId, requestedBy }).returning();
+    return f;
+  }
+
+  async updateFacilityRequest(orgId: string, id: string, data: Partial<FacilityRequest>): Promise<FacilityRequest | undefined> {
+    const [f] = await db.update(facilityRequests).set({ ...data, updatedAt: new Date() }).where(and(eq(facilityRequests.orgId, orgId), eq(facilityRequests.id, id))).returning();
+    return f;
+  }
+
+  async deleteFacilityRequest(orgId: string, id: string): Promise<void> {
+    await db.delete(facilityRequests).where(and(eq(facilityRequests.orgId, orgId), eq(facilityRequests.id, id)));
+  }
+
+  async getVendors(orgId: string): Promise<Vendor[]> {
+    return db.select().from(vendors).where(eq(vendors.orgId, orgId)).orderBy(vendors.name);
+  }
+
+  async getVendor(orgId: string, id: string): Promise<Vendor | undefined> {
+    const [v] = await db.select().from(vendors).where(and(eq(vendors.orgId, orgId), eq(vendors.id, id)));
+    return v;
+  }
+
+  async createVendor(orgId: string, data: InsertVendor): Promise<Vendor> {
+    const [v] = await db.insert(vendors).values({ ...data, orgId }).returning();
+    return v;
+  }
+
+  async updateVendor(orgId: string, id: string, data: Partial<Vendor>): Promise<Vendor | undefined> {
+    const [v] = await db.update(vendors).set(data).where(and(eq(vendors.orgId, orgId), eq(vendors.id, id))).returning();
+    return v;
+  }
+
+  async deleteVendor(orgId: string, id: string): Promise<void> {
+    await db.delete(vendors).where(and(eq(vendors.orgId, orgId), eq(vendors.id, id)));
+  }
+
+  async getOrgCounts(orgId: string): Promise<{ tickets: number; departments: number; assets: number; members: number }> {
+    const [tc] = await db.select({ cnt: count() }).from(tickets).where(eq(tickets.orgId, orgId));
+    const [dc] = await db.select({ cnt: count() }).from(departments).where(eq(departments.orgId, orgId));
+    const [ac] = await db.select({ cnt: count() }).from(assets).where(eq(assets.orgId, orgId));
+    const [mc] = await db.select({ cnt: count() }).from(memberships).where(eq(memberships.orgId, orgId));
+    return {
+      tickets: Number(tc?.cnt || 0),
+      departments: Number(dc?.cnt || 0),
+      assets: Number(ac?.cnt || 0),
+      members: Number(mc?.cnt || 0),
+    };
   }
 
   async getDashboardStats(orgId: string): Promise<any> {
+    const allTickets = await db.select().from(tickets).where(eq(tickets.orgId, orgId));
+    const allSupply = await db.select().from(supplyRequests).where(eq(supplyRequests.orgId, orgId));
+    const allFacility = await db.select().from(facilityRequests).where(eq(facilityRequests.orgId, orgId));
+    const allDepts = await db.select().from(departments).where(eq(departments.orgId, orgId));
+    const allAssetsList = await db.select().from(assets).where(eq(assets.orgId, orgId));
+
+    const openStatuses = ["new", "triage", "assigned", "waiting_department", "waiting_vendor", "in_progress", "escalated"];
+    const openTickets = allTickets.filter(t => openStatuses.includes(t.status));
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
-    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const [allCustomers, allJobs, allQuotes, allInvoices, orgMembers] = await Promise.all([
-      db.select().from(customers).where(eq(customers.orgId, orgId)),
-      db.select().from(jobs).where(eq(jobs.orgId, orgId)).orderBy(desc(jobs.createdAt)),
-      db.select().from(quotes).where(eq(quotes.orgId, orgId)).orderBy(desc(quotes.createdAt)),
-      db.select().from(invoices).where(eq(invoices.orgId, orgId)).orderBy(desc(invoices.createdAt)),
-      db.select({ userId: memberships.userId }).from(memberships).where(eq(memberships.orgId, orgId)),
-    ]);
+    const statusCounts: Record<string, number> = {};
+    for (const t of allTickets) {
+      statusCounts[t.status] = (statusCounts[t.status] || 0) + 1;
+    }
 
-    const customerMap: Record<string, string> = {};
-    allCustomers.forEach((c) => { customerMap[c.id] = c.name; });
+    const priorityCounts: Record<string, number> = {};
+    for (const t of openTickets) {
+      priorityCounts[t.priority] = (priorityCounts[t.priority] || 0) + 1;
+    }
 
-    const memberUserIds = orgMembers.map((m) => m.userId);
-    const memberUsers = memberUserIds.length > 0
-      ? await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, memberUserIds))
-      : [];
-    const userNameMap: Record<string, string> = {};
-    memberUsers.forEach((u) => { userNameMap[u.id] = u.fullName || u.id; });
+    const categoryCounts: Record<string, number> = {};
+    for (const t of openTickets) {
+      categoryCounts[t.category] = (categoryCounts[t.category] || 0) + 1;
+    }
 
-    const jobCounts: Record<string, number> = {
-      lead: 0, quoted: 0, scheduled: 0, in_progress: 0,
-      done: 0, invoiced: 0, paid: 0, canceled: 0,
-    };
-    allJobs.forEach((j) => { jobCounts[j.status] = (jobCounts[j.status] || 0) + 1; });
+    const deptCounts: Record<string, number> = {};
+    const deptMap = Object.fromEntries(allDepts.map(d => [d.id, d.name]));
+    for (const t of openTickets) {
+      const dname = t.departmentId ? (deptMap[t.departmentId] || "Unassigned") : "Unassigned";
+      deptCounts[dname] = (deptCounts[dname] || 0) + 1;
+    }
 
-    const activeStatuses = ["scheduled", "in_progress", "lead", "quoted"];
-    const activeJobs = allJobs.filter((j) => activeStatuses.includes(j.status)).length;
+    const overdueTickets = openTickets.filter(t => t.dueDate && new Date(t.dueDate) < now);
+    const equipmentTickets = allTickets.filter(t => t.category === "medical_equipment" && openStatuses.includes(t.status));
+    const facilityTickets = allTickets.filter(t => t.category === "facilities_building" && openStatuses.includes(t.status));
+    const pendingSupplies = allSupply.filter(s => s.status === "pending" || s.status === "approved");
+    const criticalOpen = openTickets.filter(t => t.priority === "critical" || t.priority === "high");
 
-    const todaysJobs = allJobs
-      .filter((j) => j.scheduledStart && j.scheduledStart >= todayStart && j.scheduledStart < todayEnd)
-      .map((j) => ({
-        ...j,
-        customerName: j.customerId ? customerMap[j.customerId] : undefined,
-        assignedUserNames: (j.assignedUserIds || []).map((uid) => userNameMap[uid] || uid).filter(Boolean),
+    const recentActivity = allTickets
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 10)
+      .map(t => ({
+        id: t.id,
+        ticketNumber: t.ticketNumber,
+        title: t.title,
+        status: t.status,
+        priority: t.priority,
+        category: t.category,
+        updatedAt: t.updatedAt,
       }));
 
-    const invoiceIds = allInvoices.map((i) => i.id);
-    const allItems = invoiceIds.length > 0
-      ? await db.select().from(invoiceItems).where(inArray(invoiceItems.invoiceId, invoiceIds))
-      : [];
-    const itemsByInvoice: Record<string, typeof allItems> = {};
-    allItems.forEach((it) => {
-      if (!itemsByInvoice[it.invoiceId]) itemsByInvoice[it.invoiceId] = [];
-      itemsByInvoice[it.invoiceId].push(it);
-    });
-
-    const invoiceTotals: Record<string, number> = {};
-    for (const inv of allInvoices) {
-      const items = itemsByInvoice[inv.id] || [];
-      const subtotal = items.reduce((sum, it) => sum + Number(it.qty) * Number(it.unitPrice), 0);
-      const tax = subtotal * (Number(inv.taxRate) / 100);
-      invoiceTotals[inv.id] = subtotal + tax - Number(inv.discount);
-    }
-
-    let revenue = 0;
-    let outstanding = 0;
-    let revenueThisMonth = 0;
-    let revenueLastMonth = 0;
-    let overdueAmount = 0;
-    let overdueCount = 0;
-
-    for (const inv of allInvoices) {
-      const total = invoiceTotals[inv.id] || 0;
-      if (inv.status === "paid") {
-        revenue += total;
-        if (inv.paidAt && inv.paidAt >= thisMonthStart) revenueThisMonth += total;
-        if (inv.paidAt && inv.paidAt >= lastMonthStart && inv.paidAt < thisMonthStart) revenueLastMonth += total;
-      }
-      if (inv.status === "sent") {
-        outstanding += total;
-        if (inv.dueDate && inv.dueDate < now) {
-          overdueCount++;
-          overdueAmount += total;
-        }
-      }
-    }
-
-    const allQuoteItems = allQuotes.length > 0
-      ? await db.select().from(quoteItems).where(inArray(quoteItems.quoteId, allQuotes.map((q) => q.id)))
-      : [];
-    const quoteItemsByQuote: Record<string, typeof allQuoteItems> = {};
-    allQuoteItems.forEach((qi) => {
-      if (!quoteItemsByQuote[qi.quoteId]) quoteItemsByQuote[qi.quoteId] = [];
-      quoteItemsByQuote[qi.quoteId].push(qi);
-    });
-
-    const sentQuotes = allQuotes.filter((q) => q.status === "sent");
-    let quotesAwaitingValue = 0;
-    for (const q of sentQuotes) {
-      const items = quoteItemsByQuote[q.id] || [];
-      const subtotal = items.reduce((sum, it) => sum + Number(it.qty) * Number(it.unitPrice), 0);
-      const tax = subtotal * (Number(q.taxRate) / 100);
-      quotesAwaitingValue += subtotal + tax - Number(q.discount);
-    }
-
-    const revenueChartData: { date: string; amount: number }[] = [];
-    const chartMap: Record<string, number> = {};
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      chartMap[key] = 0;
-    }
-    for (const inv of allInvoices) {
-      if (inv.status === "paid" && inv.paidAt && inv.paidAt >= thirtyDaysAgo) {
-        const d = inv.paidAt;
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        if (key in chartMap) chartMap[key] = (chartMap[key] || 0) + (invoiceTotals[inv.id] || 0);
-      }
-    }
-    for (const [date, amount] of Object.entries(chartMap)) {
-      revenueChartData.push({ date, amount });
-    }
-    revenueChartData.sort((a, b) => a.date.localeCompare(b.date));
-
-    const activityFeed: { type: string; id: string; label: string; link: string; time: Date }[] = [];
-    allJobs.slice(0, 10).forEach((j) => {
-      activityFeed.push({
-        type: "job",
-        id: j.id,
-        label: `Job "${j.title}" is ${j.status.replace("_", " ")}`,
-        link: `/jobs/${j.id}`,
-        time: j.createdAt,
-      });
-    });
-    allInvoices
-      .filter((i) => i.status === "paid" || i.status === "sent")
-      .slice(0, 5)
-      .forEach((inv) => {
-        const customer = inv.customerId ? customerMap[inv.customerId] : "Unknown";
-        const label = inv.status === "paid"
-          ? `Invoice paid by ${customer}`
-          : `Invoice sent to ${customer}`;
-        activityFeed.push({
-          type: "invoice",
-          id: inv.id,
-          label,
-          link: `/invoices/${inv.id}`,
-          time: inv.status === "paid" && inv.paidAt ? inv.paidAt : (inv.sentAt ?? inv.createdAt),
-        });
-      });
-    allQuotes
-      .filter((q) => q.status === "accepted" || q.status === "sent" || q.status === "declined")
-      .slice(0, 5)
-      .forEach((q) => {
-        const customer = q.customerId ? customerMap[q.customerId] : "Unknown";
-        const verb = q.status === "accepted" ? "accepted" : q.status === "declined" ? "declined" : "sent";
-        activityFeed.push({
-          type: "quote",
-          id: q.id,
-          label: `Quote ${verb} for ${customer}`,
-          link: `/quotes/${q.id}`,
-          time: q.createdAt,
-        });
-      });
-    activityFeed.sort((a, b) => b.time.getTime() - a.time.getTime());
-
-    const memberWorkload: { userId: string; userName: string; activeJobCount: number }[] = [];
-    if (orgMembers.length > 1) {
-      for (const { userId } of orgMembers) {
-        const activeCount = allJobs.filter(
-          (j) => activeStatuses.includes(j.status) && (j.assignedUserIds || []).includes(userId)
-        ).length;
-        memberWorkload.push({ userId, userName: userNameMap[userId] || userId, activeJobCount: activeCount });
-      }
-    }
-
-    const recentJobs = allJobs.slice(0, 5).map((j) => ({
-      ...j,
-      customerName: j.customerId ? customerMap[j.customerId] : undefined,
-    }));
-
-    const recentInvoices = allInvoices.slice(0, 5).map((inv) => ({
-      ...inv,
-      customerName: inv.customerId ? customerMap[inv.customerId] : undefined,
-    }));
-
-    const isEmpty = allJobs.length === 0 && allCustomers.length === 0 && allInvoices.length === 0;
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const ticketsThisMonth = allTickets.filter(t => new Date(t.createdAt) >= thirtyDaysAgo);
+    const resolvedThisMonth = allTickets.filter(t => (t.status === "resolved" || t.status === "closed") && new Date(t.updatedAt) >= thirtyDaysAgo);
 
     return {
-      customerCount: allCustomers.length,
-      jobCounts,
-      totalJobs: allJobs.length,
-      activeJobs,
-      quoteCount: allQuotes.length,
-      invoiceCount: allInvoices.length,
-      revenue,
-      outstanding,
-      revenueThisMonth,
-      revenueLastMonth,
-      overdueCount,
-      overdueAmount,
-      quotesAwaitingCount: sentQuotes.length,
-      quotesAwaitingValue,
-      todaysJobs,
-      revenueChartData,
-      activityFeed: activityFeed.slice(0, 15),
-      memberWorkload,
-      recentJobs,
-      recentInvoices,
-      isEmpty,
+      totalTickets: allTickets.length,
+      openTickets: openTickets.length,
+      resolvedThisMonth: resolvedThisMonth.length,
+      newThisMonth: ticketsThisMonth.length,
+      statusCounts,
+      priorityCounts,
+      categoryCounts,
+      departmentCounts: deptCounts,
+      overdueCount: overdueTickets.length,
+      equipmentIncidents: equipmentTickets.length,
+      facilityIncidents: facilityTickets.length,
+      pendingSupplyRequests: pendingSupplies.length,
+      totalAssets: allAssetsList.length,
+      assetsUnderService: allAssetsList.filter(a => a.status === "under_service").length,
+      criticalHighOpen: criticalOpen.length,
+      recentActivity,
+      isEmpty: allTickets.length === 0,
     };
-  }
-
-  async getOrgCounts(orgId: string): Promise<{ customers: number; jobs: number; quotes: number; invoices: number; members: number }> {
-    const [custCount] = await db.select({ c: count() }).from(customers).where(eq(customers.orgId, orgId));
-    const [jobCount] = await db.select({ c: count() }).from(jobs).where(eq(jobs.orgId, orgId));
-    const [quoteCount] = await db.select({ c: count() }).from(quotes).where(eq(quotes.orgId, orgId));
-    const [invoiceCount] = await db.select({ c: count() }).from(invoices).where(eq(invoices.orgId, orgId));
-    const [memberCount] = await db.select({ c: count() }).from(memberships).where(eq(memberships.orgId, orgId));
-    return {
-      customers: custCount.c,
-      jobs: jobCount.c,
-      quotes: quoteCount.c,
-      invoices: invoiceCount.c,
-      members: memberCount.c,
-    };
-  }
-
-  async deleteUser(userId: string): Promise<void> {
-    await db.transaction(async (tx) => {
-      const userMemberships = await tx.select().from(memberships).where(eq(memberships.userId, userId));
-
-      for (const mem of userMemberships) {
-        const orgMembers = await tx.select().from(memberships).where(eq(memberships.orgId, mem.orgId));
-        const otherMembers = orgMembers.filter((m) => m.userId !== userId);
-
-        if (otherMembers.length === 0) {
-          const orgMc = await tx.select({ id: missedCalls.id }).from(missedCalls).where(eq(missedCalls.orgId, mem.orgId));
-          for (const mc of orgMc) {
-            await tx.delete(aiMessages).where(eq(aiMessages.missedCallId, mc.id));
-          }
-          await tx.delete(missedCalls).where(eq(missedCalls.orgId, mem.orgId));
-          await tx.delete(inviteCodes).where(eq(inviteCodes.orgId, mem.orgId));
-          await tx.delete(memberships).where(eq(memberships.orgId, mem.orgId));
-          await tx.delete(quoteItems).where(eq(quoteItems.orgId, mem.orgId));
-          await tx.delete(quotes).where(eq(quotes.orgId, mem.orgId));
-          await tx.delete(invoiceItems).where(eq(invoiceItems.orgId, mem.orgId));
-          await tx.delete(invoices).where(eq(invoices.orgId, mem.orgId));
-          await tx.delete(jobEvents).where(eq(jobEvents.orgId, mem.orgId));
-          await tx.delete(jobs).where(eq(jobs.orgId, mem.orgId));
-          await tx.delete(customers).where(eq(customers.orgId, mem.orgId));
-          await tx.delete(orgs).where(eq(orgs.id, mem.orgId));
-        } else {
-          await tx.delete(memberships).where(and(eq(memberships.orgId, mem.orgId), eq(memberships.userId, userId)));
-        }
-      }
-
-      await tx.update(inviteCodes).set({ createdBy: null }).where(eq(inviteCodes.createdBy, userId));
-      await tx.update(jobs).set({ createdBy: null }).where(eq(jobs.createdBy, userId));
-      await tx.update(jobEvents).set({ createdBy: null }).where(eq(jobEvents.createdBy, userId));
-      await tx.update(quotes).set({ createdBy: null }).where(eq(quotes.createdBy, userId));
-      await tx.update(invoices).set({ createdBy: null }).where(eq(invoices.createdBy, userId));
-
-      await tx.delete(users).where(eq(users.id, userId));
-    });
-  }
-
-  async createMissedCall(orgId: string, data: { callerPhone: string; callerName?: string; twilioCallSid?: string }): Promise<MissedCall> {
-    const [mc] = await db.insert(missedCalls).values({
-      orgId,
-      callerPhone: data.callerPhone,
-      callerName: data.callerName || null,
-      twilioCallSid: data.twilioCallSid || null,
-    }).returning();
-    return mc;
-  }
-
-  async getMissedCall(id: string): Promise<MissedCall | undefined> {
-    const [mc] = await db.select().from(missedCalls).where(eq(missedCalls.id, id));
-    return mc;
-  }
-
-  async getMissedCallByPhone(orgId: string, phone: string): Promise<MissedCall | undefined> {
-    const activeStatuses: ("new" | "in_progress")[] = ["new", "in_progress"];
-    const [mc] = await db.select().from(missedCalls)
-      .where(and(
-        eq(missedCalls.orgId, orgId),
-        eq(missedCalls.callerPhone, phone),
-        inArray(missedCalls.status, activeStatuses)
-      ))
-      .orderBy(desc(missedCalls.createdAt));
-    return mc;
-  }
-
-  async getMissedCalls(orgId: string, limit = 50, offset = 0): Promise<MissedCall[]> {
-    return db.select().from(missedCalls)
-      .where(eq(missedCalls.orgId, orgId))
-      .orderBy(desc(missedCalls.createdAt))
-      .limit(limit)
-      .offset(offset);
-  }
-
-  async updateMissedCall(id: string, data: Partial<MissedCall>): Promise<MissedCall | undefined> {
-    const [mc] = await db.update(missedCalls).set(data).where(eq(missedCalls.id, id)).returning();
-    return mc;
-  }
-
-  async getMissedCallCount(orgId: string, since: Date): Promise<number> {
-    const [result] = await db.select({ c: count() }).from(missedCalls)
-      .where(and(
-        eq(missedCalls.orgId, orgId),
-        sql`${missedCalls.createdAt} >= ${since}`
-      ));
-    return result.c;
-  }
-
-  async createAiMessage(missedCallId: string, role: "system" | "assistant" | "user", content: string): Promise<AiMessage> {
-    const [msg] = await db.insert(aiMessages).values({
-      missedCallId,
-      role,
-      content,
-    }).returning();
-    return msg;
-  }
-
-  async getAiMessages(missedCallId: string): Promise<AiMessage[]> {
-    return db.select().from(aiMessages)
-      .where(eq(aiMessages.missedCallId, missedCallId))
-      .orderBy(aiMessages.createdAt);
-  }
-
-  async getOrgByCallRecoveryPhone(phone: string): Promise<Org | undefined> {
-    const [org] = await db.select().from(orgs).where(eq(orgs.callRecoveryPhone, phone));
-    return org;
-  }
-
-  async findMissedCallByCallerPhone(phone: string): Promise<(MissedCall & { orgId: string }) | undefined> {
-    const activeStatuses: ("new" | "in_progress")[] = ["new", "in_progress"];
-    const [mc] = await db.select().from(missedCalls)
-      .where(and(
-        eq(missedCalls.callerPhone, phone),
-        inArray(missedCalls.status, activeStatuses)
-      ))
-      .orderBy(desc(missedCalls.createdAt));
-    return mc;
-  }
-
-  async createCallRecoverySubscription(data: {
-    orgId: string;
-    plan: CallRecoveryPlan;
-    stripeSubscriptionId?: string;
-    stripeCustomerId?: string;
-    currentPeriodStart?: Date;
-    currentPeriodEnd?: Date;
-  }): Promise<CallRecoverySubscription> {
-    const [sub] = await db.insert(callRecoverySubscriptions).values({
-      orgId: data.orgId,
-      plan: data.plan,
-      status: "active",
-      stripeSubscriptionId: data.stripeSubscriptionId || null,
-      stripeCustomerId: data.stripeCustomerId || null,
-      currentPeriodStart: data.currentPeriodStart || new Date(),
-      currentPeriodEnd: data.currentPeriodEnd || null,
-      usageCount: 0,
-    }).returning();
-    return sub;
-  }
-
-  async getCallRecoverySubscription(orgId: string): Promise<CallRecoverySubscription | undefined> {
-    const [sub] = await db.select().from(callRecoverySubscriptions)
-      .where(and(
-        eq(callRecoverySubscriptions.orgId, orgId),
-        eq(callRecoverySubscriptions.status, "active")
-      ))
-      .orderBy(desc(callRecoverySubscriptions.createdAt));
-    return sub;
-  }
-
-  async updateCallRecoverySubscription(id: string, data: Partial<CallRecoverySubscription>): Promise<CallRecoverySubscription | undefined> {
-    const [sub] = await db.update(callRecoverySubscriptions)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(callRecoverySubscriptions.id, id))
-      .returning();
-    return sub;
-  }
-
-  async incrementCallRecoveryUsage(orgId: string): Promise<void> {
-    await db.update(callRecoverySubscriptions)
-      .set({ usageCount: sql`${callRecoverySubscriptions.usageCount} + 1`, updatedAt: new Date() })
-      .where(and(
-        eq(callRecoverySubscriptions.orgId, orgId),
-        eq(callRecoverySubscriptions.status, "active")
-      ));
   }
 }
 

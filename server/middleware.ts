@@ -1,6 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
-import { PLAN_LIMITS } from "@shared/schema";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 
@@ -45,35 +44,4 @@ export async function requireSuperAdmin(req: Request, res: Response, next: NextF
     return res.status(403).send("Forbidden: Super admin access required");
   }
   next();
-}
-
-export async function checkPlanLimit(
-  orgId: string,
-  resource: "customers" | "jobs" | "quotes" | "invoices"
-): Promise<{ allowed: boolean; limit: number; current: number }> {
-  const org = await storage.getOrg(orgId);
-  if (!org) return { allowed: false, limit: 0, current: 0 };
-  const limits = PLAN_LIMITS[org.plan] || PLAN_LIMITS.free;
-  const maxAllowed = limits[resource];
-  if (maxAllowed === -1) return { allowed: true, limit: -1, current: 0 };
-  const counts = await storage.getOrgCounts(orgId);
-  const current = counts[resource];
-  return { allowed: current < maxAllowed, limit: maxAllowed, current };
-}
-
-export async function checkTeamLimit(
-  orgId: string
-): Promise<{ allowed: boolean; limit: number; current: number; canInvite: boolean }> {
-  const org = await storage.getOrg(orgId);
-  if (!org) return { allowed: false, limit: 0, current: 0, canInvite: false };
-  const limits = PLAN_LIMITS[org.plan] || PLAN_LIMITS.free;
-  if (!limits.canInvite) return { allowed: false, limit: limits.teamMembers, current: 0, canInvite: false };
-  if (limits.teamMembers === -1) return { allowed: true, limit: -1, current: 0, canInvite: true };
-  const counts = await storage.getOrgCounts(org.id);
-  return {
-    allowed: counts.members < limits.teamMembers,
-    limit: limits.teamMembers,
-    current: counts.members,
-    canInvite: true,
-  };
 }

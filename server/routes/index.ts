@@ -7,15 +7,14 @@ import { getSessionSecret } from "../env";
 
 import authRouter from "./auth";
 import orgsRouter from "./orgs";
-import customersRouter from "./customers";
-import jobsRouter from "./jobs";
-import quotesRouter from "./quotes";
-import invoicesRouter from "./invoices";
-import subscriptionsRouter from "./subscriptions";
-import callRecoveryRouter from "./callRecovery";
-import adminRouter from "./admin";
-import wellKnownRouter from "./wellKnown";
+import ticketsRouter from "./tickets";
+import departmentsRouter from "./departments";
+import assetsRouter from "./assets";
+import supplyRequestsRouter from "./supplyRequests";
+import facilityRequestsRouter from "./facilityRequests";
+import vendorsRouter from "./vendors";
 import analyticsRouter from "./analytics";
+import adminRouter from "./admin";
 
 declare module "express-session" {
   interface SessionData {
@@ -47,15 +46,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     })
   );
 
-  app.use(wellKnownRouter);
   app.use(authRouter);
   app.use(orgsRouter);
-  app.use(customersRouter);
-  app.use(jobsRouter);
-  app.use(quotesRouter);
-  app.use(invoicesRouter);
-  app.use(subscriptionsRouter);
-  app.use(callRecoveryRouter);
+  app.use(ticketsRouter);
+  app.use(departmentsRouter);
+  app.use(assetsRouter);
+  app.use(supplyRequestsRouter);
+  app.use(facilityRequestsRouter);
+  app.use(vendorsRouter);
   app.use(analyticsRouter);
   app.use(adminRouter);
 

@@ -5,74 +5,77 @@ import {
   varchar,
   timestamp,
   integer,
-  numeric,
-  jsonb,
   boolean,
   pgEnum,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const orgPlanEnum = pgEnum("org_plan", [
-  "free",
-  "individual",
-  "small_business",
-  "enterprise",
-]);
-
 export const membershipRoleEnum = pgEnum("membership_role", [
-  "owner",
   "admin",
-  "tech",
-  "viewer",
+  "supervisor",
+  "staff",
+  "technician",
+  "readonly",
 ]);
 
-export const jobPriorityEnum = pgEnum("job_priority", ["low", "normal", "urgent"]);
-
-export const jobStatusEnum = pgEnum("job_status", [
-  "lead",
-  "quoted",
-  "scheduled",
-  "in_progress",
-  "done",
-  "invoiced",
-  "paid",
-  "canceled",
+export const ticketPriorityEnum = pgEnum("ticket_priority", [
+  "critical",
+  "high",
+  "normal",
+  "low",
 ]);
 
-export const quoteStatusEnum = pgEnum("quote_status", [
-  "draft",
-  "sent",
-  "accepted",
-  "declined",
-]);
-
-export const invoiceStatusEnum = pgEnum("invoice_status", [
-  "draft",
-  "sent",
-  "paid",
-  "void",
-]);
-
-export type CallRecoveryPlan = "starter" | "growth" | "pro";
-export const callRecoveryPlanEnum = pgEnum("call_recovery_plan", [
-  "starter",
-  "growth",
-  "pro",
-]);
-
-export const missedCallStatusEnum = pgEnum("missed_call_status", [
+export const ticketStatusEnum = pgEnum("ticket_status", [
   "new",
+  "triage",
+  "assigned",
+  "waiting_department",
+  "waiting_vendor",
   "in_progress",
-  "recovered",
-  "failed",
-  "expired",
+  "escalated",
+  "resolved",
+  "closed",
 ]);
 
-export const aiMessageRoleEnum = pgEnum("ai_message_role", [
-  "system",
-  "assistant",
-  "user",
+export const ticketCategoryEnum = pgEnum("ticket_category", [
+  "it_infrastructure",
+  "medical_equipment",
+  "supplies_inventory",
+  "facilities_building",
+  "housekeeping_environmental",
+  "safety_compliance",
+  "vendor_external",
+  "administrative",
+  "hr_staff",
+  "other",
+]);
+
+export const assetStatusEnum = pgEnum("asset_status", [
+  "active",
+  "under_service",
+  "retired",
+  "offline",
+]);
+
+export const supplyRequestStatusEnum = pgEnum("supply_request_status", [
+  "pending",
+  "approved",
+  "ordered",
+  "fulfilled",
+  "denied",
+]);
+
+export const facilityRequestTypeEnum = pgEnum("facility_request_type", [
+  "hvac",
+  "plumbing",
+  "lighting",
+  "doors_locks",
+  "electrical",
+  "room_condition",
+  "furniture_workspace",
+  "cleaning_environmental",
+  "other",
 ]);
 
 export const users = pgTable("users", {
@@ -92,23 +95,7 @@ export const orgs = pgTable("orgs", {
   phone: text("phone").default(""),
   email: text("email").default(""),
   address: text("address").default(""),
-  plan: orgPlanEnum("plan").notNull().default("free"),
-  stripeCustomerId: text("stripe_customer_id"),
-  stripeSubscriptionId: text("stripe_subscription_id"),
-  subscriptionStatus: text("subscription_status"),
-  currentPeriodEnd: timestamp("current_period_end"),
-  callRecoveryPlan: callRecoveryPlanEnum("call_recovery_plan"),
-  callRecoveryStripeSubId: text("call_recovery_stripe_sub_id"),
-  callRecoverySubscriptionId: varchar("call_recovery_subscription_id"),
-  callRecoveryStatus: text("call_recovery_status"),
-  callRecoveryPhone: text("call_recovery_phone"),
-  callRecoveryEnabled: boolean("call_recovery_enabled").default(true).notNull(),
-  callRecoveryCustomMessage: text("call_recovery_custom_message"),
-  callRecoveryQuietStart: text("call_recovery_quiet_start"),
-  callRecoveryQuietEnd: text("call_recovery_quiet_end"),
   logoUrl: text("logo_url"),
-  website: text("website"),
-  businessHours: text("business_hours"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -120,7 +107,7 @@ export const memberships = pgTable("memberships", {
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
-  role: membershipRoleEnum("role").notNull().default("tech"),
+  role: membershipRoleEnum("role").notNull().default("staff"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -130,200 +117,137 @@ export const inviteCodes = pgTable("invite_codes", {
     .notNull()
     .references(() => orgs.id),
   code: text("code").notNull().unique(),
-  role: membershipRoleEnum("role").notNull().default("tech"),
+  role: membershipRoleEnum("role").notNull().default("staff"),
   expiresAt: timestamp("expires_at"),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const customers = pgTable("customers", {
+export const departments = pgTable("departments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orgId: varchar("org_id")
     .notNull()
     .references(() => orgs.id),
   name: text("name").notNull(),
-  phone: text("phone").default(""),
-  email: text("email").default(""),
-  address: text("address").default(""),
-  notes: text("notes").default(""),
-  notesUpdatedAt: timestamp("notes_updated_at"),
+  description: text("description").default(""),
+  contactName: text("contact_name").default(""),
+  contactPhone: text("contact_phone").default(""),
+  contactEmail: text("contact_email").default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const jobs = pgTable("jobs", {
+export const tickets = pgTable("tickets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orgId: varchar("org_id")
     .notNull()
     .references(() => orgs.id),
-  customerId: varchar("customer_id").references(() => customers.id),
+  ticketNumber: text("ticket_number").notNull(),
   title: text("title").notNull(),
   description: text("description").default(""),
-  status: jobStatusEnum("status").notNull().default("lead"),
-  scheduledStart: timestamp("scheduled_start"),
-  scheduledEnd: timestamp("scheduled_end"),
-  assignedUserIds: text("assigned_user_ids")
-    .array()
-    .default(sql`'{}'::text[]`),
-  priority: jobPriorityEnum("priority").notNull().default("normal"),
-  internalNotes: text("internal_notes").default(""),
-  createdBy: varchar("created_by").references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const jobEvents = pgTable("job_events", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  orgId: varchar("org_id")
-    .notNull()
-    .references(() => orgs.id),
-  jobId: varchar("job_id")
-    .notNull()
-    .references(() => jobs.id),
-  type: text("type").notNull(),
-  payload: jsonb("payload").default({}),
-  createdBy: varchar("created_by").references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const quotes = pgTable("quotes", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  orgId: varchar("org_id")
-    .notNull()
-    .references(() => orgs.id),
-  customerId: varchar("customer_id").references(() => customers.id),
-  jobId: varchar("job_id").references(() => jobs.id),
-  status: quoteStatusEnum("status").notNull().default("draft"),
-  taxRate: numeric("tax_rate", { precision: 5, scale: 2 }).default("0"),
-  discount: numeric("discount", { precision: 10, scale: 2 }).default("0"),
-  notes: text("notes").default(""),
-  expiresAt: timestamp("expires_at"),
-  publicToken: text("public_token").default(sql`gen_random_uuid()`),
-  createdBy: varchar("created_by").references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const quoteItems = pgTable("quote_items", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  orgId: varchar("org_id")
-    .notNull()
-    .references(() => orgs.id),
-  quoteId: varchar("quote_id")
-    .notNull()
-    .references(() => quotes.id, { onDelete: "cascade" }),
-  description: text("description").notNull(),
-  qty: numeric("qty", { precision: 10, scale: 2 }).notNull().default("1"),
-  unitPrice: numeric("unit_price", { precision: 10, scale: 2 })
-    .notNull()
-    .default("0"),
-});
-
-export const invoices = pgTable("invoices", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  orgId: varchar("org_id")
-    .notNull()
-    .references(() => orgs.id),
-  customerId: varchar("customer_id").references(() => customers.id),
-  jobId: varchar("job_id").references(() => jobs.id),
-  status: invoiceStatusEnum("status").notNull().default("draft"),
-  taxRate: numeric("tax_rate", { precision: 5, scale: 2 }).default("0"),
-  discount: numeric("discount", { precision: 10, scale: 2 }).default("0"),
+  category: ticketCategoryEnum("category").notNull().default("other"),
+  priority: ticketPriorityEnum("priority").notNull().default("normal"),
+  status: ticketStatusEnum("status").notNull().default("new"),
+  departmentId: varchar("department_id").references(() => departments.id),
+  location: text("location").default(""),
+  building: text("building").default(""),
+  floor: text("floor").default(""),
+  room: text("room").default(""),
+  assetId: varchar("asset_id").references(() => assets.id),
+  reportedBy: varchar("reported_by").references(() => users.id),
+  assignedTo: varchar("assigned_to").references(() => users.id),
   dueDate: timestamp("due_date"),
-  sentAt: timestamp("sent_at"),
-  paidAt: timestamp("paid_at"),
-  notes: text("notes").default(""),
-  paymentNotes: text("payment_notes").default(""),
-  publicToken: text("public_token").default(sql`gen_random_uuid()`),
-  createdBy: varchar("created_by").references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const invoiceItems = pgTable("invoice_items", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  orgId: varchar("org_id")
-    .notNull()
-    .references(() => orgs.id),
-  invoiceId: varchar("invoice_id")
-    .notNull()
-    .references(() => invoices.id, { onDelete: "cascade" }),
-  description: text("description").notNull(),
-  qty: numeric("qty", { precision: 10, scale: 2 }).notNull().default("1"),
-  unitPrice: numeric("unit_price", { precision: 10, scale: 2 })
-    .notNull()
-    .default("0"),
-});
-
-export const callRecoverySubscriptions = pgTable("call_recovery_subscriptions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  orgId: varchar("org_id")
-    .notNull()
-    .references(() => orgs.id),
-  plan: callRecoveryPlanEnum("plan").notNull(),
-  status: text("status").notNull().default("active"),
-  stripeSubscriptionId: text("stripe_subscription_id"),
-  stripeCustomerId: text("stripe_customer_id"),
-  currentPeriodStart: timestamp("current_period_start").notNull().defaultNow(),
-  currentPeriodEnd: timestamp("current_period_end"),
-  usageCount: integer("usage_count").notNull().default(0),
+  internalNotes: text("internal_notes").default(""),
+  vendorReference: text("vendor_reference").default(""),
+  rootCause: text("root_cause").default(""),
+  resolutionSummary: text("resolution_summary").default(""),
+  isRecurring: boolean("is_recurring").default(false).notNull(),
+  isPatientImpacting: boolean("is_patient_impacting").default(false).notNull(),
+  isRepeatIssue: boolean("is_repeat_issue").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const missedCalls = pgTable("missed_calls", {
+export const ticketEvents = pgTable("ticket_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orgId: varchar("org_id")
     .notNull()
     .references(() => orgs.id),
-  callerPhone: text("caller_phone").notNull(),
-  callerName: text("caller_name"),
-  status: missedCallStatusEnum("status").notNull().default("new"),
-  serviceType: text("service_type"),
-  location: text("location"),
-  urgency: text("urgency"),
-  customerId: varchar("customer_id").references(() => customers.id),
-  jobId: varchar("job_id").references(() => jobs.id),
-  twilioCallSid: text("twilio_call_sid"),
-  completedAt: timestamp("completed_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const aiMessages = pgTable("ai_messages", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  missedCallId: varchar("missed_call_id")
+  ticketId: varchar("ticket_id")
     .notNull()
-    .references(() => missedCalls.id, { onDelete: "cascade" }),
-  role: aiMessageRoleEnum("role").notNull(),
-  content: text("content").notNull(),
+    .references(() => tickets.id),
+  type: text("type").notNull(),
+  content: text("content").default(""),
+  createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertCallRecoverySubscriptionSchema = createInsertSchema(callRecoverySubscriptions).pick({
-  orgId: true,
-  plan: true,
-  stripeSubscriptionId: true,
-  stripeCustomerId: true,
-  currentPeriodStart: true,
-  currentPeriodEnd: true,
+export const assets = pgTable("assets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id),
+  assetTag: text("asset_tag").notNull(),
+  name: text("name").notNull(),
+  assetType: text("asset_type").default(""),
+  location: text("location").default(""),
+  departmentId: varchar("department_id").references(() => departments.id),
+  serviceVendor: text("service_vendor").default(""),
+  warrantyNotes: text("warranty_notes").default(""),
+  maintenanceNotes: text("maintenance_notes").default(""),
+  status: assetStatusEnum("status").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export type CallRecoverySubscription = typeof callRecoverySubscriptions.$inferSelect;
-export type InsertCallRecoverySubscription = z.infer<typeof insertCallRecoverySubscriptionSchema>;
-
-export const insertMissedCallSchema = createInsertSchema(missedCalls).pick({
-  callerPhone: true,
-  callerName: true,
-  twilioCallSid: true,
+export const supplyRequests = pgTable("supply_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id),
+  requestType: text("request_type").default(""),
+  itemName: text("item_name").notNull(),
+  quantity: integer("quantity").notNull().default(1),
+  urgency: ticketPriorityEnum("urgency").notNull().default("normal"),
+  departmentId: varchar("department_id").references(() => departments.id),
+  justification: text("justification").default(""),
+  status: supplyRequestStatusEnum("status").notNull().default("pending"),
+  requestedBy: varchar("requested_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertAiMessageSchema = createInsertSchema(aiMessages).pick({
-  missedCallId: true,
-  role: true,
-  content: true,
+export const facilityRequests = pgTable("facility_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id),
+  requestType: facilityRequestTypeEnum("request_type").notNull().default("other"),
+  title: text("title").notNull(),
+  description: text("description").default(""),
+  location: text("location").default(""),
+  building: text("building").default(""),
+  floor: text("floor").default(""),
+  room: text("room").default(""),
+  priority: ticketPriorityEnum("priority").notNull().default("normal"),
+  status: ticketStatusEnum("status").notNull().default("new"),
+  requestedBy: varchar("requested_by").references(() => users.id),
+  assignedTo: varchar("assigned_to").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export type MissedCallStatus = "new" | "in_progress" | "recovered" | "failed" | "expired";
-export type MissedCall = typeof missedCalls.$inferSelect;
-export type InsertMissedCall = z.infer<typeof insertMissedCallSchema>;
-export type AiMessage = typeof aiMessages.$inferSelect;
-export type InsertAiMessage = z.infer<typeof insertAiMessageSchema>;
+export const vendors = pgTable("vendors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id),
+  name: text("name").notNull(),
+  serviceType: text("service_type").default(""),
+  phone: text("phone").default(""),
+  email: text("email").default(""),
+  emergencyContact: text("emergency_contact").default(""),
+  contractNotes: text("contract_notes").default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
@@ -347,58 +271,79 @@ export const insertMembershipSchema = createInsertSchema(memberships).pick({
   role: true,
 });
 
-export const insertCustomerSchema = createInsertSchema(customers).pick({
+export const insertDepartmentSchema = createInsertSchema(departments).pick({
   name: true,
-  phone: true,
-  email: true,
-  address: true,
-  notes: true,
+  description: true,
+  contactName: true,
+  contactPhone: true,
+  contactEmail: true,
 });
 
-export const insertJobSchema = createInsertSchema(jobs).pick({
-  customerId: true,
+export const insertTicketSchema = createInsertSchema(tickets).pick({
   title: true,
   description: true,
-  status: true,
+  category: true,
   priority: true,
-  scheduledStart: true,
-  scheduledEnd: true,
-  assignedUserIds: true,
-  internalNotes: true,
-});
-
-export const insertQuoteSchema = createInsertSchema(quotes).pick({
-  customerId: true,
-  jobId: true,
   status: true,
-  taxRate: true,
-  discount: true,
-  notes: true,
-  expiresAt: true,
-});
-
-export const insertQuoteItemSchema = createInsertSchema(quoteItems).pick({
-  quoteId: true,
-  description: true,
-  qty: true,
-  unitPrice: true,
-});
-
-export const insertInvoiceSchema = createInsertSchema(invoices).pick({
-  customerId: true,
-  jobId: true,
-  status: true,
-  taxRate: true,
-  discount: true,
+  departmentId: true,
+  location: true,
+  building: true,
+  floor: true,
+  room: true,
+  assetId: true,
+  assignedTo: true,
   dueDate: true,
-  notes: true,
+  internalNotes: true,
+  vendorReference: true,
+  rootCause: true,
+  resolutionSummary: true,
+  isRecurring: true,
+  isPatientImpacting: true,
+  isRepeatIssue: true,
 });
 
-export const insertInvoiceItemSchema = createInsertSchema(invoiceItems).pick({
-  invoiceId: true,
+export const insertAssetSchema = createInsertSchema(assets).pick({
+  assetTag: true,
+  name: true,
+  assetType: true,
+  location: true,
+  departmentId: true,
+  serviceVendor: true,
+  warrantyNotes: true,
+  maintenanceNotes: true,
+  status: true,
+});
+
+export const insertSupplyRequestSchema = createInsertSchema(supplyRequests).pick({
+  requestType: true,
+  itemName: true,
+  quantity: true,
+  urgency: true,
+  departmentId: true,
+  justification: true,
+  status: true,
+});
+
+export const insertFacilityRequestSchema = createInsertSchema(facilityRequests).pick({
+  requestType: true,
+  title: true,
   description: true,
-  qty: true,
-  unitPrice: true,
+  location: true,
+  building: true,
+  floor: true,
+  room: true,
+  priority: true,
+  status: true,
+  assignedTo: true,
+});
+
+export const insertVendorSchema = createInsertSchema(vendors).pick({
+  name: true,
+  serviceType: true,
+  phone: true,
+  email: true,
+  emergencyContact: true,
+  contractNotes: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -407,111 +352,124 @@ export type Org = typeof orgs.$inferSelect;
 export type InsertOrg = z.infer<typeof insertOrgSchema>;
 export type Membership = typeof memberships.$inferSelect;
 export type InsertMembership = z.infer<typeof insertMembershipSchema>;
-export type Customer = typeof customers.$inferSelect;
-export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
-export type Job = typeof jobs.$inferSelect;
-export type InsertJob = z.infer<typeof insertJobSchema>;
-export type JobEvent = typeof jobEvents.$inferSelect;
-export type Quote = typeof quotes.$inferSelect;
-export type InsertQuote = z.infer<typeof insertQuoteSchema>;
-export type QuoteItem = typeof quoteItems.$inferSelect;
-export type InsertQuoteItem = z.infer<typeof insertQuoteItemSchema>;
-export type Invoice = typeof invoices.$inferSelect;
-export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
-export type InvoiceItem = typeof invoiceItems.$inferSelect;
-export type InsertInvoiceItem = z.infer<typeof insertInvoiceItemSchema>;
+export type Department = typeof departments.$inferSelect;
+export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
+export type Ticket = typeof tickets.$inferSelect;
+export type InsertTicket = z.infer<typeof insertTicketSchema>;
+export type TicketEvent = typeof ticketEvents.$inferSelect;
+export type Asset = typeof assets.$inferSelect;
+export type InsertAsset = z.infer<typeof insertAssetSchema>;
+export type SupplyRequest = typeof supplyRequests.$inferSelect;
+export type InsertSupplyRequest = z.infer<typeof insertSupplyRequestSchema>;
+export type FacilityRequest = typeof facilityRequests.$inferSelect;
+export type InsertFacilityRequest = z.infer<typeof insertFacilityRequestSchema>;
+export type Vendor = typeof vendors.$inferSelect;
+export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type InviteCode = typeof inviteCodes.$inferSelect;
 
-export function calcLineItemsTotal(
-  items: Array<{ qty: string | number; unitPrice: string | number }>
-): number {
-  return items.reduce((sum, item) => {
-    return sum + Number(item.qty) * Number(item.unitPrice);
-  }, 0);
-}
-
-export function calcTotalWithTaxDiscount(
-  subtotal: number,
-  taxRate: string | number,
-  discount: string | number
-): { subtotal: number; tax: number; discount: number; total: number } {
-  const taxAmt = subtotal * (Number(taxRate) / 100);
-  const discountAmt = Number(discount);
-  return {
-    subtotal,
-    tax: taxAmt,
-    discount: discountAmt,
-    total: subtotal + taxAmt - discountAmt,
-  };
-}
-
-export const PLAN_LIMITS: Record<string, { customers: number; jobs: number; quotes: number; invoices: number; teamMembers: number; canInvite: boolean }> = {
-  free: { customers: 5, jobs: 5, quotes: 5, invoices: 5, teamMembers: 1, canInvite: false },
-  individual: { customers: -1, jobs: -1, quotes: -1, invoices: -1, teamMembers: 1, canInvite: false },
-  small_business: { customers: -1, jobs: -1, quotes: -1, invoices: -1, teamMembers: 25, canInvite: true },
-  enterprise: { customers: -1, jobs: -1, quotes: -1, invoices: -1, teamMembers: -1, canInvite: true },
-};
-
-export const PLAN_LABELS: Record<string, string> = {
-  free: "Free",
-  individual: "Individual",
-  small_business: "Small Business",
-  enterprise: "Enterprise",
-};
-
-export const PLAN_PRICES: Record<string, number> = {
-  free: 0,
-  individual: 20,
-  small_business: 100,
-  enterprise: 200,
-};
-
-export const JOB_PRIORITY_LABELS: Record<string, string> = {
-  low: "Low",
+export const TICKET_PRIORITY_LABELS: Record<string, string> = {
+  critical: "Critical",
+  high: "High",
   normal: "Normal",
-  urgent: "Urgent",
+  low: "Low",
 };
 
-export const JOB_STATUS_LABELS: Record<string, string> = {
-  lead: "Lead",
-  quoted: "Quoted",
-  scheduled: "Scheduled",
+export const TICKET_STATUS_LABELS: Record<string, string> = {
+  new: "New",
+  triage: "Triage",
+  assigned: "Assigned",
+  waiting_department: "Waiting on Department",
+  waiting_vendor: "Waiting on Vendor",
   in_progress: "In Progress",
-  done: "Done",
-  invoiced: "Invoiced",
-  paid: "Paid",
-  canceled: "Canceled",
+  escalated: "Escalated",
+  resolved: "Resolved",
+  closed: "Closed",
 };
 
-export const CALL_RECOVERY_PLAN_LABELS: Record<string, string> = {
-  starter: "Starter",
-  growth: "Growth",
-  pro: "Pro",
+export const TICKET_CATEGORY_LABELS: Record<string, string> = {
+  it_infrastructure: "IT / Infrastructure",
+  medical_equipment: "Medical Equipment",
+  supplies_inventory: "Supplies / Inventory",
+  facilities_building: "Facilities / Building",
+  housekeeping_environmental: "Housekeeping / Environmental",
+  safety_compliance: "Safety / Compliance",
+  vendor_external: "Vendor / External Service",
+  administrative: "Administrative Request",
+  hr_staff: "HR / Staff Operations",
+  other: "Other",
 };
 
-export const CALL_RECOVERY_PLAN_PRICES: Record<string, number> = {
-  starter: 29,
-  growth: 79,
-  pro: 149,
+export const TICKET_STATUS_COLORS: Record<string, string> = {
+  new: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  triage: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  assigned: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300",
+  waiting_department: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+  waiting_vendor: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+  in_progress: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
+  escalated: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+  resolved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  closed: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300",
 };
 
-export const CALL_RECOVERY_PLAN_LIMITS: Record<string, { recoveriesPerMonth: number; analytics: boolean }> = {
-  starter: { recoveriesPerMonth: 50, analytics: false },
-  growth: { recoveriesPerMonth: -1, analytics: false },
-  pro: { recoveriesPerMonth: -1, analytics: true },
+export const TICKET_PRIORITY_COLORS: Record<string, string> = {
+  critical: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+  high: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
+  normal: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  low: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300",
 };
 
-export const JOB_STATUS_COLORS: Record<string, string> = {
-  lead: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  quoted:
-    "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-  scheduled:
-    "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  in_progress:
-    "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  done: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  invoiced:
-    "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300",
-  paid: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
-  canceled: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+export const ASSET_STATUS_LABELS: Record<string, string> = {
+  active: "Active",
+  under_service: "Under Service",
+  retired: "Retired",
+  offline: "Offline",
 };
+
+export const SUPPLY_STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
+  approved: "Approved",
+  ordered: "Ordered",
+  fulfilled: "Fulfilled",
+  denied: "Denied",
+};
+
+export const FACILITY_STATUS_LABELS: Record<string, string> = {
+  new: "New",
+  assigned: "Assigned",
+  in_progress: "In Progress",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
+export const FACILITY_TYPE_LABELS: Record<string, string> = {
+  hvac: "HVAC",
+  plumbing: "Plumbing",
+  lighting: "Lighting",
+  doors_locks: "Doors / Locks",
+  electrical: "Electrical",
+  room_condition: "Room Condition",
+  furniture_workspace: "Furniture / Workspace",
+  cleaning_environmental: "Cleaning / Environmental",
+  other: "Other",
+};
+
+export const ROLE_LABELS: Record<string, string> = {
+  admin: "Admin",
+  supervisor: "Supervisor",
+  staff: "Staff",
+  technician: "Technician",
+  readonly: "Read-Only Executive",
+};
+
+export const DEFAULT_DEPARTMENTS = [
+  "Radiology",
+  "Front Desk",
+  "Billing",
+  "Administration",
+  "Nursing",
+  "Lab",
+  "Maintenance",
+  "IT",
+  "Facilities",
+  "Clinical Operations",
+];

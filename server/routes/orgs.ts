@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
-import { requireAuth, requireOrg, checkTeamLimit } from "../middleware";
+import { requireAuth, requireOrg } from "../middleware";
+import { DEFAULT_DEPARTMENTS } from "@shared/schema";
 
 const router = Router();
 
@@ -17,8 +18,13 @@ router.post("/api/orgs", requireAuth, async (req: Request, res: Response) => {
       address: address || "",
     });
 
-    await storage.createMembership(org.id, req.session.userId!, "owner");
+    await storage.createMembership(org.id, req.session.userId!, "admin");
     req.session.orgId = org.id;
+
+    for (const deptName of DEFAULT_DEPARTMENTS) {
+      await storage.createDepartment(org.id, { name: deptName });
+    }
+
     res.json(org);
   } catch (err: any) {
     res.status(500).send(err.message);
@@ -30,8 +36,7 @@ router.patch("/api/orgs/:id", requireAuth, requireOrg, async (req: Request, res:
     if (req.params.id !== req.session.orgId) {
       return res.status(403).send("Cannot edit another organization");
     }
-    const { plan, stripeCustomerId, stripeSubscriptionId, subscriptionStatus, currentPeriodEnd, ...safeData } = req.body;
-    const org = await storage.updateOrg(req.params.id as string, safeData);
+    const org = await storage.updateOrg(req.params.id, req.body);
     res.json(org);
   } catch (err: any) {
     res.status(500).send(err.message);
@@ -46,18 +51,6 @@ router.post("/api/orgs/join", requireAuth, async (req: Request, res: Response) =
 
     const existing = await storage.getMembership(invite.orgId, req.session.userId!);
     if (existing) return res.status(400).send("Already a member");
-
-    const teamCheck = await checkTeamLimit(invite.orgId);
-    if (!teamCheck.canInvite) {
-      return res.status(403).send(
-        "This organization's plan does not allow team invitations. Upgrade to Small Business or Enterprise plan."
-      );
-    }
-    if (!teamCheck.allowed) {
-      return res.status(403).send(
-        `Team member limit reached (${teamCheck.limit}). Upgrade your plan to add more members.`
-      );
-    }
 
     await storage.createMembership(invite.orgId, req.session.userId!, invite.role);
     req.session.orgId = invite.orgId;
@@ -78,29 +71,9 @@ router.get("/api/invite-codes", requireAuth, requireOrg, async (req: Request, re
 
 router.post("/api/invite-codes", requireAuth, requireOrg, async (req: Request, res: Response) => {
   try {
-    const teamCheck = await checkTeamLimit(req.session.orgId!);
-    if (!teamCheck.canInvite) {
-      return res.status(403).send(
-        "Your plan does not allow team invitations. Upgrade to Small Business or Enterprise plan."
-      );
-    }
-
     const { role } = req.body;
-    const code = await storage.createInviteCode(req.session.orgId!, role || "tech", req.session.userId!);
+    const code = await storage.createInviteCode(req.session.orgId!, role || "staff", req.session.userId!);
     res.json(code);
-  } catch (err: any) {
-    res.status(500).send(err.message);
-  }
-});
-
-router.get("/api/plan-info", requireAuth, requireOrg, async (req: Request, res: Response) => {
-  try {
-    const { PLAN_LIMITS } = await import("@shared/schema");
-    const org = await storage.getOrg(req.session.orgId!);
-    if (!org) return res.status(404).send("Organization not found");
-    const limits = PLAN_LIMITS[org.plan] || PLAN_LIMITS.free;
-    const counts = await storage.getOrgCounts(org.id);
-    res.json({ plan: org.plan, limits, counts, subscriptionStatus: org.subscriptionStatus });
   } catch (err: any) {
     res.status(500).send(err.message);
   }
@@ -123,22 +96,17 @@ router.get("/api/memberships", requireAuth, requireOrg, async (req: Request, res
 
 router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, async (req: Request, res: Response) => {
   try {
-    const userId = req.params.userId as string;
+    const userId = req.params.userId;
     const { role } = req.body;
-    if (!["owner", "admin", "tech", "viewer"].includes(role)) {
+    if (!["admin", "supervisor", "staff", "technician", "readonly"].includes(role)) {
       return res.status(400).send("Invalid role");
     }
     const myMembership = await storage.getMembership(req.session.orgId!, req.session.userId!);
-    if (!myMembership || (myMembership.role !== "owner" && myMembership.role !== "admin")) {
-      return res.status(403).send("Only owners and admins can change roles");
+    if (!myMembership || myMembership.role !== "admin") {
+      return res.status(403).send("Only admins can change roles");
     }
     if (userId === req.session.userId) {
       return res.status(400).send("Cannot change your own role");
-    }
-    const targetMembership = await storage.getMembership(req.session.orgId!, userId);
-    if (!targetMembership) return res.status(404).send("Member not found");
-    if (targetMembership.role === "owner" && myMembership.role !== "owner") {
-      return res.status(403).send("Only the owner can change another owner's role");
     }
     await storage.updateMembershipRole(req.session.orgId!, userId, role);
     res.json({ ok: true });
@@ -149,18 +117,13 @@ router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, async (re
 
 router.delete("/api/memberships/:userId", requireAuth, requireOrg, async (req: Request, res: Response) => {
   try {
-    const userId = req.params.userId as string;
+    const userId = req.params.userId;
     if (userId === req.session.userId) {
       return res.status(400).send("Cannot remove yourself");
     }
     const myMembership = await storage.getMembership(req.session.orgId!, req.session.userId!);
-    if (!myMembership || (myMembership.role !== "owner" && myMembership.role !== "admin")) {
-      return res.status(403).send("Only owners and admins can remove members");
-    }
-    const targetMembership = await storage.getMembership(req.session.orgId!, userId);
-    if (!targetMembership) return res.status(404).send("Member not found");
-    if (targetMembership.role === "owner") {
-      return res.status(403).send("Cannot remove the organization owner");
+    if (!myMembership || myMembership.role !== "admin") {
+      return res.status(403).send("Only admins can remove members");
     }
     await storage.deleteMembership(req.session.orgId!, userId);
     res.json({ ok: true });

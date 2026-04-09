@@ -1,6 +1,6 @@
 import { storage } from "./storage";
 import { db } from "./db";
-import { users, memberships } from "@shared/schema";
+import { users, memberships, DEFAULT_DEPARTMENTS } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
@@ -9,90 +9,6 @@ const BCRYPT_ROUNDS = 12;
 
 async function hashPasswordBcrypt(password: string): Promise<string> {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
-}
-
-export async function ensureDemoAccount() {
-  try {
-    const existing = await storage.getUserByUsername("demo");
-    if (existing) {
-      const mems = await db.select().from(memberships).where(eq(memberships.userId, existing.id));
-      if (mems.length > 0) {
-        console.log("Demo account already exists with org, skipping.");
-        return;
-      }
-      const org = await storage.createOrg({
-        name: "Demo Electrical Services",
-        slug: "demo-electrical-" + Date.now(),
-        phone: "(555) 100-2000",
-        email: "demo@tradeflow.io",
-        address: "123 Demo St, Austin, TX 78701",
-      });
-      await storage.createMembership(org.id, existing.id, "owner");
-      console.log("Demo org created for existing demo user.");
-      return;
-    }
-    const demoUser = await storage.createUser({
-      username: "demo",
-      password: await hashPasswordBcrypt("demo123"),
-      fullName: "Demo User",
-      phone: "(555) 234-5678",
-      email: "demo@tradeflow.io",
-    });
-    const org = await storage.createOrg({
-      name: "Demo Electrical Services",
-      slug: "demo-electrical-" + Date.now(),
-      phone: "(555) 100-2000",
-      email: "demo@tradeflow.io",
-      address: "123 Demo St, Austin, TX 78701",
-    });
-    await storage.createMembership(org.id, demoUser.id, "owner");
-    console.log("Demo account created: demo / demo123");
-  } catch (err) {
-    console.error("Error ensuring demo account:", err);
-  }
-}
-
-
-export async function ensureReviewerAccount() {
-  try {
-    const existing = await storage.getUserByUsername("reviewer");
-    if (existing) {
-      const mems = await db.select().from(memberships).where(eq(memberships.userId, existing.id));
-      if (mems.length > 0) {
-        console.log("Reviewer account already exists with org, skipping.");
-        return;
-      }
-      const demoUser = await storage.getUserByUsername("demo");
-      if (demoUser) {
-        const demoMems = await db.select().from(memberships).where(eq(memberships.userId, demoUser.id));
-        if (demoMems.length > 0) {
-          await storage.createMembership(demoMems[0].orgId, existing.id, "owner");
-          console.log("Reviewer added as owner to demo org.");
-          return;
-        }
-      }
-      return;
-    }
-    const reviewerUser = await db.insert(users).values({
-      id: crypto.randomUUID(),
-      username: "reviewer",
-      password: await hashPasswordBcrypt("Reviewer2026!"),
-      fullName: "App Reviewer",
-      phone: "",
-      email: "",
-      isSuperAdmin: false,
-    }).returning();
-    const demoUser = await storage.getUserByUsername("demo");
-    if (demoUser) {
-      const demoMems = await db.select().from(memberships).where(eq(memberships.userId, demoUser.id));
-      if (demoMems.length > 0) {
-        await storage.createMembership(demoMems[0].orgId, reviewerUser[0].id, "owner");
-      }
-    }
-    console.log("Reviewer account created: reviewer / Reviewer2026!");
-  } catch (err) {
-    console.error("Error ensuring reviewer account:", err);
-  }
 }
 
 export async function ensureSuperAdmin() {
@@ -115,6 +31,430 @@ export async function ensureSuperAdmin() {
   }
 }
 
+export async function ensureDemoAccount() {
+  try {
+    const existing = await storage.getUserByUsername("demo");
+    if (existing) {
+      const mems = await db.select().from(memberships).where(eq(memberships.userId, existing.id));
+      if (mems.length > 0) {
+        console.log("Demo account already exists with org, skipping.");
+        return;
+      }
+      const org = await storage.createOrg({
+        name: "Metro Health Network",
+        slug: "metro-health-" + Date.now(),
+        phone: "(555) 100-2000",
+        email: "ops@metrohealth.org",
+        address: "450 Medical Center Blvd, Suite 100",
+      });
+      await storage.createMembership(org.id, existing.id, "admin");
+      for (const deptName of DEFAULT_DEPARTMENTS) {
+        await storage.createDepartment(org.id, { name: deptName });
+      }
+      console.log("Demo org created for existing demo user.");
+      return;
+    }
+    await seedFullDemo();
+  } catch (err) {
+    console.error("Error ensuring demo account:", err);
+  }
+}
+
+export async function ensureReviewerAccount() {
+  try {
+    const existing = await storage.getUserByUsername("reviewer");
+    if (existing) {
+      const mems = await db.select().from(memberships).where(eq(memberships.userId, existing.id));
+      if (mems.length > 0) {
+        console.log("Reviewer account already exists with org, skipping.");
+        return;
+      }
+      const demoUser = await storage.getUserByUsername("demo");
+      if (demoUser) {
+        const demoMems = await db.select().from(memberships).where(eq(memberships.userId, demoUser.id));
+        if (demoMems.length > 0) {
+          await storage.createMembership(demoMems[0].orgId, existing.id, "admin");
+          console.log("Reviewer added as admin to demo org.");
+          return;
+        }
+      }
+      return;
+    }
+    const reviewerUser = await db.insert(users).values({
+      id: crypto.randomUUID(),
+      username: "reviewer",
+      password: await hashPasswordBcrypt("Reviewer2026!"),
+      fullName: "App Reviewer",
+      phone: "",
+      email: "",
+      isSuperAdmin: false,
+    }).returning();
+    const demoUser = await storage.getUserByUsername("demo");
+    if (demoUser) {
+      const demoMems = await db.select().from(memberships).where(eq(memberships.userId, demoUser.id));
+      if (demoMems.length > 0) {
+        await storage.createMembership(demoMems[0].orgId, reviewerUser[0].id, "admin");
+      }
+    }
+    console.log("Reviewer account created: reviewer / Reviewer2026!");
+  } catch (err) {
+    console.error("Error ensuring reviewer account:", err);
+  }
+}
+
+async function seedFullDemo() {
+  const demoUser = await storage.createUser({
+    username: "demo",
+    password: await hashPasswordBcrypt("demo123"),
+    fullName: "Sarah Mitchell",
+    phone: "(555) 234-5678",
+    email: "sarah.mitchell@metrohealth.org",
+  });
+
+  const techUser = await storage.createUser({
+    username: "jmorales",
+    password: await hashPasswordBcrypt("demo123"),
+    fullName: "James Morales",
+    phone: "(555) 345-6789",
+    email: "james.morales@metrohealth.org",
+  });
+
+  const staffUser = await storage.createUser({
+    username: "knguyen",
+    password: await hashPasswordBcrypt("demo123"),
+    fullName: "Karen Nguyen",
+    phone: "(555) 456-7890",
+    email: "karen.nguyen@metrohealth.org",
+  });
+
+  const org = await storage.createOrg({
+    name: "Metro Health Network",
+    slug: "metro-health",
+    phone: "(555) 100-2000",
+    email: "ops@metrohealth.org",
+    address: "450 Medical Center Blvd, Suite 100",
+  });
+
+  await storage.createMembership(org.id, demoUser.id, "admin");
+  await storage.createMembership(org.id, techUser.id, "technician");
+  await storage.createMembership(org.id, staffUser.id, "staff");
+
+  const deptRecords: Record<string, any> = {};
+  for (const deptName of DEFAULT_DEPARTMENTS) {
+    const dept = await storage.createDepartment(org.id, { name: deptName });
+    deptRecords[deptName] = dept;
+  }
+
+  const vendor1 = await storage.createVendor(org.id, {
+    name: "MedTech Solutions",
+    serviceType: "Medical Equipment Maintenance",
+    phone: "(555) 800-1234",
+    email: "service@medtechsolutions.com",
+    emergencyContact: "(555) 800-9999",
+    contractNotes: "Annual service contract. Priority response within 4 hours.",
+  });
+
+  const vendor2 = await storage.createVendor(org.id, {
+    name: "ProFacility Services",
+    serviceType: "HVAC & Building Maintenance",
+    phone: "(555) 800-5678",
+    email: "support@profacility.com",
+    emergencyContact: "(555) 800-5555",
+    contractNotes: "Monthly maintenance contract. Covers all HVAC units.",
+  });
+
+  await storage.createVendor(org.id, {
+    name: "CleanHealth Environmental",
+    serviceType: "Cleaning & Biohazard Remediation",
+    phone: "(555) 800-3456",
+    email: "dispatch@cleanhealth.com",
+    emergencyContact: "(555) 800-3333",
+    contractNotes: "Emergency cleaning services available 24/7.",
+  });
+
+  const asset1 = await storage.createAsset(org.id, {
+    assetTag: "MRI-001",
+    name: "Siemens MAGNETOM Vida 3T MRI",
+    assetType: "MRI Scanner",
+    location: "Building A, Floor 1, Room 102",
+    departmentId: deptRecords["Radiology"]?.id,
+    serviceVendor: "MedTech Solutions",
+    warrantyNotes: "Under warranty until Dec 2026. Extended service plan active.",
+    maintenanceNotes: "Quarterly helium level checks required.",
+    status: "active",
+  });
+
+  const asset2 = await storage.createAsset(org.id, {
+    assetTag: "CT-002",
+    name: "GE Revolution CT Scanner",
+    assetType: "CT Scanner",
+    location: "Building A, Floor 1, Room 105",
+    departmentId: deptRecords["Radiology"]?.id,
+    serviceVendor: "MedTech Solutions",
+    warrantyNotes: "Warranty expired. Service contract in place.",
+    maintenanceNotes: "Annual tube replacement due Q3 2026.",
+    status: "active",
+  });
+
+  await storage.createAsset(org.id, {
+    assetTag: "US-003",
+    name: "Philips EPIQ Elite Ultrasound",
+    assetType: "Ultrasound",
+    location: "Building B, Floor 2, Room 210",
+    departmentId: deptRecords["Clinical Operations"]?.id,
+    serviceVendor: "MedTech Solutions",
+    warrantyNotes: "Under warranty until Sep 2026.",
+    status: "active",
+  });
+
+  await storage.createAsset(org.id, {
+    assetTag: "LAB-004",
+    name: "Roche Cobas 6000 Analyzer",
+    assetType: "Lab Analyzer",
+    location: "Building A, Floor 2, Lab",
+    departmentId: deptRecords["Lab"]?.id,
+    serviceVendor: "MedTech Solutions",
+    status: "under_service",
+    maintenanceNotes: "Calibration error detected. Vendor dispatched.",
+  });
+
+  await storage.createAsset(org.id, {
+    assetTag: "HVAC-005",
+    name: "Carrier AquaEdge 23XRV Chiller",
+    assetType: "HVAC Chiller",
+    location: "Building A, Mechanical Room",
+    departmentId: deptRecords["Facilities"]?.id,
+    serviceVendor: "ProFacility Services",
+    status: "active",
+  });
+
+  const ticket1 = await storage.createTicket(org.id, {
+    title: "MRI suite cooling system malfunction",
+    description: "The MRI suite temperature is rising above acceptable levels. Current reading is 78°F, should be below 70°F. MRI scanner has auto-shutdown warnings.",
+    category: "facilities_building",
+    priority: "critical",
+    status: "in_progress",
+    departmentId: deptRecords["Radiology"]?.id,
+    location: "Building A, Floor 1",
+    building: "A",
+    floor: "1",
+    room: "102",
+    assetId: asset1.id,
+    assignedTo: techUser.id,
+    dueDate: new Date(Date.now() + 4 * 60 * 60 * 1000) as any,
+    isPatientImpacting: true,
+    vendorReference: "ProFacility WO-2024-445",
+  }, demoUser.id);
+
+  const ticket2 = await storage.createTicket(org.id, {
+    title: "CT scanner calibration error",
+    description: "CT scanner showing calibration drift errors during routine quality checks. Image quality may be compromised. Vendor service needed.",
+    category: "medical_equipment",
+    priority: "high",
+    status: "waiting_vendor",
+    departmentId: deptRecords["Radiology"]?.id,
+    location: "Building A, Floor 1",
+    building: "A",
+    floor: "1",
+    room: "105",
+    assetId: asset2.id,
+    assignedTo: techUser.id,
+    dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000) as any,
+    isPatientImpacting: true,
+    vendorReference: "MedTech SR-88921",
+  }, staffUser.id);
+
+  await storage.createTicket(org.id, {
+    title: "Billing office printer not responding",
+    description: "HP LaserJet in the billing office is showing offline status. Staff unable to print patient statements and insurance forms.",
+    category: "it_infrastructure",
+    priority: "normal",
+    status: "assigned",
+    departmentId: deptRecords["Billing"]?.id,
+    location: "Building B, Floor 1",
+    building: "B",
+    floor: "1",
+    room: "112",
+    assignedTo: techUser.id,
+  }, staffUser.id);
+
+  await storage.createTicket(org.id, {
+    title: "Exam room 3 sink leak",
+    description: "Slow leak under the sink in exam room 3. Water pooling on floor. Area has been cordoned off but room is out of service.",
+    category: "facilities_building",
+    priority: "high",
+    status: "new",
+    departmentId: deptRecords["Nursing"]?.id,
+    location: "Building B, Floor 2",
+    building: "B",
+    floor: "2",
+    room: "203",
+    isPatientImpacting: true,
+  }, staffUser.id);
+
+  await storage.createTicket(org.id, {
+    title: "Hand sanitizer dispensers empty - multiple locations",
+    description: "Hand sanitizer dispensers empty in hallways B2-01 through B2-08. Compliance concern - need immediate refill.",
+    category: "housekeeping_environmental",
+    priority: "high",
+    status: "triage",
+    departmentId: deptRecords["Facilities"]?.id,
+    location: "Building B, Floor 2",
+    building: "B",
+    floor: "2",
+    isRepeatIssue: true,
+    isRecurring: true,
+  }, staffUser.id);
+
+  await storage.createTicket(org.id, {
+    title: "Badge reader malfunction at staff entrance",
+    description: "Badge reader at the east staff entrance is not reading any cards. Staff having to use alternate entrance.",
+    category: "safety_compliance",
+    priority: "normal",
+    status: "assigned",
+    departmentId: deptRecords["IT"]?.id,
+    location: "Building A, Ground Floor",
+    building: "A",
+    floor: "G",
+    assignedTo: techUser.id,
+  }, demoUser.id);
+
+  await storage.createTicket(org.id, {
+    title: "Waiting room chairs need replacement",
+    description: "Several chairs in the main waiting room have torn upholstery and broken armrests. Request replacement of 6 chairs.",
+    category: "administrative",
+    priority: "low",
+    status: "new",
+    departmentId: deptRecords["Front Desk"]?.id,
+    location: "Building A, Floor 1, Main Lobby",
+    building: "A",
+    floor: "1",
+  }, staffUser.id);
+
+  await storage.createTicket(org.id, {
+    title: "Network switch failure in Lab",
+    description: "Network switch in the lab server closet failed overnight. Lab workstations and analyzer connections are down.",
+    category: "it_infrastructure",
+    priority: "critical",
+    status: "escalated",
+    departmentId: deptRecords["Lab"]?.id,
+    location: "Building A, Floor 2",
+    building: "A",
+    floor: "2",
+    assignedTo: techUser.id,
+    isPatientImpacting: true,
+    dueDate: new Date(Date.now() + 2 * 60 * 60 * 1000) as any,
+  }, demoUser.id);
+
+  const resolvedTicket = await storage.createTicket(org.id, {
+    title: "Broken thermostat in admin office",
+    description: "Thermostat in the administration office is not responding to temperature adjustments.",
+    category: "facilities_building",
+    priority: "normal",
+    status: "resolved",
+    departmentId: deptRecords["Administration"]?.id,
+    location: "Building A, Floor 3",
+    building: "A",
+    floor: "3",
+    room: "301",
+    assignedTo: techUser.id,
+    rootCause: "Thermostat battery depleted",
+    resolutionSummary: "Replaced thermostat batteries and recalibrated temperature settings. Confirmed proper operation.",
+  }, staffUser.id);
+
+  await storage.createTicket(org.id, {
+    title: "Elevator B intermittent door sensor issue",
+    description: "Elevator B doors occasionally fail to close properly. Intermittent sensor issue. Has happened 3 times this week.",
+    category: "safety_compliance",
+    priority: "high",
+    status: "waiting_vendor",
+    departmentId: deptRecords["Maintenance"]?.id,
+    location: "Building A",
+    building: "A",
+    isRecurring: true,
+    isRepeatIssue: true,
+    vendorReference: "Otis Service Req #OT-7892",
+  }, demoUser.id);
+
+  await storage.createSupplyRequest(org.id, {
+    requestType: "Medical Supplies",
+    itemName: "Nitrile Examination Gloves (Medium)",
+    quantity: 50,
+    urgency: "high",
+    departmentId: deptRecords["Nursing"]?.id,
+    justification: "Current stock critically low. Less than 2 boxes remaining across all exam rooms.",
+    status: "approved",
+  }, staffUser.id);
+
+  await storage.createSupplyRequest(org.id, {
+    requestType: "Office Supplies",
+    itemName: "HP 26A Toner Cartridges",
+    quantity: 5,
+    urgency: "normal",
+    departmentId: deptRecords["Billing"]?.id,
+    justification: "Monthly toner resupply for billing department printers.",
+    status: "ordered",
+  }, staffUser.id);
+
+  await storage.createSupplyRequest(org.id, {
+    requestType: "Cleaning Supplies",
+    itemName: "Hand Sanitizer Refill Cartridges",
+    quantity: 24,
+    urgency: "high",
+    departmentId: deptRecords["Facilities"]?.id,
+    justification: "Multiple dispensers empty across Building B. Compliance requirement.",
+    status: "pending",
+  }, demoUser.id);
+
+  await storage.createSupplyRequest(org.id, {
+    requestType: "Medical Supplies",
+    itemName: "Blood Collection Tubes (Lavender Top)",
+    quantity: 10,
+    urgency: "normal",
+    departmentId: deptRecords["Lab"]?.id,
+    justification: "Routine lab supply reorder.",
+    status: "fulfilled",
+  }, staffUser.id);
+
+  await storage.createFacilityRequest(org.id, {
+    requestType: "hvac",
+    title: "AC unit making unusual noise - Admin wing",
+    description: "The rooftop AC unit serving the admin wing is making a grinding noise. Temperature still maintained but noise is concerning.",
+    location: "Building A, Admin Wing",
+    building: "A",
+    floor: "3",
+    priority: "normal",
+    status: "assigned",
+    assignedTo: techUser.id,
+  }, staffUser.id);
+
+  await storage.createFacilityRequest(org.id, {
+    requestType: "plumbing",
+    title: "Water fountain not dispensing cold water",
+    description: "The water fountain near the front desk waiting area is only dispensing room temperature water.",
+    location: "Building A, Floor 1, Lobby",
+    building: "A",
+    floor: "1",
+    priority: "low",
+    status: "new",
+  }, staffUser.id);
+
+  await storage.createFacilityRequest(org.id, {
+    requestType: "lighting",
+    title: "Flickering lights in corridor B2",
+    description: "Fluorescent lights in corridor B2 are flickering intermittently. Multiple tubes affected.",
+    location: "Building B, Floor 2, Corridor",
+    building: "B",
+    floor: "2",
+    priority: "normal",
+    status: "in_progress",
+    assignedTo: techUser.id,
+  }, demoUser.id);
+
+  console.log("PulseDesk demo data seeded successfully!");
+  console.log("Demo login: username=demo, password=demo123");
+}
+
 export async function seedDatabase() {
   try {
     const existingUser = await storage.getUserByUsername("demo");
@@ -122,182 +462,8 @@ export async function seedDatabase() {
       console.log("Seed data already exists, skipping...");
       return;
     }
-
-    console.log("Seeding database with demo data...");
-
-    const demoUser = await storage.createUser({
-      username: "demo",
-      password: await hashPasswordBcrypt("demo123"),
-      fullName: "Mike Johnson",
-      phone: "(555) 234-5678",
-      email: "mike@tradeflow.io",
-    });
-
-    const org = await storage.createOrg({
-      name: "Johnson Electrical Services",
-      slug: "johnson-electrical",
-      phone: "(555) 100-2000",
-      email: "office@johnsonelectric.com",
-      address: "456 Commerce Blvd, Austin, TX 78701",
-    });
-
-    await storage.createMembership(org.id, demoUser.id, "owner");
-
-    const customer1 = await storage.createCustomer(org.id, {
-      name: "Sarah Martinez",
-      phone: "(555) 301-4567",
-      email: "sarah.martinez@email.com",
-      address: "123 Oak Street, Austin, TX 78702",
-      notes: "Prefers morning appointments. Has two dogs.",
-    });
-
-    const customer2 = await storage.createCustomer(org.id, {
-      name: "Robert Chen",
-      phone: "(555) 402-8901",
-      email: "rchen@techcorp.com",
-      address: "789 Business Park Dr, Suite 200, Austin, TX 78759",
-      notes: "Commercial client. Key access required - call front desk.",
-    });
-
-    const customer3 = await storage.createCustomer(org.id, {
-      name: "Emily & David Wilson",
-      phone: "(555) 503-2345",
-      email: "wilsonfamily@gmail.com",
-      address: "2510 Sunset Ridge Ln, Austin, TX 78745",
-      notes: "New construction home. Referred by Tom's Builders.",
-    });
-
-    const customer4 = await storage.createCustomer(org.id, {
-      name: "Green Valley HOA",
-      phone: "(555) 604-6789",
-      email: "maintenance@greenvalleyhoa.org",
-      address: "1 Green Valley Circle, Cedar Park, TX 78613",
-      notes: "Quarterly maintenance contract. Contact: Lisa Park, Property Manager.",
-    });
-
-    const job1 = await storage.createJob(org.id, {
-      title: "Panel upgrade - 100A to 200A",
-      description: "Customer needs electrical panel upgrade from 100A to 200A service. Includes new breaker panel, meter base, and weatherhead.",
-      customerId: customer1.id,
-      status: "in_progress",
-      scheduledStart: new Date(Date.now() + 86400000) as any,
-      scheduledEnd: new Date(Date.now() + 86400000 + 28800000) as any,
-      internalNotes: "Need to pull permit first. Check with city inspector.",
-    }, demoUser.id);
-
-    const job2 = await storage.createJob(org.id, {
-      title: "Office lighting retrofit - LED",
-      description: "Replace all fluorescent fixtures with LED panels in main office area. Approximately 40 fixtures.",
-      customerId: customer2.id,
-      status: "scheduled",
-      scheduledStart: new Date(Date.now() + 172800000) as any,
-      scheduledEnd: new Date(Date.now() + 172800000 + 28800000) as any,
-      internalNotes: "Weekend work preferred. Building access card needed.",
-    }, demoUser.id);
-
-    const job3 = await storage.createJob(org.id, {
-      title: "Whole-house wiring - new construction",
-      description: "Complete electrical wiring for new 3,200 sq ft home. Includes service entrance, panel, all circuits, fixtures, and smart home pre-wire.",
-      customerId: customer3.id,
-      status: "quoted",
-      internalNotes: "Coordinate with builder schedule. Phase 1: rough-in. Phase 2: trim-out.",
-    }, demoUser.id);
-
-    const job4 = await storage.createJob(org.id, {
-      title: "Emergency outlet repair",
-      description: "Multiple outlets in kitchen not working. Possible GFCI trip or circuit issue.",
-      customerId: customer1.id,
-      status: "done",
-    }, demoUser.id);
-
-    const job5 = await storage.createJob(org.id, {
-      title: "Landscape lighting installation",
-      description: "Install low-voltage LED landscape lighting package. 12 path lights, 6 up-lights, and 2 flood lights.",
-      customerId: customer4.id,
-      status: "lead",
-    }, demoUser.id);
-
-    const quote1 = await storage.createQuote(org.id, {
-      customerId: customer3.id,
-      jobId: job3.id,
-      status: "sent",
-      taxRate: "8.25",
-      discount: "500",
-      notes: "Price includes all materials and labor. Fixtures allowance of $3,000 included.",
-      items: [
-        { description: "Rough-in wiring (labor)", qty: "1", unitPrice: "8500" },
-        { description: "Trim-out & fixtures (labor)", qty: "1", unitPrice: "4200" },
-        { description: "Electrical materials package", qty: "1", unitPrice: "6800" },
-        { description: "Smart home pre-wire (Cat6 + speaker wire)", qty: "1", unitPrice: "2200" },
-        { description: "Permit & inspection fees", qty: "1", unitPrice: "450" },
-      ],
-    }, demoUser.id);
-
-    const quote2 = await storage.createQuote(org.id, {
-      customerId: customer4.id,
-      jobId: job5.id,
-      status: "draft",
-      taxRate: "8.25",
-      discount: "0",
-      notes: "Landscape lighting estimate. Includes trenching and transformer.",
-      items: [
-        { description: "LED path lights (12 units)", qty: "12", unitPrice: "85" },
-        { description: "LED up-lights (6 units)", qty: "6", unitPrice: "120" },
-        { description: "LED flood lights (2 units)", qty: "2", unitPrice: "175" },
-        { description: "Low-voltage transformer 600W", qty: "1", unitPrice: "350" },
-        { description: "Installation labor", qty: "16", unitPrice: "95" },
-        { description: "Trenching & wiring", qty: "1", unitPrice: "800" },
-      ],
-    }, demoUser.id);
-
-    const inv1 = await storage.createInvoice(org.id, {
-      customerId: customer1.id,
-      jobId: job4.id,
-      status: "paid",
-      taxRate: "8.25",
-      discount: "0",
-      dueDate: new Date(Date.now() - 604800000).toISOString(),
-      notes: "Emergency service call - kitchen outlets.",
-      items: [
-        { description: "Emergency service call", qty: "1", unitPrice: "150" },
-        { description: "GFCI outlet replacement", qty: "2", unitPrice: "45" },
-        { description: "Circuit troubleshooting (1 hr)", qty: "1", unitPrice: "95" },
-      ],
-    }, demoUser.id);
-
-    await storage.updateInvoice(org.id, inv1.id, { status: "paid", paidAt: new Date(Date.now() - 432000000) });
-
-    const inv2 = await storage.createInvoice(org.id, {
-      customerId: customer1.id,
-      jobId: job1.id,
-      status: "sent",
-      taxRate: "8.25",
-      discount: "0",
-      dueDate: new Date(Date.now() + 1209600000).toISOString(),
-      notes: "Panel upgrade - deposit invoice (50%).",
-      items: [
-        { description: "200A panel upgrade (deposit - 50%)", qty: "1", unitPrice: "2250" },
-        { description: "Permit fee", qty: "1", unitPrice: "175" },
-      ],
-    }, demoUser.id);
-
-    const inv3 = await storage.createInvoice(org.id, {
-      customerId: customer2.id,
-      jobId: job2.id,
-      status: "draft",
-      taxRate: "8.25",
-      discount: "200",
-      dueDate: new Date(Date.now() + 2592000000).toISOString(),
-      notes: "LED retrofit - full project invoice.",
-      items: [
-        { description: "LED panel fixtures (40 units)", qty: "40", unitPrice: "65" },
-        { description: "Installation labor (est. 24 hrs)", qty: "24", unitPrice: "85" },
-        { description: "Disposal of old fixtures", qty: "1", unitPrice: "200" },
-      ],
-    }, demoUser.id);
-
-    console.log("Seed data created successfully!");
-    console.log("Demo login: username=demo, password=demo123");
+    console.log("Seeding PulseDesk database with demo data...");
+    await seedFullDemo();
   } catch (err) {
     console.error("Seed error:", err);
   }

@@ -1,599 +1,218 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Building2,
-  User,
-  Key,
-  Copy,
-  Check,
-  Plus,
-  Lock,
-  CreditCard,
-  Users,
-  Trash2,
-  ExternalLink,
-  Shield,
-} from "lucide-react";
-import { PLAN_LABELS, PLAN_LIMITS } from "@shared/schema";
-import type { InviteCode } from "@shared/schema";
+import { Copy, Trash2, UserCog } from "lucide-react";
 
-interface Member {
-  id: string;
-  orgId: string;
+interface MemberWithUser {
   userId: string;
+  orgId: string;
   role: string;
-  user: {
-    id: string;
-    username: string;
-    fullName: string | null;
-    email: string | null;
-  } | null;
+  user: { id: string; fullName: string; username: string; email?: string } | null;
 }
 
-interface PlanInfo {
-  plan: string;
-  limits: { customers: number; jobs: number; quotes: number; invoices: number; teamMembers: number; canInvite: boolean };
-  counts: { customers: number; jobs: number; quotes: number; invoices: number; members: number };
-  subscriptionStatus: string | null;
-}
-
-function UsageBar({ label, used, limit }: { label: string; used: number; limit: number }) {
-  const unlimited = limit === -1;
-  const pct = unlimited ? 0 : Math.min((used / limit) * 100, 100);
-  const warn = !unlimited && pct >= 80;
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">{label}</span>
-        <span className={`font-medium ${warn ? "text-orange-600" : ""}`}>
-          {used}{unlimited ? "" : ` / ${limit}`}
-          {unlimited && <span className="text-xs text-muted-foreground ml-1">(unlimited)</span>}
-        </span>
-      </div>
-      {!unlimited && (
-        <Progress value={pct} className={warn ? "[&>div]:bg-orange-500" : ""} />
-      )}
-    </div>
-  );
+interface InviteCode {
+  id: string;
+  code: string;
+  role: string;
 }
 
 export default function SettingsPage() {
   const { user, org, refreshAuth } = useAuth();
   const { toast } = useToast();
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  const [newInviteRole, setNewInviteRole] = useState("tech");
-  const [portalLoading, setPortalLoading] = useState(false);
 
-  const { data: inviteCodes = [] } = useQuery<InviteCode[]>({
-    queryKey: ["/api/invite-codes"],
-    enabled: !!org,
+  const [profileForm, setProfileForm] = useState({
+    fullName: user?.fullName || "",
+    phone: user?.phone || "",
+    email: user?.email || "",
+  });
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "" });
+  const [orgForm, setOrgForm] = useState({
+    name: org?.name || "",
+    phone: org?.phone || "",
+    email: org?.email || "",
+    address: org?.address || "",
   });
 
-  const { data: members = [], isLoading: membersLoading } = useQuery<Member[]>({
-    queryKey: ["/api/memberships"],
-    enabled: !!org,
-  });
-
-  const { data: planInfo } = useQuery<PlanInfo>({
-    queryKey: ["/api/plan-info"],
-    enabled: !!org,
-  });
+  const { data: members } = useQuery<MemberWithUser[]>({ queryKey: ["/api/memberships"] });
+  const { data: inviteCodes } = useQuery<InviteCode[]>({ queryKey: ["/api/invite-codes"] });
 
   const updateProfileMutation = useMutation({
-    mutationFn: async (data: any) => {
-      await apiRequest("PATCH", "/api/auth/profile", data);
-    },
-    onSuccess: () => {
-      refreshAuth();
-      toast({ title: "Profile updated" });
-    },
-  });
-
-  const updateOrgMutation = useMutation({
-    mutationFn: async (data: any) => {
-      await apiRequest("PATCH", `/api/orgs/${org?.id}`, data);
-    },
-    onSuccess: () => {
-      refreshAuth();
-      toast({ title: "Organization updated" });
-    },
+    mutationFn: (data: any) => apiRequest("PATCH", "/api/auth/profile", data),
+    onSuccess: () => { refreshAuth(); toast({ title: "Profile updated" }); },
   });
 
   const changePasswordMutation = useMutation({
-    mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
-      await apiRequest("POST", "/api/auth/change-password", data);
-    },
-    onSuccess: () => {
-      toast({ title: "Password changed successfully" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err.message || "Failed to change password", variant: "destructive" });
-    },
+    mutationFn: (data: any) => apiRequest("POST", "/api/auth/change-password", data),
+    onSuccess: () => { setPasswordForm({ currentPassword: "", newPassword: "" }); toast({ title: "Password changed" }); },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const updateOrgMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("PATCH", `/api/orgs/${org?.id}`, data),
+    onSuccess: () => { refreshAuth(); toast({ title: "Organization updated" }); },
   });
 
   const createInviteMutation = useMutation({
-    mutationFn: async (data: any) => {
-      await apiRequest("POST", "/api/invite-codes", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/invite-codes"] });
-      toast({ title: "Invite code created" });
-    },
+    mutationFn: (role: string) => apiRequest("POST", "/api/invite-codes", { role }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/invite-codes"] }); toast({ title: "Invite code created" }); },
   });
 
-  const changeRoleMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
-      await apiRequest("PATCH", `/api/memberships/${userId}/role`, { role });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/memberships"] });
-      toast({ title: "Role updated" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err.message || "Failed to update role", variant: "destructive" });
-    },
+  const updateRoleMutation = useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
+      apiRequest("PATCH", `/api/memberships/${userId}/role`, { role }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/memberships"] }); toast({ title: "Role updated" }); },
   });
 
   const removeMemberMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      await apiRequest("DELETE", `/api/memberships/${userId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/memberships"] });
-      toast({ title: "Member removed" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err.message || "Failed to remove member", variant: "destructive" });
-    },
+    mutationFn: (userId: string) => apiRequest("DELETE", `/api/memberships/${userId}`),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/memberships"] }); toast({ title: "Member removed" }); },
   });
-
-  const copyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 2000);
-  };
-
-  const handleProfileSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    updateProfileMutation.mutate({
-      fullName: fd.get("fullName"),
-      phone: fd.get("phone") || "",
-      email: fd.get("email") || "",
-    });
-  };
-
-  const handleOrgSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    updateOrgMutation.mutate({
-      name: fd.get("name"),
-      phone: fd.get("phone") || "",
-      email: fd.get("email") || "",
-      address: fd.get("address") || "",
-      website: fd.get("website") || "",
-      logoUrl: fd.get("logoUrl") || "",
-      businessHours: fd.get("businessHours") || "",
-    });
-  };
-
-  const handlePasswordSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const currentPassword = fd.get("currentPassword") as string;
-    const newPassword = fd.get("newPassword") as string;
-    const confirmPassword = fd.get("confirmPassword") as string;
-    if (newPassword !== confirmPassword) {
-      toast({ title: "Passwords don't match", variant: "destructive" });
-      return;
-    }
-    if (newPassword.length < 6) {
-      toast({ title: "Password must be at least 6 characters", variant: "destructive" });
-      return;
-    }
-    changePasswordMutation.mutate({ currentPassword, newPassword });
-    (e.currentTarget as HTMLFormElement).reset();
-  };
-
-  const handleManageBilling = async () => {
-    setPortalLoading(true);
-    try {
-      const res = await apiRequest("POST", "/api/stripe/create-portal");
-      const data = await res.json();
-      if (data.url) window.location.href = data.url;
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to open billing portal", variant: "destructive" });
-    } finally {
-      setPortalLoading(false);
-    }
-  };
-
-  const myMembership = members.find((m) => m.userId === user?.id);
-  const canManageTeam = myMembership?.role === "owner" || myMembership?.role === "admin";
-
-  const plan = planInfo?.plan || org?.plan || "free";
-  const limits = planInfo?.limits || PLAN_LIMITS[plan] || PLAN_LIMITS.free;
-  const counts = planInfo?.counts || { customers: 0, jobs: 0, quotes: 0, invoices: 0, members: 0 };
 
   return (
     <div className="flex flex-col h-full">
-      <PageHeader title="Settings" description="Manage your profile and organization" />
+      <PageHeader title="Settings" description="Manage your profile, organization, and team" />
+      <div className="flex-1 overflow-auto p-4 sm:p-6">
+        <div className="max-w-2xl mx-auto">
+          <Tabs defaultValue="profile">
+            <TabsList className="w-full grid grid-cols-3">
+              <TabsTrigger value="profile">Profile</TabsTrigger>
+              <TabsTrigger value="organization">Organization</TabsTrigger>
+              <TabsTrigger value="team">Team</TabsTrigger>
+            </TabsList>
 
-      <div className="flex-1 overflow-auto p-6">
-        <Tabs defaultValue="profile" className="max-w-2xl">
-          <TabsList>
-            <TabsTrigger value="profile" data-testid="tab-profile">
-              <User className="h-3.5 w-3.5 mr-1.5" />
-              Profile
-            </TabsTrigger>
-            <TabsTrigger value="org" data-testid="tab-org">
-              <Building2 className="h-3.5 w-3.5 mr-1.5" />
-              Organization
-            </TabsTrigger>
-            <TabsTrigger value="team" data-testid="tab-team">
-              <Users className="h-3.5 w-3.5 mr-1.5" />
-              Team
-            </TabsTrigger>
-            <TabsTrigger value="billing" data-testid="tab-billing">
-              <CreditCard className="h-3.5 w-3.5 mr-1.5" />
-              Billing
-            </TabsTrigger>
-            <TabsTrigger value="security" data-testid="tab-security">
-              <Shield className="h-3.5 w-3.5 mr-1.5" />
-              Security
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="profile" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Your Profile</CardTitle>
-                <CardDescription>Update your personal information</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleProfileSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Full Name</Label>
-                    <Input name="fullName" defaultValue={user?.fullName || ""} data-testid="input-settings-name" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label>Phone</Label>
-                      <Input name="phone" defaultValue={user?.phone || ""} data-testid="input-settings-phone" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Email</Label>
-                      <Input name="email" type="email" defaultValue={user?.email || ""} data-testid="input-settings-email" />
-                    </div>
-                  </div>
-                  <Button type="submit" disabled={updateProfileMutation.isPending} data-testid="button-save-profile">
-                    {updateProfileMutation.isPending ? "Saving..." : "Save Profile"}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="org" className="mt-6">
-            {org && (
+            <TabsContent value="profile" className="space-y-4 mt-4">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">{org.name}</CardTitle>
-                  <CardDescription>Manage your business details</CardDescription>
+                  <CardTitle className="text-sm font-medium">Personal Information</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleOrgSubmit} className="space-y-4">
-                    <div className="flex items-center gap-4">
-                      {org.logoUrl && (
-                        <img
-                          src={org.logoUrl}
-                          alt="Business logo"
-                          className="h-14 w-14 rounded-lg object-contain border bg-white"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                        />
-                      )}
-                      <div className="flex-1 space-y-2">
-                        <Label>Logo URL</Label>
-                        <Input
-                          name="logoUrl"
-                          defaultValue={org.logoUrl || ""}
-                          placeholder="https://example.com/logo.png"
-                          data-testid="input-settings-logo-url"
-                        />
-                        <p className="text-xs text-muted-foreground">Paste a link to your business logo image</p>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Business Name</Label>
-                      <Input name="name" defaultValue={org.name} data-testid="input-settings-org-name" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <Label>Phone</Label>
-                        <Input name="phone" defaultValue={org.phone || ""} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Email</Label>
-                        <Input name="email" type="email" defaultValue={org.email || ""} />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Address</Label>
-                      <Input name="address" defaultValue={org.address || ""} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <Label>Website</Label>
-                        <Input
-                          name="website"
-                          defaultValue={org.website || ""}
-                          placeholder="https://example.com"
-                          data-testid="input-settings-website"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Business Hours</Label>
-                        <Input
-                          name="businessHours"
-                          defaultValue={org.businessHours || ""}
-                          placeholder="Mon–Fri 8am–5pm"
-                          data-testid="input-settings-business-hours"
-                        />
-                      </div>
-                    </div>
-                    <Button type="submit" disabled={updateOrgMutation.isPending} data-testid="button-save-org">
-                      {updateOrgMutation.isPending ? "Saving..." : "Save Changes"}
-                    </Button>
-                  </form>
+                <CardContent className="space-y-4">
+                  <div><Label>Full Name</Label><Input data-testid="input-profile-name" value={profileForm.fullName} onChange={(e) => setProfileForm({ ...profileForm, fullName: e.target.value })} className="mt-1" /></div>
+                  <div><Label>Phone</Label><Input data-testid="input-profile-phone" value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} className="mt-1" /></div>
+                  <div><Label>Email</Label><Input data-testid="input-profile-email" value={profileForm.email} onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })} className="mt-1" /></div>
+                  <Button data-testid="button-save-profile" onClick={() => updateProfileMutation.mutate(profileForm)} disabled={updateProfileMutation.isPending}>Save Profile</Button>
                 </CardContent>
               </Card>
-            )}
-          </TabsContent>
 
-          <TabsContent value="team" className="mt-6 space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Team Members</CardTitle>
-                <CardDescription>
-                  {members.length} member{members.length !== 1 ? "s" : ""} in your organization
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {membersLoading ? (
-                  <p className="text-sm text-muted-foreground py-2">Loading members...</p>
-                ) : members.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-2">No members found.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {members.map((m) => {
-                      const isMe = m.userId === user?.id;
-                      return (
-                        <div
-                          key={m.id}
-                          className="flex items-center gap-3 rounded-md border p-3"
-                          data-testid={`row-member-${m.userId}`}
-                        >
-                          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                            <User className="h-4 w-4 text-primary" />
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">Change Password</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div><Label>Current Password</Label><Input type="password" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })} className="mt-1" /></div>
+                  <div><Label>New Password</Label><Input type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} className="mt-1" placeholder="At least 6 characters" /></div>
+                  <Button onClick={() => changePasswordMutation.mutate(passwordForm)} disabled={changePasswordMutation.isPending}>Change Password</Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="organization" className="space-y-4 mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">Organization Details</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div><Label>Name</Label><Input data-testid="input-org-name" value={orgForm.name} onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })} className="mt-1" /></div>
+                  <div><Label>Phone</Label><Input value={orgForm.phone} onChange={(e) => setOrgForm({ ...orgForm, phone: e.target.value })} className="mt-1" /></div>
+                  <div><Label>Email</Label><Input value={orgForm.email} onChange={(e) => setOrgForm({ ...orgForm, email: e.target.value })} className="mt-1" /></div>
+                  <div><Label>Address</Label><Input value={orgForm.address} onChange={(e) => setOrgForm({ ...orgForm, address: e.target.value })} className="mt-1" /></div>
+                  <Button data-testid="button-save-org" onClick={() => updateOrgMutation.mutate(orgForm)} disabled={updateOrgMutation.isPending}>Save Organization</Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="team" className="space-y-4 mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium flex items-center gap-2"><UserCog className="h-4 w-4" /> Team Members</CardTitle>
+                  <CardDescription>Manage roles and access for your team</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!members || members.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No team members</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {members.map((m) => (
+                        <div key={m.userId} className="flex items-center justify-between gap-3 rounded-md border p-3" data-testid={`member-${m.userId}`}>
+                          <div>
+                            <p className="text-sm font-medium">{m.user?.fullName || m.user?.username || "Unknown"}</p>
+                            <p className="text-xs text-muted-foreground">@{m.user?.username}</p>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">
-                              {m.user?.fullName || m.user?.username || "Unknown"}
-                              {isMe && <span className="ml-1.5 text-xs text-muted-foreground">(you)</span>}
-                            </p>
-                            <p className="text-xs text-muted-foreground truncate">{m.user?.email || m.user?.username}</p>
+                          <div className="flex items-center gap-2">
+                            {m.userId !== user?.id ? (
+                              <>
+                                <Select value={m.role} onValueChange={(role) => updateRoleMutation.mutate({ userId: m.userId, role })}>
+                                  <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {["admin", "supervisor", "staff", "technician", "readonly"].map((r) => (
+                                      <SelectItem key={r} value={r}>{r}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Button variant="ghost" size="sm" onClick={() => { if (confirm("Remove this member?")) removeMemberMutation.mutate(m.userId); }}>
+                                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="text-xs font-medium px-2 py-1 rounded bg-primary/10 text-primary">{m.role} (you)</span>
+                            )}
                           </div>
-                          {canManageTeam && !isMe && m.role !== "owner" ? (
-                            <Select
-                              value={m.role}
-                              onValueChange={(role) => changeRoleMutation.mutate({ userId: m.userId, role })}
-                            >
-                              <SelectTrigger className="w-[100px] h-7 text-xs" data-testid={`select-role-${m.userId}`}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="admin">Admin</SelectItem>
-                                <SelectItem value="tech">Tech</SelectItem>
-                                <SelectItem value="viewer">Viewer</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <Badge variant="outline" className="text-xs capitalize">{m.role}</Badge>
-                          )}
-                          {canManageTeam && !isMe && m.role !== "owner" && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => removeMemberMutation.mutate(m.userId)}
-                              disabled={removeMemberMutation.isPending}
-                              data-testid={`button-remove-member-${m.userId}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <CardTitle className="text-base">Invite Codes</CardTitle>
-                    <CardDescription>Share codes to invite new team members</CardDescription>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Select value={newInviteRole} onValueChange={setNewInviteRole}>
-                      <SelectTrigger className="w-[120px] h-8 text-sm" data-testid="select-invite-role">
-                        <SelectValue placeholder="Role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="tech">Tech</SelectItem>
-                        <SelectItem value="viewer">Viewer</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      size="sm"
-                      onClick={() => createInviteMutation.mutate({ role: newInviteRole })}
-                      disabled={createInviteMutation.isPending}
-                      data-testid="button-create-invite"
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Create Code
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">Invite Codes</CardTitle>
+                  <CardDescription>Generate invite codes for new team members</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => createInviteMutation.mutate("staff")} disabled={createInviteMutation.isPending} data-testid="button-create-invite">
+                      Generate Staff Invite
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => createInviteMutation.mutate("technician")}>
+                      Generate Technician Invite
                     </Button>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {inviteCodes.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-2">
-                    No invite codes yet. Create one to invite team members.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {inviteCodes.map((ic) => (
-                      <div
-                        key={ic.id}
-                        className="flex items-center justify-between rounded-md border p-3"
-                      >
-                        <div>
-                          <code className="text-sm font-mono font-medium">{ic.code}</code>
-                          <p className="text-xs text-muted-foreground mt-0.5 capitalize">Role: {ic.role}</p>
+                  {inviteCodes && inviteCodes.length > 0 && (
+                    <div className="space-y-2">
+                      {inviteCodes.map((ic) => (
+                        <div key={ic.id} className="flex items-center justify-between gap-2 rounded-md border p-2">
+                          <code className="text-xs font-mono">{ic.code}</code>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">{ic.role}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                navigator.clipboard.writeText(ic.code);
+                                toast({ title: "Code copied" });
+                              }}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => copyCode(ic.code)}
-                          data-testid={`button-copy-code-${ic.id}`}
-                        >
-                          {copiedCode === ic.code ? (
-                            <Check className="h-4 w-4 text-green-600" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="billing" className="mt-6 space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base">Current Plan</CardTitle>
-                    <CardDescription>Your TradeFlow subscription</CardDescription>
-                  </div>
-                  <Badge variant="outline" className="text-sm font-medium capitalize">
-                    {PLAN_LABELS[plan] || plan}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <UsageBar label="Customers" used={counts.customers} limit={limits.customers} />
-                  <UsageBar label="Jobs" used={counts.jobs} limit={limits.jobs} />
-                  <UsageBar label="Quotes" used={counts.quotes} limit={limits.quotes} />
-                  <UsageBar label="Invoices" used={counts.invoices} limit={limits.invoices} />
-                  <UsageBar label="Team Members" used={counts.members} limit={limits.teamMembers} />
-                </div>
-                {plan === "free" && (
-                  <div className="pt-2">
-                    <a href="/subscription">
-                      <Button variant="outline" size="sm" data-testid="button-upgrade-plan">
-                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                        Upgrade Plan
-                      </Button>
-                    </a>
-                  </div>
-                )}
-                {org?.stripeSubscriptionId && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleManageBilling}
-                    disabled={portalLoading}
-                    data-testid="button-manage-billing"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                    {portalLoading ? "Opening..." : "Manage Billing"}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="security" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Change Password</CardTitle>
-                <CardDescription>Update your account password</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handlePasswordSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Current Password</Label>
-                    <Input
-                      name="currentPassword"
-                      type="password"
-                      required
-                      data-testid="input-current-password"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>New Password</Label>
-                    <Input
-                      name="newPassword"
-                      type="password"
-                      required
-                      minLength={6}
-                      data-testid="input-new-password"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Confirm New Password</Label>
-                    <Input
-                      name="confirmPassword"
-                      type="password"
-                      required
-                      data-testid="input-confirm-password"
-                    />
-                  </div>
-                  <Button
-                    type="submit"
-                    disabled={changePasswordMutation.isPending}
-                    data-testid="button-change-password"
-                  >
-                    <Lock className="h-4 w-4 mr-2" />
-                    {changePasswordMutation.isPending ? "Changing..." : "Change Password"}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
     </div>
   );

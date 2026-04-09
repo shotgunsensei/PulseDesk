@@ -12,24 +12,22 @@ import {
 } from "@/components/ui/sidebar";
 import {
   LayoutDashboard,
-  Users,
+  Ticket,
+  PlusCircle,
+  Building2,
+  Cpu,
+  Package,
   Wrench,
-  FileText,
-  Receipt,
+  Users2,
+  BarChart3,
   Settings,
   LogOut,
-  Building2,
   ChevronDown,
-  CreditCard,
   Shield,
-  PhoneMissed,
-  Lock,
-  BookOpen,
-  BarChart3,
+  Activity,
 } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/lib/auth";
-import tradeflowLogo from "@assets/tradeflow512_1773073035241.png";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,23 +38,23 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const mainNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Customers", url: "/customers", icon: Users },
-  { title: "Jobs", url: "/jobs", icon: Wrench },
-  { title: "Quotes", url: "/quotes", icon: FileText },
-  { title: "Invoices", url: "/invoices", icon: Receipt },
-  { title: "Analytics", url: "/analytics", icon: BarChart3 },
+  { title: "Tickets", url: "/tickets", icon: Ticket },
+  { title: "Submit Issue", url: "/submit", icon: PlusCircle },
+  { title: "Departments", url: "/departments", icon: Building2 },
+  { title: "Equipment", url: "/assets", icon: Cpu },
+  { title: "Supply Requests", url: "/supply-requests", icon: Package },
+  { title: "Facilities", url: "/facility-requests", icon: Wrench },
+  { title: "Vendors", url: "/vendors", icon: Users2 },
 ];
 
-const settingsNav = [
+const systemNav = [
+  { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
-  { title: "Subscription", url: "/subscription", icon: CreditCard },
-  { title: "Help & Guide", url: "/guide", icon: BookOpen },
 ];
 
 export function AppSidebar() {
   const [location] = useLocation();
   const { user, org, orgs, logout, switchOrg } = useAuth();
-  const hasCallRecovery = !!(org as any)?.callRecoveryPlan;
 
   const isActive = (url: string) => {
     if (url === "/") return location === "/";
@@ -66,12 +64,14 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="p-4">
-        <div className="flex items-center gap-2">
-          <img src={tradeflowLogo} alt="TradeFlow" className="h-8 w-8 rounded-md object-contain" />
+        <div className="flex items-center gap-2.5">
+          <div className="h-8 w-8 rounded-lg bg-[hsl(213,64%,33%)] flex items-center justify-center">
+            <Activity className="h-4.5 w-4.5 text-white" />
+          </div>
           <div className="flex flex-col">
-            <span className="text-sm font-semibold tracking-tight">TradeFlow</span>
+            <span className="text-sm font-semibold tracking-tight">PulseDesk</span>
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              Service Management
+              Healthcare Operations
             </span>
           </div>
         </div>
@@ -105,7 +105,7 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Main</SidebarGroupLabel>
+          <SidebarGroupLabel>Operations</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNav.map((item) => (
@@ -115,7 +115,7 @@ export function AppSidebar() {
                     data-active={isActive(item.url)}
                     className="data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium"
                   >
-                    <Link href={item.url} data-testid={`nav-${item.title.toLowerCase()}`}>
+                    <Link href={item.url} data-testid={`nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>
@@ -129,7 +129,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {settingsNav.map((item) => (
+              {systemNav.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
@@ -143,28 +143,6 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Add-ons</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  data-active={isActive("/call-recovery")}
-                  className="data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium"
-                >
-                  <Link href="/call-recovery" data-testid="nav-call-recovery">
-                    <PhoneMissed className="h-4 w-4" />
-                    <span>Call Recovery AI</span>
-                    {!hasCallRecovery && (
-                      <Lock className="h-3 w-3 ml-auto text-muted-foreground" />
-                    )}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -181,7 +159,7 @@ export function AppSidebar() {
                   >
                     <Link href="/admin" data-testid="nav-admin">
                       <Shield className="h-4 w-4" />
-                      <span>Master Admin</span>
+                      <span>System Admin</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

@@ -1,184 +1,119 @@
 import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, UserPlus, Wrench, AlertCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Activity, Building2 } from "lucide-react";
 
 export default function OrgSetup() {
-  const { refreshAuth, user, logout } = useAuth();
+  const { refreshAuth, logout } = useAuth();
   const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleCreateOrg = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setIsSubmitting(true);
-    const fd = new FormData(e.currentTarget);
+    if (!name.trim()) return;
+    setLoading(true);
     try {
-      await apiRequest("POST", "/api/orgs", {
-        name: fd.get("name"),
-        slug: (fd.get("name") as string).toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-"),
-        phone: fd.get("phone") || "",
-        email: fd.get("email") || "",
-        address: fd.get("address") || "",
+      const res = await fetch("/api/orgs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+        credentials: "include",
       });
-      toast({ title: "Organization created!" });
+      if (!res.ok) throw new Error(await res.text());
       await refreshAuth();
     } catch (err: any) {
-      setError(err.message || "Failed to create organization");
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
-  const handleJoinOrg = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setIsSubmitting(true);
-    const fd = new FormData(e.currentTarget);
+    if (!code.trim()) return;
+    setLoading(true);
     try {
-      await apiRequest("POST", "/api/orgs/join", {
-        code: fd.get("code"),
+      const res = await fetch("/api/orgs/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+        credentials: "include",
       });
-      toast({ title: "Joined organization!" });
+      if (!res.ok) throw new Error(await res.text());
       await refreshAuth();
     } catch (err: any) {
-      setError(err.message || "Invalid invite code");
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-background">
-      <div className="w-full max-w-lg">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-            <Wrench className="h-5 w-5 text-primary-foreground" />
+    <div className="min-h-screen flex items-center justify-center bg-[hsl(210,33%,98%)] p-4">
+      <div className="w-full max-w-md space-y-6">
+        <div className="text-center">
+          <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-[hsl(213,64%,33%)] mb-4">
+            <Activity className="h-6 w-6 text-white" />
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">TradeFlow</h1>
-            <p className="text-xs text-muted-foreground">Welcome, {user?.fullName || user?.username}</p>
-          </div>
+          <h1 className="text-xl font-bold tracking-tight">Set Up Your Organization</h1>
+          <p className="text-sm text-muted-foreground mt-1">Create a new facility or join an existing one</p>
         </div>
 
-        <p className="text-sm text-muted-foreground mb-6 ml-[52px]">
-          Set up or join an organization to get started.
-        </p>
+        <Tabs defaultValue="create">
+          <TabsList className="w-full grid grid-cols-2">
+            <TabsTrigger value="create">Create Facility</TabsTrigger>
+            <TabsTrigger value="join">Join with Code</TabsTrigger>
+          </TabsList>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Get Started</CardTitle>
-            <CardDescription>
-              Create a new business or join an existing one with an invite code.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {error && (
-              <div className="mb-4 flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                {error}
-              </div>
-            )}
-
-            <Tabs defaultValue="create">
-              <TabsList className="w-full mb-4">
-                <TabsTrigger value="create" className="flex-1 gap-1.5" data-testid="tab-create-org">
-                  <Building2 className="h-3.5 w-3.5" />
-                  Create Business
-                </TabsTrigger>
-                <TabsTrigger value="join" className="flex-1 gap-1.5" data-testid="tab-join-org">
-                  <UserPlus className="h-3.5 w-3.5" />
-                  Join with Code
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="create">
-                <form onSubmit={handleCreateOrg} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="org-name">Business Name</Label>
-                    <Input
-                      id="org-name"
-                      name="name"
-                      required
-                      data-testid="input-org-name"
-                      placeholder="e.g. Smith Plumbing LLC"
-                    />
+          <TabsContent value="create">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><Building2 className="h-4 w-4" /> New Organization</CardTitle>
+                <CardDescription>Set up PulseDesk for your hospital or facility</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleCreate} className="space-y-4">
+                  <div>
+                    <Label htmlFor="org-name">Organization Name</Label>
+                    <Input id="org-name" data-testid="input-org-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Metro Health Network" className="mt-1" />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="org-phone">Phone</Label>
-                      <Input
-                        id="org-phone"
-                        name="phone"
-                        data-testid="input-org-phone"
-                        placeholder="(555) 123-4567"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="org-email">Email</Label>
-                      <Input
-                        id="org-email"
-                        name="email"
-                        type="email"
-                        data-testid="input-org-email"
-                        placeholder="office@company.com"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="org-address">Address</Label>
-                    <Input
-                      id="org-address"
-                      name="address"
-                      data-testid="input-org-address"
-                      placeholder="123 Main St, City, ST 12345"
-                    />
-                  </div>
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={isSubmitting}
-                    data-testid="button-create-org"
-                  >
-                    {isSubmitting ? "Creating..." : "Create Business"}
+                  <Button type="submit" className="w-full" disabled={loading || !name.trim()} data-testid="button-create-org">
+                    {loading ? "Creating..." : "Create Organization"}
                   </Button>
                 </form>
-              </TabsContent>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-              <TabsContent value="join">
-                <form onSubmit={handleJoinOrg} className="space-y-4">
-                  <div className="space-y-2">
+          <TabsContent value="join">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Join Existing</CardTitle>
+                <CardDescription>Enter an invite code from your organization</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleJoin} className="space-y-4">
+                  <div>
                     <Label htmlFor="invite-code">Invite Code</Label>
-                    <Input
-                      id="invite-code"
-                      name="code"
-                      required
-                      data-testid="input-invite-code"
-                      placeholder="Enter your invite code"
-                    />
+                    <Input id="invite-code" data-testid="input-invite-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Enter code..." className="mt-1" />
                   </div>
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={isSubmitting}
-                    data-testid="button-join-org"
-                  >
-                    {isSubmitting ? "Joining..." : "Join Business"}
+                  <Button type="submit" className="w-full" disabled={loading || !code.trim()} data-testid="button-join-org">
+                    {loading ? "Joining..." : "Join Organization"}
                   </Button>
                 </form>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
 
-        <div className="mt-4 text-center">
+        <div className="text-center">
           <Button variant="ghost" size="sm" onClick={logout} data-testid="button-logout-setup">
             Sign out
           </Button>

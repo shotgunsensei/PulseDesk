@@ -10,26 +10,17 @@ import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
 import OrgSetup from "@/pages/org-setup";
 import Dashboard from "@/pages/dashboard";
-import CustomersPage from "@/pages/customers";
-import CustomerDetail from "@/pages/customer-detail";
-import JobsPage from "@/pages/jobs";
-import JobDetail from "@/pages/job-detail";
-import QuotesPage from "@/pages/quotes";
-import QuoteForm from "@/pages/quote-form";
-import QuoteDetail from "@/pages/quote-detail";
-import QuoteView from "@/pages/quote-view";
-import InvoicesPage from "@/pages/invoices";
-import InvoiceForm from "@/pages/invoice-form";
-import InvoiceDetail from "@/pages/invoice-detail";
-import SettingsPage from "@/pages/settings";
-import SubscriptionPage from "@/pages/subscription";
-import AdminPage from "@/pages/admin";
-import PrivacyPage from "@/pages/privacy";
-import DeleteAccountPage from "@/pages/delete-account";
-import CallRecoveryPage from "@/pages/call-recovery";
+import TicketsPage from "@/pages/tickets";
+import TicketDetail from "@/pages/ticket-detail";
+import SubmitIssue from "@/pages/submit-issue";
+import DepartmentsPage from "@/pages/departments";
+import AssetsPage from "@/pages/assets";
+import SupplyRequestsPage from "@/pages/supply-requests";
+import FacilityRequestsPage from "@/pages/facility-requests";
+import VendorsPage from "@/pages/vendors";
 import AnalyticsPage from "@/pages/analytics";
-import SmsConsentPage from "@/pages/sms-consent";
-import GuidePage from "@/pages/guide";
+import SettingsPage from "@/pages/settings";
+import AdminPage from "@/pages/admin";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function AppContent() {
@@ -50,11 +41,6 @@ function AppContent() {
   if (!user) {
     return (
       <Switch>
-        <Route path="/privacy" component={PrivacyPage} />
-        <Route path="/sms-consent" component={SmsConsentPage} />
-        <Route path="/guide" component={GuidePage} />
-        <Route path="/delete-account" component={DeleteAccountPage} />
-        <Route path="/quotes/:id/view" component={QuoteView} />
         <Route><AuthPage /></Route>
       </Switch>
     );
@@ -77,28 +63,17 @@ function AppContent() {
           <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/dashboard" component={Dashboard} />
-            <Route path="/customers" component={CustomersPage} />
-            <Route path="/customers/:id" component={CustomerDetail} />
-            <Route path="/jobs" component={JobsPage} />
-            <Route path="/jobs/:id" component={JobDetail} />
-            <Route path="/quotes" component={QuotesPage} />
-            <Route path="/quotes/new" component={QuoteForm} />
-            <Route path="/quotes/:id/view" component={QuoteView} />
-            <Route path="/quotes/:id/edit" component={QuoteForm} />
-            <Route path="/quotes/:id" component={QuoteDetail} />
-            <Route path="/invoices" component={InvoicesPage} />
-            <Route path="/invoices/new" component={InvoiceForm} />
-            <Route path="/invoices/:id/edit" component={InvoiceForm} />
-            <Route path="/invoices/:id" component={InvoiceDetail} />
-            <Route path="/settings" component={SettingsPage} />
-            <Route path="/subscription" component={SubscriptionPage} />
+            <Route path="/tickets" component={TicketsPage} />
+            <Route path="/tickets/:id" component={TicketDetail} />
+            <Route path="/submit" component={SubmitIssue} />
+            <Route path="/departments" component={DepartmentsPage} />
+            <Route path="/assets" component={AssetsPage} />
+            <Route path="/supply-requests" component={SupplyRequestsPage} />
+            <Route path="/facility-requests" component={FacilityRequestsPage} />
+            <Route path="/vendors" component={VendorsPage} />
             <Route path="/analytics" component={AnalyticsPage} />
-            <Route path="/call-recovery" component={CallRecoveryPage} />
+            <Route path="/settings" component={SettingsPage} />
             <Route path="/admin" component={AdminPage} />
-            <Route path="/guide" component={GuidePage} />
-            <Route path="/privacy" component={PrivacyPage} />
-            <Route path="/sms-consent" component={SmsConsentPage} />
-            <Route path="/delete-account" component={DeleteAccountPage} />
             <Route component={NotFound} />
           </Switch>
         </main>

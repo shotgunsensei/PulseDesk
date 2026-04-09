@@ -1,20 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import type { User, Org, Membership } from "@shared/schema";
 
-interface PlanLimits {
-  customers: number;
-  jobs: number;
-  quotes: number;
-  invoices: number;
-  teamMembers: number;
-  canInvite: boolean;
-}
-
 interface OrgCounts {
-  customers: number;
-  jobs: number;
-  quotes: number;
-  invoices: number;
+  tickets: number;
+  departments: number;
+  assets: number;
   members: number;
 }
 
@@ -23,7 +13,6 @@ interface AuthContextType {
   org: Org | null;
   membership: Membership | null;
   orgs: Org[];
-  planLimits: PlanLimits | null;
   orgCounts: OrgCounts | null;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
@@ -40,7 +29,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [org, setOrg] = useState<Org | null>(null);
   const [membership, setMembership] = useState<Membership | null>(null);
   const [orgs, setOrgs] = useState<Org[]>([]);
-  const [planLimits, setPlanLimits] = useState<PlanLimits | null>(null);
   const [orgCounts, setOrgCounts] = useState<OrgCounts | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -53,14 +41,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setOrg(data.org);
         setMembership(data.membership);
         setOrgs(data.orgs || []);
-        setPlanLimits(data.planLimits || null);
         setOrgCounts(data.orgCounts || null);
       } else {
         setUser(null);
         setOrg(null);
         setMembership(null);
         setOrgs([]);
-        setPlanLimits(null);
         setOrgCounts(null);
       }
     } catch {
@@ -68,7 +54,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setOrg(null);
       setMembership(null);
       setOrgs([]);
-      setPlanLimits(null);
       setOrgCounts(null);
     } finally {
       setIsLoading(false);
@@ -113,7 +98,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setOrg(null);
     setMembership(null);
     setOrgs([]);
-    setPlanLimits(null);
     setOrgCounts(null);
   };
 
@@ -131,7 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, org, membership, orgs, planLimits, orgCounts, isLoading, login, register, logout, switchOrg, refreshAuth }}
+      value={{ user, org, membership, orgs, orgCounts, isLoading, login, register, logout, switchOrg, refreshAuth }}
     >
       {children}
     </AuthContext.Provider>

@@ -1,0 +1,342 @@
+Take the existing PulseDesk application that was converted from TradeFlowKit and perform a full PHASE 2 POLISH + PRODUCTION-HARDENING pass.
+
+IMPORTANT:
+This is NOT a redesign from scratch.
+This is a refinement, hardening, coherence, and usability pass that improves the existing PulseDesk product so it feels more production-ready, more internally credible for healthcare organizations, and more polished across workflow, data handling, UX consistency, role behavior, and administrative control.
+
+PRIMARY GOAL:
+Elevate PulseDesk from a solid branded MVP into a highly polished internal healthcare operations platform that feels believable, coherent, and ready for pilot/demo use inside a real healthcare organization.
+
+KEEP INTACT:
+- product name: PulseDesk
+- modern clinical branding direction
+- modern clinical color palette
+- reuse of TradeFlowKit design/code DNA
+- existing module structure unless improvement is clearly beneficial
+
+DO NOT:
+- replace the product identity
+- introduce flashy startup gimmicks
+- drift into patient portal / EHR territory
+- overcomplicate the UI with unnecessary enterprise clutter
+- bloat the app with features that break workflow simplicity
+
+PHASE 2 OBJECTIVES:
+1. Improve coherence across the entire app
+2. Strengthen role-based behavior
+3. Refine ticket workflows and issue detail UX
+4. Improve dashboard usefulness for real healthcare operations teams
+5. Improve data realism and demo credibility
+6. Tighten branding consistency and visual polish
+7. Improve administrative control surfaces
+8. Prepare the code structure for future scaling
+9. Make the app feel like an internal operations product that could be demoed to healthcare leadership
+
+BRAND / VISUAL POLISH REQUIREMENTS:
+- Audit the entire interface for consistency with the PulseDesk modern clinical brand
+- Ensure colors, spacing, badge styles, card treatments, shadows, borders, hover states, typography, and icons feel consistent everywhere
+- Improve visual hierarchy so users can quickly distinguish:
+  - critical issues
+  - overdue items
+  - waiting states
+  - resolved work
+  - supply-related requests
+  - facilities issues
+  - equipment incidents
+- Make the interface feel cleaner, calmer, and more premium without making it sterile
+- Ensure empty states, loading states, modals, tables, drawers, and filters all match the same polished design system
+
+MODERN CLINICAL PALETTE TO PRESERVE:
+- Primary: #1E4E8C
+- Primary Dark: #163B69
+- Secondary: #5B6B7A
+- Accent: #2FA7A0
+- Background: #F6F9FC
+- Surface: #FFFFFF
+- Border: #D9E2EC
+- Text Main: #243B53
+- Text Muted: #6B7C93
+- Success: #2E8B57
+- Warning: #E0A100
+- Danger: #C9485B
+
+DESIGN SYSTEM HARDENING:
+Create or refine a consistent internal design system for PulseDesk including:
+- standardized badge variants
+- standardized card headers
+- standardized table filters and toolbar patterns
+- standardized form layouts
+- standardized section spacing
+- standardized status pills
+- standardized modal and drawer behaviors
+- standardized icons for each module/category
+- consistent button priority hierarchy
+- consistent alert/toast styling
+- consistent page title + subheader format
+
+DASHBOARD ENHANCEMENT REQUIREMENTS:
+Refine the dashboard so it serves both operational users and leadership viewers.
+
+Improve the dashboard with:
+- cleaner summary card hierarchy
+- more useful quick actions
+- better high-priority issue visibility
+- department performance snapshots
+- overdue issue visibility
+- “waiting on vendor” and “waiting on department” visibility
+- equipment downtime awareness
+- supply request bottleneck indicators
+- facilities issue trends
+- recent updates stream that feels meaningful, not filler
+
+Add optional widgets/cards if useful:
+- average time to triage
+- average time to resolution
+- top recurring issue source
+- busiest departments
+- ticket aging buckets
+- unresolved critical count
+- resolution SLA trend
+- issue volume by location
+
+The dashboard should feel like an actual command surface for healthcare admin operations.
+
+TICKET WORKFLOW POLISH:
+Refine the ticket lifecycle and ticket detail experience so it feels realistic.
+
+Improve:
+- assignment workflow
+- reassignment workflow
+- escalation workflow
+- ticket timeline/history clarity
+- internal note entry
+- visible ownership
+- overdue logic
+- due date visibility
+- resolution capture
+- closure confirmation
+
+Ticket detail view should feel rich and useful, with sections such as:
+- overview
+- issue details
+- location/department
+- related asset/equipment
+- timeline/activity
+- internal notes
+- attachments
+- vendor involvement
+- root cause
+- resolution summary
+
+Add visual clarity for:
+- patient-impacting issues
+- repeat issues
+- unresolved critical issues
+- blocked / waiting issues
+- tickets needing supervisor review
+
+ROLE-BASED ACCESS HARDENING:
+Improve role logic so the application feels more realistic and secure.
+
+Roles:
+- Admin
+- Supervisor
+- Staff
+- Technician
+- Read-Only Executive
+
+Refine each role so permissions are clearly reflected in:
+- navigation visibility
+- actions available in tables
+- edit permissions
+- assignment controls
+- reporting access
+- admin settings access
+- user management visibility
+- ticket visibility rules where practical
+
+Examples:
+- Staff should mainly submit issues, view their own or allowed tickets, and add contextual updates where appropriate
+- Technicians should manage assigned issues and document progress/resolution
+- Supervisors should triage, assign, escalate, review workloads, and view operational reporting
+- Admins should have full control including departments, vendors, users, settings, and system configuration
+- Read-Only Executives should get highly polished dashboards/reports without operational editing clutter
+
+ADMIN EXPERIENCE IMPROVEMENTS:
+Upgrade Admin Settings and management surfaces so they feel credible.
+
+Include/refine:
+- department management
+- category management
+- status configuration if appropriate
+- location management
+- vendor directory management
+- user/role management
+- severity/priority rules
+- notification preferences placeholders
+- branding/settings panel
+- audit/activity overview placeholder
+- organization profile / site settings
+
+Do not overbuild backend infrastructure that is not needed for MVP, but make the UI and code structure ready for future expansion.
+
+DATA MODEL / STRUCTURE HARDENING:
+Refine the schema and front-end data handling so the product is internally coherent.
+
+Ensure the models make sense for:
+- tickets
+- users
+- departments
+- locations
+- assets/equipment
+- facilities requests
+- supply requests
+- vendors
+- audit/history entries
+- attachments
+- comments/internal notes
+
+Where practical:
+- normalize naming
+- remove leftover TradeFlowKit naming fragments
+- improve field naming clarity
+- ensure relationships feel intentional
+- improve type safety and consistency
+
+DEMO DATA REALISM UPGRADE:
+Replace any weak demo data with more realistic healthcare operations examples.
+
+Use plausible examples such as:
+- radiology workstation network issue
+- MRI room temperature concern
+- ultrasound unit service interruption
+- toner/paper shortage at front desk
+- badge access issue at side entrance
+- nurse station printer offline
+- HVAC issue in exam wing
+- facility lighting problem in hallway
+- broken check-in kiosk
+- delayed vendor repair for imaging equipment
+- recurring supply shortage in lab
+- waiting on department response for room access
+- urgent issue affecting patient flow
+
+Create richer records that include:
+- meaningful titles
+- realistic departments
+- plausible locations
+- varied priorities/statuses
+- overdue examples
+- resolved examples with root cause/resolution
+- recurring issue examples
+- vendor-linked examples
+
+ANALYTICS / REPORTING POLISH:
+Improve charts and reporting pages so they look useful to real leadership.
+
+Refine:
+- chart labeling
+- chart spacing
+- filter controls
+- report grouping
+- trend presentation
+- executive readability
+- operational drill-down usability
+
+Make reports look good for:
+- supervisors
+- ops managers
+- practice administrators
+- department leaders
+- executive viewers
+
+Potential reports:
+- issue trends over time
+- issue distribution by category
+- issue distribution by department
+- resolution performance
+- recurring issue hotspots
+- vendor-related volume
+- equipment downtime patterns
+- supply request turnaround
+- facilities issue backlog
+- aging analysis
+
+UX REFINEMENTS:
+Improve product usability with thoughtful operational UX improvements such as:
+- smarter default filters
+- saved views or placeholder support for future saved views
+- better search UX
+- bulk actions where appropriate
+- cleaner mobile/tablet responsiveness
+- sticky filter bars if helpful
+- more useful empty states
+- better success/error messaging
+- clearer confirmation dialogs
+- better breadcrumbs/page context
+- cleaner list-to-detail navigation flow
+
+NOTIFICATIONS / COMMUNICATION PLACEHOLDERS:
+Without overengineering, add structural placeholders or light UI support for:
+- in-app notifications
+- assignment alerts
+- overdue reminders
+- supervisor review flags
+- vendor follow-up reminders
+- status change notifications
+
+These do not need to be fully enterprise-integrated, but the UI/code should support future evolution.
+
+AUDITABILITY / HISTORY:
+Improve the visibility of operational history.
+
+Where appropriate, include:
+- activity feed per ticket
+- created by / updated by
+- assignment changes
+- status changes
+- note entries
+- resolution logged
+- closure logged
+
+This should feel useful for accountability and internal review.
+
+COPY / CONTENT HARDENING:
+Audit all copy for clarity and realism.
+Replace generic or awkward wording with concise healthcare-internal operational language.
+
+Use wording that feels appropriate for:
+- administrative coordinators
+- clinic staff
+- support teams
+- facilities teams
+- supervisors
+- leadership viewers
+
+Avoid:
+- startup marketing fluff
+- dev placeholder phrasing
+- overly technical jargon for standard users
+
+PERFORMANCE / CODE QUALITY PASS:
+Refactor the code where needed to improve:
+- component reusability
+- naming consistency
+- route coherence
+- file organization
+- duplicated UI patterns
+- maintainability
+- future extensibility
+
+If there are places where TradeFlowKit legacy logic still shows through, clean that up.
+
+FINAL POLISH DELIVERABLE:
+The final result should feel like:
+- a branded internal healthcare operations platform
+- visually coherent and premium
+- realistic enough for stakeholder demos
+- structured enough to scale later
+- easy enough for busy healthcare admin users
+- useful enough for supervisors and leadership
+
+The finished app should present PulseDesk as a credible internal issue tracking and operations platform for healthcare organizations, with strong visual polish, realistic workflows, better role separation, refined data presentation, and improved internal coherence across all modules.

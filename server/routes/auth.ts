@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
-import { requireAuth } from "../middleware";
+import { requireAuth, requireOrg } from "../middleware";
 import { hashPassword, verifyPassword } from "../middleware";
 
 const router = Router();
@@ -92,7 +92,6 @@ router.delete("/api/auth/delete-account", requireAuth, async (req: Request, res:
 
 router.get("/api/auth/me", requireAuth, async (req: Request, res: Response) => {
   try {
-    const { PLAN_LIMITS } = await import("@shared/schema");
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(401).send("User not found");
 
@@ -112,10 +111,8 @@ router.get("/api/auth/me", requireAuth, async (req: Request, res: Response) => {
       membership = await storage.getMembership(org.id, user.id);
     }
 
-    let planLimits = null;
     let orgCounts = null;
     if (org) {
-      planLimits = PLAN_LIMITS[org.plan] || PLAN_LIMITS.free;
       orgCounts = await storage.getOrgCounts(org.id);
     }
 
@@ -124,7 +121,6 @@ router.get("/api/auth/me", requireAuth, async (req: Request, res: Response) => {
       org,
       membership,
       orgs: userOrgs,
-      planLimits,
       orgCounts,
     });
   } catch (err: any) {
@@ -170,6 +166,27 @@ router.post("/api/auth/change-password", requireAuth, async (req: Request, res: 
     const newHash = await hashPassword(newPassword);
     await storage.updateUser(user.id, { password: newHash });
     res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.get("/api/members", requireAuth, requireOrg, async (req: Request, res: Response) => {
+  try {
+    const mems = await storage.getOrgMemberships(req.session.orgId!);
+    const result = [];
+    for (const m of mems) {
+      const u = await storage.getUser(m.userId);
+      if (u) {
+        result.push({
+          ...m,
+          fullName: u.fullName,
+          username: u.username,
+          email: u.email,
+        });
+      }
+    }
+    res.json(result);
   } catch (err: any) {
     res.status(500).send(err.message);
   }
