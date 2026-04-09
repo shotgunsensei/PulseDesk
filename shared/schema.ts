@@ -14,6 +14,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const membershipRoleEnum = pgEnum("membership_role", [
+  "owner",
   "admin",
   "supervisor",
   "staff",

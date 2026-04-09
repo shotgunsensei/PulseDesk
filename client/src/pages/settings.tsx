@@ -754,7 +754,7 @@ function AuthenticationSettings() {
                         <div key={m.userId} className="flex items-center justify-between text-xs bg-muted/50 rounded px-2 py-1.5" data-testid={`local-fallback-admin-${m.userId}`}>
                           <div className="flex items-center gap-2">
                             <Shield className="h-3 w-3 text-muted-foreground" />
-                            <span>{m.fullName || m.username}</span>
+                            <span>{m.user?.fullName || m.user?.username || m.userId}</span>
                           </div>
                           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{m.role}</span>
                         </div>

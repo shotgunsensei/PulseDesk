@@ -23,7 +23,7 @@ const authConfigSchema = z.object({
 
 const roleMappingSchema = z.object({
   entraGroupId: z.string().min(1, "Entra Group Object ID is required").trim(),
-  pulsedeskRole: z.enum(["readonly", "staff", "technician", "supervisor", "admin"]),
+  pulsedeskRole: z.enum(["readonly", "staff", "technician", "supervisor", "admin", "owner"]),
   displayLabel: z.string().optional(),
 });
 
@@ -188,11 +188,6 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
       await storage.updateUser(user.id, { password: newHash });
     }
 
-    await storage.updateUser(user.id, { lastLoginAt: new Date() });
-
-    req.session.userId = user.id;
-    req.session.authSource = "local";
-
     const userOrgs = await storage.getUserOrgs(user.id);
     let selectedOrgId: string | undefined;
 
@@ -245,6 +240,10 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
       }
     }
 
+    await storage.updateUser(user.id, { lastLoginAt: new Date() });
+
+    req.session.userId = user.id;
+    req.session.authSource = "local";
     req.session.orgId = selectedOrgId;
 
     req.session.save((err) => {
