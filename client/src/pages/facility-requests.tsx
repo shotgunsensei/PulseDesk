@@ -16,18 +16,18 @@ import { FACILITY_STATUS_LABELS, FACILITY_TYPE_LABELS, type FacilityRequest } fr
 import { format } from "date-fns";
 
 const STATUS_COLORS: Record<string, string> = {
-  new: "bg-blue-100 text-blue-800",
-  assigned: "bg-indigo-100 text-indigo-800",
-  in_progress: "bg-yellow-100 text-yellow-800",
-  completed: "bg-green-100 text-green-800",
-  cancelled: "bg-gray-100 text-gray-800",
+  new: "bg-sky-50 text-sky-700",
+  assigned: "bg-indigo-50 text-indigo-700",
+  in_progress: "bg-cyan-50 text-cyan-700",
+  completed: "bg-emerald-50 text-emerald-700",
+  cancelled: "bg-slate-100 text-slate-600",
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  low: "bg-gray-100 text-gray-600",
-  normal: "bg-blue-100 text-blue-700",
-  high: "bg-orange-100 text-orange-700",
-  emergency: "bg-red-100 text-red-700",
+  low: "bg-slate-100 text-slate-600",
+  normal: "bg-sky-50 text-sky-700",
+  high: "bg-amber-50 text-amber-700",
+  emergency: "bg-rose-50 text-rose-700",
 };
 
 export default function FacilityRequestsPage() {

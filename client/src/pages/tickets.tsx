@@ -54,12 +54,12 @@ export default function TicketsPage() {
     <div className="flex flex-col h-full">
       <PageHeader
         title="Ticket Queue"
-        description="Track, triage, and resolve operational issues"
+        description="Active and resolved issues across all departments"
         action={
           <Link href="/submit">
             <Button data-testid="button-new-ticket">
               <PlusCircle className="h-4 w-4 mr-2" />
-              Submit Issue
+              Report Issue
             </Button>
           </Link>
         }
@@ -122,7 +122,7 @@ export default function TicketsPage() {
               <Link href="/submit">
                 <Button variant="outline" className="mt-3" data-testid="button-empty-submit">
                   <PlusCircle className="h-4 w-4 mr-2" />
-                  Submit an Issue
+                  Report an Issue
                 </Button>
               </Link>
             </CardContent>

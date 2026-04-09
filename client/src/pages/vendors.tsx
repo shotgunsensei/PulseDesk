@@ -91,7 +91,7 @@ export default function VendorsPage() {
                 <div className="mt-3 space-y-1">
                   {vendor.phone && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Phone className="h-3 w-3" />{vendor.phone}</div>}
                   {vendor.email && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Mail className="h-3 w-3" />{vendor.email}</div>}
-                  {vendor.emergencyContact && <div className="flex items-center gap-2 text-xs text-red-600"><AlertCircle className="h-3 w-3" />Emergency: {vendor.emergencyContact}</div>}
+                  {vendor.emergencyContact && <div className="flex items-center gap-2 text-xs text-rose-600"><AlertCircle className="h-3 w-3" />Emergency: {vendor.emergencyContact}</div>}
                 </div>
                 {vendor.contractNotes && <p className="text-xs text-muted-foreground mt-2 border-t pt-2">{vendor.contractNotes}</p>}
               </div>

@@ -39,7 +39,7 @@ export default function AnalyticsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <PageHeader title="Analytics" description="Operational metrics and insights" />
+      <PageHeader title="Analytics" description="Issue volume, resolution trends, and department performance" />
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Card>
@@ -62,7 +62,7 @@ export default function AnalyticsPage() {
           </Card>
           <Card>
             <CardContent className="pt-4 text-center">
-              <p className="text-2xl font-bold text-red-600">{data.overdueCount}</p>
+              <p className="text-2xl font-bold text-rose-700 dark:text-rose-400">{data.overdueCount}</p>
               <p className="text-xs text-muted-foreground">Overdue Tickets</p>
             </CardContent>
           </Card>
@@ -81,7 +81,7 @@ export default function AnalyticsPage() {
                   return (
                     <div key={i} className="flex-1 flex flex-col justify-end" title={`${d.date}: ${d.count}`}>
                       <div
-                        className="bg-[hsl(213,64%,33%)] rounded-t-sm min-h-[2px] transition-all"
+                        className="bg-primary rounded-t-sm min-h-[2px] transition-all"
                         style={{ height: `${Math.max(height, 2)}%` }}
                       />
                     </div>
@@ -110,7 +110,7 @@ export default function AnalyticsPage() {
                         <span className="text-sm truncate flex-1">{TICKET_CATEGORY_LABELS[cat] || cat}</span>
                         <div className="flex items-center gap-2 w-32">
                           <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
-                            <div className="h-full rounded-full bg-[hsl(174,55%,40%)]" style={{ width: `${(cnt / maxCnt) * 100}%` }} />
+                            <div className="h-full rounded-full bg-accent" style={{ width: `${(cnt / maxCnt) * 100}%` }} />
                           </div>
                           <span className="text-sm font-medium w-6 text-right">{cnt}</span>
                         </div>
@@ -136,7 +136,7 @@ export default function AnalyticsPage() {
                         <span className="text-sm truncate flex-1">{dept}</span>
                         <div className="flex items-center gap-2 w-32">
                           <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
-                            <div className="h-full rounded-full bg-[hsl(213,64%,33%)]" style={{ width: `${(cnt / maxCnt) * 100}%` }} />
+                            <div className="h-full rounded-full bg-primary" style={{ width: `${(cnt / maxCnt) * 100}%` }} />
                           </div>
                           <span className="text-sm font-medium w-6 text-right">{cnt}</span>
                         </div>

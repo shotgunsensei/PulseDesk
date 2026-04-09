@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { Activity } from "lucide-react";
+import { HeartPulse } from "lucide-react";
 
 export default function AuthPage() {
   const { login, register } = useAuth();
@@ -21,7 +21,7 @@ export default function AuthPage() {
     try {
       await login(loginForm.username, loginForm.password);
     } catch (err: any) {
-      toast({ title: "Login failed", description: err.message, variant: "destructive" });
+      toast({ title: "Sign-in failed", description: err.message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -40,78 +40,107 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[hsl(210,33%,98%)] p-4">
-      <div className="w-full max-w-md space-y-6">
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-[hsl(213,64%,33%)] mb-4">
-            <Activity className="h-6 w-6 text-white" />
+    <div className="min-h-screen flex">
+      <div className="hidden lg:flex lg:w-[45%] bg-[hsl(215,32%,15%)] items-center justify-center p-12">
+        <div className="max-w-md text-center">
+          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-[hsl(174,42%,38%)] mb-6">
+            <HeartPulse className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">PulseDesk</h1>
-          <p className="text-sm text-muted-foreground mt-1">Healthcare Operations Ticketing</p>
+          <h1 className="text-3xl font-bold tracking-tight text-white mb-3">PulseDesk</h1>
+          <p className="text-[hsl(210,20%,70%)] text-sm leading-relaxed">
+            Internal operations management for healthcare facilities.
+            Track issues, coordinate departments, and keep your facility running smoothly.
+          </p>
+          <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+            <div>
+              <p className="text-2xl font-bold text-[hsl(174,42%,50%)]">9</p>
+              <p className="text-[11px] text-[hsl(210,20%,55%)] mt-0.5">Issue Statuses</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-[hsl(174,42%,50%)]">10</p>
+              <p className="text-[11px] text-[hsl(210,20%,55%)] mt-0.5">Categories</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-[hsl(174,42%,50%)]">24/7</p>
+              <p className="text-[11px] text-[hsl(210,20%,55%)] mt-0.5">Issue Tracking</p>
+            </div>
+          </div>
         </div>
+      </div>
 
-        <Tabs defaultValue="login">
-          <TabsList className="w-full grid grid-cols-2">
-            <TabsTrigger value="login" data-testid="tab-login">Sign In</TabsTrigger>
-            <TabsTrigger value="register" data-testid="tab-register">Register</TabsTrigger>
-          </TabsList>
+      <div className="flex-1 flex items-center justify-center p-6 bg-background">
+        <div className="w-full max-w-sm space-y-6">
+          <div className="lg:hidden text-center mb-2">
+            <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-[hsl(174,42%,38%)] mb-3">
+              <HeartPulse className="h-6 w-6 text-white" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight">PulseDesk</h1>
+            <p className="text-xs text-muted-foreground mt-1">Internal Operations Management</p>
+          </div>
 
-          <TabsContent value="login">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Welcome back</CardTitle>
-                <CardDescription>Sign in to access your dashboard</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div>
-                    <Label htmlFor="login-user">Username</Label>
-                    <Input id="login-user" data-testid="input-login-username" value={loginForm.username} onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })} className="mt-1" />
-                  </div>
-                  <div>
-                    <Label htmlFor="login-pass">Password</Label>
-                    <Input id="login-pass" data-testid="input-login-password" type="password" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} className="mt-1" />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading} data-testid="button-login">
-                    {loading ? "Signing in..." : "Sign In"}
-                  </Button>
-                </form>
-                <div className="mt-4 p-3 rounded-md bg-muted/50 text-xs text-muted-foreground">
-                  <p className="font-medium mb-1">Demo credentials:</p>
-                  <p>Username: <code className="font-mono">demo</code> / Password: <code className="font-mono">demo123</code></p>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+          <Tabs defaultValue="login">
+            <TabsList className="w-full grid grid-cols-2">
+              <TabsTrigger value="login" data-testid="tab-login">Sign In</TabsTrigger>
+              <TabsTrigger value="register" data-testid="tab-register">Register</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="register">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Create account</CardTitle>
-                <CardDescription>Get started with PulseDesk</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleRegister} className="space-y-4">
-                  <div>
-                    <Label htmlFor="reg-name">Full Name</Label>
-                    <Input id="reg-name" data-testid="input-register-fullname" value={registerForm.fullName} onChange={(e) => setRegisterForm({ ...registerForm, fullName: e.target.value })} className="mt-1" />
+            <TabsContent value="login">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Staff Sign-In</CardTitle>
+                  <CardDescription>Access your facility's operations dashboard</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleLogin} className="space-y-4">
+                    <div>
+                      <Label htmlFor="login-user">Username</Label>
+                      <Input id="login-user" data-testid="input-login-username" value={loginForm.username} onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })} className="mt-1" autoComplete="username" />
+                    </div>
+                    <div>
+                      <Label htmlFor="login-pass">Password</Label>
+                      <Input id="login-pass" data-testid="input-login-password" type="password" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} className="mt-1" autoComplete="current-password" />
+                    </div>
+                    <Button type="submit" className="w-full" disabled={loading} data-testid="button-login">
+                      {loading ? "Signing in..." : "Sign In"}
+                    </Button>
+                  </form>
+                  <div className="mt-4 p-3 rounded-md bg-muted/50 text-xs text-muted-foreground">
+                    <p className="font-medium mb-1">Demo access:</p>
+                    <p>Username: <code className="font-mono text-foreground/70">demo</code> / Password: <code className="font-mono text-foreground/70">demo123</code></p>
                   </div>
-                  <div>
-                    <Label htmlFor="reg-user">Username</Label>
-                    <Input id="reg-user" data-testid="input-register-username" value={registerForm.username} onChange={(e) => setRegisterForm({ ...registerForm, username: e.target.value })} className="mt-1" />
-                  </div>
-                  <div>
-                    <Label htmlFor="reg-pass">Password</Label>
-                    <Input id="reg-pass" data-testid="input-register-password" type="password" value={registerForm.password} onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })} className="mt-1" placeholder="At least 6 characters" />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading} data-testid="button-register">
-                    {loading ? "Creating account..." : "Create Account"}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="register">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">New Account</CardTitle>
+                  <CardDescription>Set up your PulseDesk credentials</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleRegister} className="space-y-4">
+                    <div>
+                      <Label htmlFor="reg-name">Full Name</Label>
+                      <Input id="reg-name" data-testid="input-register-fullname" value={registerForm.fullName} onChange={(e) => setRegisterForm({ ...registerForm, fullName: e.target.value })} className="mt-1" autoComplete="name" />
+                    </div>
+                    <div>
+                      <Label htmlFor="reg-user">Username</Label>
+                      <Input id="reg-user" data-testid="input-register-username" value={registerForm.username} onChange={(e) => setRegisterForm({ ...registerForm, username: e.target.value })} className="mt-1" autoComplete="username" />
+                    </div>
+                    <div>
+                      <Label htmlFor="reg-pass">Password</Label>
+                      <Input id="reg-pass" data-testid="input-register-password" type="password" value={registerForm.password} onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })} className="mt-1" placeholder="Minimum 6 characters" autoComplete="new-password" />
+                    </div>
+                    <Button type="submit" className="w-full" disabled={loading} data-testid="button-register">
+                      {loading ? "Creating account..." : "Create Account"}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
     </div>
   );

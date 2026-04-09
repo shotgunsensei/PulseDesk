@@ -370,16 +370,16 @@ export type InviteCode = typeof inviteCodes.$inferSelect;
 export const TICKET_PRIORITY_LABELS: Record<string, string> = {
   critical: "Critical",
   high: "High",
-  normal: "Normal",
+  normal: "Standard",
   low: "Low",
 };
 
 export const TICKET_STATUS_LABELS: Record<string, string> = {
-  new: "New",
+  new: "Intake",
   triage: "Triage",
   assigned: "Assigned",
-  waiting_department: "Waiting on Department",
-  waiting_vendor: "Waiting on Vendor",
+  waiting_department: "Dept. Pending",
+  waiting_vendor: "Vendor Pending",
   in_progress: "In Progress",
   escalated: "Escalated",
   resolved: "Resolved",
@@ -391,31 +391,31 @@ export const TICKET_CATEGORY_LABELS: Record<string, string> = {
   medical_equipment: "Medical Equipment",
   supplies_inventory: "Supplies / Inventory",
   facilities_building: "Facilities / Building",
-  housekeeping_environmental: "Housekeeping / Environmental",
+  housekeeping_environmental: "Environmental Services",
   safety_compliance: "Safety / Compliance",
-  vendor_external: "Vendor / External Service",
-  administrative: "Administrative Request",
-  hr_staff: "HR / Staff Operations",
-  other: "Other",
+  vendor_external: "Vendor / External",
+  administrative: "Administrative",
+  hr_staff: "HR / Staffing",
+  other: "General",
 };
 
 export const TICKET_STATUS_COLORS: Record<string, string> = {
-  new: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  triage: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  assigned: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300",
-  waiting_department: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-  waiting_vendor: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-  in_progress: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  escalated: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-  resolved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  closed: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300",
+  new: "bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300",
+  triage: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  assigned: "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
+  waiting_department: "bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
+  waiting_vendor: "bg-fuchsia-50 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300",
+  in_progress: "bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300",
+  escalated: "bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",
+  resolved: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+  closed: "bg-slate-100 text-slate-600 dark:bg-slate-800/40 dark:text-slate-400",
 };
 
 export const TICKET_PRIORITY_COLORS: Record<string, string> = {
-  critical: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-  high: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  normal: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  low: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300",
+  critical: "bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",
+  high: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  normal: "bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300",
+  low: "bg-slate-100 text-slate-600 dark:bg-slate-800/40 dark:text-slate-400",
 };
 
 export const ASSET_STATUS_LABELS: Record<string, string> = {

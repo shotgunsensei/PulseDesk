@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { Activity, Building2 } from "lucide-react";
+import { HeartPulse, Building2 } from "lucide-react";
 
 export default function OrgSetup() {
   const { refreshAuth, logout } = useAuth();
@@ -56,14 +56,14 @@ export default function OrgSetup() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[hsl(210,33%,98%)] p-4">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
-          <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-[hsl(213,64%,33%)] mb-4">
-            <Activity className="h-6 w-6 text-white" />
+          <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-[hsl(174,42%,38%)] mb-4">
+            <HeartPulse className="h-6 w-6 text-white" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight">Set Up Your Organization</h1>
-          <p className="text-sm text-muted-foreground mt-1">Create a new facility or join an existing one</p>
+          <h1 className="text-xl font-bold tracking-tight">Set Up Your Facility</h1>
+          <p className="text-sm text-muted-foreground mt-1">Create a new organization or join an existing one</p>
         </div>
 
         <Tabs defaultValue="create">

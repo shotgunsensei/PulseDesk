@@ -64,13 +64,13 @@ function EmptyState() {
     <Card data-testid="empty-state">
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
-          <CheckCircle2 className="h-5 w-5 text-[hsl(213,64%,33%)]" />
-          Welcome to PulseDesk — let's get started
+          <CheckCircle2 className="h-5 w-5 text-primary" />
+          Welcome to PulseDesk
         </CardTitle>
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground mb-4">
-          Complete these steps to start managing your healthcare operations.
+          Set up your facility's operational workflow with these steps.
         </p>
         <div className="space-y-2">
           {steps.map((s) => (
@@ -117,7 +117,7 @@ export default function Dashboard() {
     <div className="flex flex-col h-full">
       <PageHeader
         title="Dashboard"
-        description={org ? `Operational overview for ${org.name}` : "Internal Healthcare Operations, Organized"}
+        description={org ? `${org.name} — operational overview` : "Facility operations at a glance"}
       />
 
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
@@ -125,8 +125,8 @@ export default function Dashboard() {
           <Link href="/tickets?status=new">
             <div className="rounded-xl border bg-card p-4 hover-elevate cursor-pointer" data-testid="kpi-new-tickets">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-muted-foreground font-medium">New Tickets</span>
-                <Ticket className="h-4 w-4 text-[hsl(213,64%,33%)]" />
+                <span className="text-xs text-muted-foreground font-medium">Intake</span>
+                <Ticket className="h-4 w-4 text-primary" />
               </div>
               <p className="text-2xl font-bold">{stats.statusCounts.new || 0}</p>
               <p className="text-xs text-muted-foreground mt-0.5">awaiting triage</p>
@@ -137,27 +137,27 @@ export default function Dashboard() {
             <div className="rounded-xl border bg-card p-4 hover-elevate cursor-pointer" data-testid="kpi-open-tickets">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs text-muted-foreground font-medium">Open Issues</span>
-                <Activity className="h-4 w-4 text-[hsl(174,55%,40%)]" />
+                <Activity className="h-4 w-4 text-accent" />
               </div>
               <p className="text-2xl font-bold">{stats.openTickets}</p>
               <p className="text-xs text-muted-foreground mt-0.5">in progress</p>
             </div>
           </Link>
 
-          <div className={`rounded-xl border p-4 ${stats.overdueCount > 0 ? "border-red-200 bg-red-50 dark:bg-red-950/20" : "bg-card"}`} data-testid="kpi-overdue">
+          <div className={`rounded-xl border p-4 ${stats.overdueCount > 0 ? "border-rose-200 bg-rose-50 dark:border-rose-800/40 dark:bg-rose-950/20" : "bg-card"}`} data-testid="kpi-overdue">
             <div className="flex items-center justify-between mb-1">
-              <span className={`text-xs font-medium ${stats.overdueCount > 0 ? "text-red-600" : "text-muted-foreground"}`}>Overdue</span>
-              <AlertTriangle className={`h-4 w-4 ${stats.overdueCount > 0 ? "text-red-500" : "text-muted-foreground"}`} />
+              <span className={`text-xs font-medium ${stats.overdueCount > 0 ? "text-rose-700 dark:text-rose-400" : "text-muted-foreground"}`}>Overdue</span>
+              <AlertTriangle className={`h-4 w-4 ${stats.overdueCount > 0 ? "text-rose-500" : "text-muted-foreground"}`} />
             </div>
-            <p className={`text-2xl font-bold ${stats.overdueCount > 0 ? "text-red-600" : ""}`}>{stats.overdueCount}</p>
+            <p className={`text-2xl font-bold ${stats.overdueCount > 0 ? "text-rose-700 dark:text-rose-400" : ""}`}>{stats.overdueCount}</p>
             {stats.overdueCount === 0 && <p className="text-xs text-muted-foreground mt-0.5">all current</p>}
-            {stats.overdueCount > 0 && <p className="text-xs text-red-500 mt-0.5">needs attention</p>}
+            {stats.overdueCount > 0 && <p className="text-xs text-rose-600 dark:text-rose-400 mt-0.5">requires attention</p>}
           </div>
 
-          <div className={`rounded-xl border p-4 ${stats.criticalHighOpen > 0 ? "border-orange-200 bg-orange-50 dark:bg-orange-950/20" : "bg-card"}`} data-testid="kpi-critical">
+          <div className={`rounded-xl border p-4 ${stats.criticalHighOpen > 0 ? "border-amber-200 bg-amber-50 dark:border-amber-800/40 dark:bg-amber-950/20" : "bg-card"}`} data-testid="kpi-critical">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-muted-foreground font-medium">Critical / High</span>
-              <AlertTriangle className="h-4 w-4 text-orange-500" />
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
             </div>
             <p className="text-2xl font-bold">{stats.criticalHighOpen}</p>
             <p className="text-xs text-muted-foreground mt-0.5">unresolved</p>
@@ -238,7 +238,7 @@ export default function Dashboard() {
                         <div className="flex items-center gap-2">
                           <div className="h-2 rounded-full bg-muted overflow-hidden w-24">
                             <div
-                              className="h-full rounded-full bg-[hsl(213,64%,33%)] transition-all"
+                              className="h-full rounded-full bg-primary transition-all"
                               style={{ width: `${Math.min((cnt / Math.max(...Object.values(stats.categoryCounts))) * 100, 100)}%` }}
                             />
                           </div>
@@ -260,8 +260,8 @@ export default function Dashboard() {
                 <div className="space-y-2">
                   <Link href="/submit">
                     <div className="flex items-center gap-2 rounded-md border px-3 py-2.5 hover-elevate cursor-pointer" data-testid="qa-submit">
-                      <Ticket className="h-4 w-4 text-[hsl(213,64%,33%)]" />
-                      <span className="text-sm">Submit New Issue</span>
+                      <Ticket className="h-4 w-4 text-primary" />
+                      <span className="text-sm">Report Issue</span>
                     </div>
                   </Link>
                   <Link href="/supply-requests">

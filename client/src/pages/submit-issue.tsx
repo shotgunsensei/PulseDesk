@@ -71,8 +71,8 @@ export default function SubmitIssue() {
   return (
     <div className="flex flex-col h-full">
       <PageHeader
-        title="Submit New Issue"
-        description="Report an operational issue quickly and easily"
+        title="Report Issue"
+        description="Log a new issue for your facility's operations team"
       />
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         <form onSubmit={handleSubmit} className="max-w-2xl mx-auto space-y-4">
@@ -238,7 +238,7 @@ export default function SubmitIssue() {
               disabled={submitMutation.isPending}
               className="flex-1"
             >
-              {submitMutation.isPending ? "Submitting..." : "Submit Issue"}
+              {submitMutation.isPending ? "Submitting..." : "Report Issue"}
             </Button>
             <Button type="button" variant="outline" onClick={() => setLocation("/tickets")}>
               Cancel

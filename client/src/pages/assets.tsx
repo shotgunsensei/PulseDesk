@@ -14,10 +14,10 @@ import { useToast } from "@/hooks/use-toast";
 import { ASSET_STATUS_LABELS, type Asset, type Department } from "@shared/schema";
 
 const STATUS_COLORS: Record<string, string> = {
-  active: "bg-green-100 text-green-800",
-  under_service: "bg-amber-100 text-amber-800",
-  retired: "bg-gray-100 text-gray-800",
-  offline: "bg-red-100 text-red-800",
+  active: "bg-emerald-50 text-emerald-700",
+  under_service: "bg-amber-50 text-amber-700",
+  retired: "bg-slate-100 text-slate-600",
+  offline: "bg-rose-50 text-rose-700",
 };
 
 export default function AssetsPage() {

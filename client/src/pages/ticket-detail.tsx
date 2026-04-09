@@ -149,7 +149,7 @@ export default function TicketDetail() {
                   <div className="space-y-3">
                     {events.map((event) => (
                       <div key={event.id} className="flex gap-3 items-start" data-testid={`event-${event.id}`}>
-                        <div className="h-2 w-2 rounded-full bg-[hsl(213,64%,33%)] mt-1.5 shrink-0" />
+                        <div className="h-2 w-2 rounded-full bg-primary mt-1.5 shrink-0" />
                         <div>
                           <p className="text-sm">{event.content || event.type}</p>
                           <p className="text-xs text-muted-foreground">
@@ -278,7 +278,7 @@ export default function TicketDetail() {
 
                 <div className="flex flex-wrap gap-2 pt-2">
                   {ticket.isPatientImpacting && (
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-red-100 text-red-700 flex items-center gap-1">
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-rose-50 text-rose-700 flex items-center gap-1">
                       <AlertTriangle className="h-3 w-3" /> Patient Impacting
                     </span>
                   )}
