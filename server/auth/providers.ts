@@ -31,10 +31,18 @@ export interface AuthCallbackResult {
   error?: string;
 }
 
+export interface LocalCredentialResult {
+  success: boolean;
+  userId?: string;
+  error?: string;
+  needsRehash?: boolean;
+}
+
 export interface AuthProvider {
   readonly type: string;
   initiateLogin(req: Request, config: AuthProviderConfig): Promise<AuthInitiateResult>;
   handleCallback(req: Request, config: AuthProviderConfig): Promise<AuthCallbackResult>;
+  validateCredentials?(username: string, password: string, storedHash: string): Promise<LocalCredentialResult>;
 }
 
 export interface ScimProvider {

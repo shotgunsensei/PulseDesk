@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import crypto from "crypto";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { AuthProvider, AuthProviderConfig, AuthInitiateResult, AuthCallbackResult } from "./providers";
 
 const ENTRA_AUTHORITY_BASE = "https://login.microsoftonline.com";
@@ -17,11 +18,18 @@ function buildJwksUri(tenantId: string): string {
   return `${ENTRA_AUTHORITY_BASE}/${tenantId}/discovery/v2.0/keys`;
 }
 
-function decodeJwtPayload(token: string): any {
-  const parts = token.split(".");
-  if (parts.length !== 3) throw new Error("Invalid JWT format");
-  const payload = Buffer.from(parts[1], "base64url").toString("utf8");
-  return JSON.parse(payload);
+function buildIssuer(tenantId: string): string {
+  return `https://login.microsoftonline.com/${tenantId}/v2.0`;
+}
+
+const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+
+function getJWKS(tenantId: string) {
+  if (!jwksCache.has(tenantId)) {
+    const jwksUrl = new URL(buildJwksUri(tenantId));
+    jwksCache.set(tenantId, createRemoteJWKSet(jwksUrl));
+  }
+  return jwksCache.get(tenantId)!;
 }
 
 export class EntraAuthProvider implements AuthProvider {
@@ -101,14 +109,30 @@ export class EntraAuthProvider implements AuthProvider {
         return { success: false, error: "No ID token received" };
       }
 
-      const claims = decodeJwtPayload(idToken);
+      const jwks = getJWKS(config.entraTenantId);
+      const expectedIssuer = buildIssuer(config.entraTenantId);
+
+      const savedNonce = req.session.entraNonce;
+
+      let claims: any;
+      try {
+        const { payload } = await jwtVerify(idToken, jwks, {
+          issuer: expectedIssuer,
+          audience: config.entraClientId,
+          clockTolerance: 120,
+        });
+        claims = payload;
+      } catch (verifyErr: any) {
+        console.error("ID token verification failed:", verifyErr.message);
+        return { success: false, error: "ID token verification failed: " + verifyErr.message };
+      }
+
+      if (savedNonce && claims.nonce !== savedNonce) {
+        return { success: false, error: "ID token nonce mismatch" };
+      }
 
       if (claims.tid && claims.tid !== config.entraTenantId) {
         return { success: false, error: "Token tenant mismatch" };
-      }
-
-      if (claims.aud && claims.aud !== config.entraClientId) {
-        return { success: false, error: "Token audience mismatch" };
       }
 
       const email = claims.email || claims.preferred_username || claims.upn || "";
@@ -118,7 +142,7 @@ export class EntraAuthProvider implements AuthProvider {
 
       if (config.entraAllowedDomains && config.entraAllowedDomains.length > 0 && email) {
         const emailDomain = email.split("@")[1]?.toLowerCase();
-        if (emailDomain && !config.entraAllowedDomains.some(d => d.toLowerCase() === emailDomain)) {
+        if (emailDomain && !config.entraAllowedDomains.some((d: string) => d.toLowerCase() === emailDomain)) {
           return { success: false, error: `Email domain ${emailDomain} is not allowed for this organization` };
         }
       }

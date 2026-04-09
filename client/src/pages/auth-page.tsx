@@ -44,6 +44,7 @@ export default function AuthPage() {
         user_not_provisioned: "Your account has not been set up for this organization. Contact your administrator.",
         session_error: "Session error. Please try again.",
         callback_error: "An error occurred during sign-in. Please try again.",
+        no_matching_role: "Your Microsoft 365 groups do not match any configured roles for this organization. Contact your administrator.",
       };
       toast({
         title: "Sign-in issue",

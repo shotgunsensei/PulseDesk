@@ -1,9 +1,9 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
-import { requireAuth, requireOrg, requireMinRole } from "../middleware";
+import { requireAuth, requireOrg, requireMinRole, resolveTenant } from "../middleware";
 import { hashPassword, verifyPassword } from "../middleware";
-import { getAuthProvider, encryptSecret, decryptSecret } from "../auth";
+import { getAuthProvider, localProvider, encryptSecret, decryptSecret } from "../auth";
 import type { AuthProviderConfig } from "../auth";
 
 const authConfigSchema = z.object({
@@ -53,14 +53,10 @@ async function logAuthEvent(req: Request, params: {
   }
 }
 
-router.get("/api/auth/tenant/:slug", async (req: Request, res: Response) => {
+router.get("/api/auth/tenant/:slug", resolveTenant, async (req: Request, res: Response) => {
   try {
-    const { slug } = req.params;
-    const org = await storage.getOrgBySlug(slug);
-    if (!org) {
-      return res.status(404).json({ error: "Organization not found" });
-    }
-    const authConfig = await storage.getOrgAuthConfig(org.id);
+    const org = (req as any).resolvedOrg;
+    const authConfig = (req as any).resolvedAuthConfig;
     res.json({
       orgId: org.id,
       orgName: org.name,
@@ -173,8 +169,8 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    const valid = await verifyPassword(password, user.password);
-    if (!valid) {
+    const credResult = await localProvider.validateCredentials(username, password, user.password);
+    if (!credResult.success) {
       await logAuthEvent(req, {
         orgId: org?.id,
         userId: user.id,
@@ -187,8 +183,8 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    if (/^[0-9a-f]{64}$/.test(user.password)) {
-      const newHash = await hashPassword(password);
+    if (credResult.needsRehash) {
+      const newHash = await localProvider.rehashPassword(password);
       await storage.updateUser(user.id, { password: newHash });
     }
 
@@ -227,19 +223,11 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/api/auth/m365/login", async (req: Request, res: Response) => {
+router.get("/api/auth/m365/login", resolveTenant, async (req: Request, res: Response) => {
   try {
-    const orgSlug = req.query.org as string;
-    if (!orgSlug) {
-      return res.status(400).json({ error: "Organization identifier required" });
-    }
+    const org = (req as any).resolvedOrg;
+    const authConfig = (req as any).resolvedAuthConfig;
 
-    const org = await storage.getOrgBySlug(orgSlug);
-    if (!org) {
-      return res.status(404).json({ error: "Organization not found" });
-    }
-
-    const authConfig = await storage.getOrgAuthConfig(org.id);
     if (!authConfig || authConfig.authMode === "local") {
       return res.status(400).json({ error: "Microsoft 365 login is not enabled for this organization" });
     }
@@ -354,10 +342,11 @@ router.get("/api/auth/m365/callback", async (req: Request, res: Response) => {
       : null;
 
     const roleMappings = await storage.getOrgRoleMappings(orgId);
-    let mappedRole = "staff";
+    let mappedRole: string | null = null;
     const matchedGroups: string[] = [];
+    const hasMappings = roleMappings.length > 0;
 
-    if (result.groups && roleMappings.length > 0) {
+    if (result.groups && hasMappings) {
       const roleHierarchy: Record<string, number> = {
         owner: 120, admin: 100, supervisor: 80, technician: 60, staff: 40, readonly: 10,
       };
@@ -375,6 +364,25 @@ router.get("/api/auth/m365/callback", async (req: Request, res: Response) => {
       }
     }
 
+    if (!hasMappings) {
+      mappedRole = "staff";
+    }
+
+    if (hasMappings && matchedGroups.length === 0) {
+      await logAuthEvent(req, {
+        orgId,
+        eventType: "m365_login_denied",
+        authSource: "m365",
+        details: {
+          reason: "User groups do not match any configured role mappings",
+          entraObjectId: result.entraObjectId,
+          userGroups: result.groups,
+        },
+        success: false,
+      });
+      return res.redirect("/?error=no_matching_role");
+    }
+
     if (user) {
       await storage.updateUser(user.id, {
         fullName: result.displayName || user.fullName,
@@ -387,9 +395,7 @@ router.get("/api/auth/m365/callback", async (req: Request, res: Response) => {
 
       const membership = await storage.getMembership(orgId, user.id);
       if (membership) {
-        if (roleMappings.length > 0 && matchedGroups.length > 0) {
-          await storage.updateMembershipRole(orgId, user.id, mappedRole);
-        }
+        await storage.updateMembershipRole(orgId, user.id, mappedRole!);
       }
     } else if (authConfig.entraJitProvisioningEnabled) {
       const username = (result.upn || result.email || result.entraObjectId || "").split("@")[0].toLowerCase().replace(/[^a-z0-9_.-]/g, "");

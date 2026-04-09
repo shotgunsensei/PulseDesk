@@ -20,5 +20,5 @@ export function getAuthProvider(authMode: string): AuthProvider {
 export { localProvider, entraProvider };
 export { encryptSecret, decryptSecret } from "./crypto";
 export { graphService } from "./graph-service";
-export type { AuthProvider, AuthProviderConfig, AuthInitiateResult, AuthCallbackResult } from "./providers";
+export type { AuthProvider, AuthProviderConfig, AuthInitiateResult, AuthCallbackResult, LocalCredentialResult } from "./providers";
 export type { IGraphService, GraphUserProfile, GraphGroup } from "./graph-service";

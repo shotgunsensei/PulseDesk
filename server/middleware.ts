@@ -71,6 +71,24 @@ export function requireRole(...allowedRoles: string[]) {
   };
 }
 
+export async function resolveTenant(req: Request, res: Response, next: NextFunction) {
+  const slug = req.params.slug || req.query.org as string;
+  if (!slug) {
+    return res.status(400).json({ error: "Organization identifier required" });
+  }
+
+  const org = await storage.getOrgBySlug(slug);
+  if (!org) {
+    return res.status(404).json({ error: "Organization not found" });
+  }
+
+  const authConfig = await storage.getOrgAuthConfig(org.id);
+
+  (req as any).resolvedOrg = org;
+  (req as any).resolvedAuthConfig = authConfig || { authMode: "local" };
+  next();
+}
+
 export function requireMinRole(minRole: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.session.userId || !req.session.orgId) {
