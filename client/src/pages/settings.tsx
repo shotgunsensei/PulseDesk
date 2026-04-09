@@ -12,7 +12,14 @@ import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Copy, Trash2, UserCog, Clock, Building2, Shield, Bell, KeyRound, Plus, CheckCircle2, XCircle, AlertTriangle, Globe, RefreshCw } from "lucide-react";
-import { SiMicrosoft } from "react-icons/si";
+const MicrosoftIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+    <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+    <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+    <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+  </svg>
+);
 import { ROLE_LABELS, canManageSettings } from "@/lib/permissions";
 
 interface MemberWithUser {
@@ -594,7 +601,7 @@ function AuthenticationSettings() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <SiMicrosoft className="h-4 w-4" />
+              <MicrosoftIcon className="h-4 w-4" />
               Microsoft Entra ID Configuration
             </CardTitle>
             <CardDescription>

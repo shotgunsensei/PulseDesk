@@ -7,7 +7,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { HeartPulse, Shield, Clock, BarChart3, Building2, ArrowLeft } from "lucide-react";
-import { SiMicrosoft } from "react-icons/si";
+const MicrosoftIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+    <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+    <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+    <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+  </svg>
+);
 import { PulseLine, PulseDivider } from "@/components/pulse-line";
 
 interface TenantInfo {
@@ -314,7 +321,7 @@ export default function AuthPage() {
                       disabled={m365Loading}
                       data-testid="button-m365-login"
                     >
-                      <SiMicrosoft className="h-4 w-4" />
+                      <MicrosoftIcon className="h-4 w-4" />
                       {m365Loading ? "Redirecting to Microsoft..." : "Sign in with Microsoft 365"}
                     </Button>
                     <p className="text-[11px] text-muted-foreground text-center mt-2">

@@ -119,35 +119,32 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
     let authConfig = null;
     if (orgSlug) {
       org = await storage.getOrgBySlug(orgSlug);
-      if (org) {
-        authConfig = await storage.getOrgAuthConfig(org.id);
-        if (authConfig?.authMode === "m365") {
-          await logAuthEvent(req, {
-            orgId: org.id,
-            eventType: "login_rejected",
-            authSource: "local",
-            tenantResolved: orgSlug,
-            details: { reason: "Local login not allowed in M365-only mode" },
-            success: false,
-          });
-          return res.status(403).json({ error: "This organization requires Microsoft 365 sign-in" });
-        }
+      if (!org) {
+        return res.status(404).json({ error: "Organization not found" });
       }
-    }
-
-    if (org && authConfig?.authMode === "hybrid") {
-      const userToCheck = await storage.getUserByUsername(username);
-      if (userToCheck) {
-        const mem = await storage.getMembership(org.id, userToCheck.id);
-        if (mem) {
-          const adminRoles = ["admin", "owner"];
-          if (!adminRoles.includes(mem.role)) {
+      authConfig = await storage.getOrgAuthConfig(org.id);
+      if (authConfig?.authMode === "m365") {
+        await logAuthEvent(req, {
+          orgId: org.id,
+          eventType: "login_rejected",
+          authSource: "local",
+          tenantResolved: orgSlug,
+          details: { reason: "Local login not allowed in M365-only mode" },
+          success: false,
+        });
+        return res.status(403).json({ error: "This organization requires Microsoft 365 sign-in" });
+      }
+      if (authConfig?.authMode === "hybrid") {
+        const userToCheck = await storage.getUserByUsername(username);
+        if (userToCheck) {
+          const mem = await storage.getMembership(org.id, userToCheck.id);
+          if (mem && !["admin", "owner"].includes(mem.role)) {
             await logAuthEvent(req, {
               orgId: org.id,
               userId: userToCheck.id,
               eventType: "login_rejected",
               authSource: "local",
-              tenantResolved: orgSlug || undefined,
+              tenantResolved: orgSlug,
               details: { reason: "Hybrid mode: local login restricted to admin/owner roles", role: mem.role },
               success: false,
             });
@@ -208,20 +205,20 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
       selectedOrgId = userOrgs[0].id;
     }
 
-    if (selectedOrgId && !orgSlug) {
-      const orgAuthConfig = await storage.getOrgAuthConfig(selectedOrgId);
-      if (orgAuthConfig?.authMode === "m365") {
+    if (selectedOrgId) {
+      const finalAuthConfig = await storage.getOrgAuthConfig(selectedOrgId);
+      if (finalAuthConfig?.authMode === "m365") {
         await logAuthEvent(req, {
           orgId: selectedOrgId,
           userId: user.id,
           eventType: "login_rejected",
           authSource: "local",
-          details: { reason: "Organization requires M365 sign-in; local login via direct path blocked" },
+          details: { reason: "Organization requires M365 sign-in; local login blocked" },
           success: false,
         });
         return res.status(403).json({ error: "This organization requires Microsoft 365 sign-in. Please use your organization code to sign in." });
       }
-      if (orgAuthConfig?.authMode === "hybrid") {
+      if (finalAuthConfig?.authMode === "hybrid") {
         const mem = await storage.getMembership(selectedOrgId, user.id);
         if (mem && !["admin", "owner"].includes(mem.role)) {
           await logAuthEvent(req, {
@@ -229,7 +226,7 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
             userId: user.id,
             eventType: "login_rejected",
             authSource: "local",
-            details: { reason: "Hybrid mode: local login restricted to admin/owner via direct path", role: mem.role },
+            details: { reason: "Hybrid mode: local login restricted to admin/owner", role: mem.role },
             success: false,
           });
           return res.status(403).json({ error: "This organization requires Microsoft 365 sign-in. Local login is available only for administrators." });
