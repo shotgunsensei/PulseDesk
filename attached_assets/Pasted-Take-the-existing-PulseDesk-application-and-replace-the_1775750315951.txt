@@ -1,0 +1,250 @@
+Take the existing PulseDesk application and replace the previous tenant-specific Active Directory integration direction with a TENANT-BASED MICROSOFT 365 / MICROSOFT ENTRA ID authentication architecture that preserves PulseDesk as a true multi-tenant SaaS platform.
+
+IMPORTANT:
+PulseDesk must remain a real multi-tenant application for monetization across many future healthcare clients.
+Authentication must therefore be tenant-aware, tenant-configurable, secure, and isolated per organization.
+
+PRIMARY GOAL:
+Implement tenant-based Microsoft 365 login using Microsoft Entra ID with OpenID Connect / OAuth 2.0 authorization code flow for web applications, while preserving tenant isolation and role-based access control inside PulseDesk.
+
+BUSINESS GOAL:
+Make PulseDesk capable of onboarding many separate healthcare organizations, where each organization can optionally enable Microsoft 365 login using its own Entra tenant.
+
+ARCHITECTURE REQUIREMENTS:
+- preserve true multi-tenant SaaS structure
+- all users, tickets, departments, locations, assets, vendors, settings, and auth data must remain tenant-scoped
+- auth configuration must be tenant-scoped
+- role mapping must be tenant-scoped
+- one tenant must never be able to see or affect another tenant’s users, auth settings, sessions, or operational data
+
+TENANT IDENTIFICATION REQUIREMENTS:
+Preferred login model:
+- support subdomain-based tenant routing such as:
+  - tenant1.pulsedesk.app
+  - radiologygroup.pulsedesk.app
+  - northclinic.pulsedesk.app
+
+Fallback if needed:
+- organization code / tenant key during login
+
+Behavior:
+- resolve tenant before authentication starts
+- load tenant-specific branding and auth configuration
+- show tenant-aware login experience
+- send users to the correct Microsoft identity flow for that tenant
+
+AUTH MODES PER TENANT:
+Support at minimum:
+- local
+- m365
+- hybrid
+
+Definitions:
+- local = PulseDesk local authentication only
+- m365 = Microsoft 365 / Entra ID authentication only
+- hybrid = Microsoft 365 authentication for normal users plus tenant-scoped local fallback admin accounts
+
+DESIGN THE AUTH LAYER SO FUTURE PROVIDERS CAN BE ADDED LATER:
+- local auth provider
+- m365 / Entra ID auth provider
+Future-ready abstraction placeholders:
+- saml auth provider
+- generic oidc auth provider
+- SCIM provisioning support placeholder
+
+MICROSOFT 365 / ENTRA ID AUTH REQUIREMENTS:
+Implement Microsoft Entra ID login for tenant organizations using OpenID Connect / OAuth 2.0 authorization code flow.
+
+Support tenant-scoped configuration such as:
+- auth_mode
+- entra_tenant_id
+- entra_tenant_domain
+- entra_client_id
+- entra_client_secret (encrypted at rest)
+- entra_redirect_uri
+- entra_post_logout_redirect_uri
+- entra_allowed_domains
+- entra_group_role_mappings
+- entra_jit_provisioning_enabled
+- entra_require_admin_consent
+- entra_last_test_status
+- entra_last_tested_at
+
+LOGIN FLOW REQUIREMENTS:
+- user begins on a tenant-specific PulseDesk login page
+- if tenant auth mode is m365 or hybrid, allow “Sign in with Microsoft 365”
+- redirect to Microsoft Entra authorization endpoint
+- complete callback handling securely
+- validate ID token and authorization response
+- create authenticated app session only after tenant-aware validation succeeds
+- include tenant ID, user ID, role, auth source, and permissions context in the session
+
+TOKEN / CLAIMS REQUIREMENTS:
+Use claims from Microsoft identity platform to identify the user and tenant.
+At minimum support fields such as:
+- tenant ID
+- user object ID
+- display name
+- email / preferred username / UPN if available
+- issuer
+- roles/groups if available
+- auth source marker
+
+Do not store Microsoft passwords locally.
+Do not log sensitive tokens.
+Handle errors cleanly.
+
+TENANT-SPECIFIC ROLE MAPPING REQUIREMENTS:
+Each PulseDesk tenant must be able to map Microsoft Entra groups or other supported claims to PulseDesk roles.
+
+Support PulseDesk roles:
+- Admin
+- Supervisor
+- Technician
+- Staff
+- Read-Only Executive
+
+Support tenant-configurable mappings such as:
+- Entra group object ID or group name -> Admin
+- Entra group object ID or group name -> Supervisor
+- Entra group object ID or group name -> Technician
+- Entra group object ID or group name -> Staff
+- Entra group object ID or group name -> Read-Only Executive
+
+Build this as tenant-admin-configurable, not hardcoded globally.
+
+JUST-IN-TIME USER PROVISIONING:
+On first successful Microsoft 365 login for a tenant:
+- create a local PulseDesk user record under the correct tenant
+- never store Microsoft credentials
+- store only app metadata such as:
+  - tenant ID
+  - auth source
+  - Entra tenant ID
+  - Entra user object ID
+  - username / UPN / preferred username
+  - display name
+  - email
+  - department if available
+  - mapped PulseDesk role
+  - active/inactive
+  - last login timestamp
+
+On later logins:
+- refresh role mapping
+- refresh profile fields as appropriate
+- re-check authorization
+- deny access cleanly if the user no longer qualifies
+
+LOCAL FALLBACK ADMIN REQUIREMENTS:
+Support tenant-scoped local fallback admin accounts for break-glass access when auth mode is hybrid.
+Requirements:
+- local admins must remain tenant-scoped
+- passwords must be securely hashed
+- local fallback path must be clean and clearly separated from Microsoft 365 login
+- local fallback must never cross tenants
+
+TENANT ADMIN UI FOR MICROSOFT 365 CONFIGURATION:
+Create a secure tenant admin settings area for configuring Microsoft 365 / Entra login.
+Include:
+- auth mode selector
+- tenant ID / primary domain entry
+- client ID
+- client secret
+- redirect URI display
+- post-logout redirect URI display
+- allowed domain restrictions if used
+- group-to-role mapping editor
+- JIT provisioning toggle
+- test configuration workflow
+- last successful test visibility
+- local fallback admin settings
+- clean validation and save behavior
+
+Ensure one tenant cannot access another tenant’s auth settings.
+
+SECURITY REQUIREMENTS:
+- encrypt client secrets at rest
+- never store Microsoft passwords
+- never log raw tokens or secrets
+- validate issuer, audience, nonce, and tenant context correctly
+- enforce tenant-aware session handling
+- protect authenticated routes
+- enforce role-based authorization after sign-in
+- include audit logging for:
+  - login success/failure
+  - tenant resolved
+  - auth source used
+  - unauthorized authenticated user
+  - group/claim mapping result
+  - fallback local admin login
+  - changes to tenant auth configuration
+
+SESSION / AUTH CONTEXT REQUIREMENTS:
+Authenticated session state must include:
+- tenant ID
+- user ID
+- auth source
+- PulseDesk role
+- display name
+- Entra tenant ID if applicable
+- permissions context
+
+MULTI-TENANT DATA MODEL REQUIREMENTS:
+Refine or extend schema/models to support:
+- tenants
+- tenant settings
+- tenant auth settings
+- tenant m365 configuration
+- tenant role mappings
+- tenant users
+- tenant local admins
+- tenant login audit history
+
+TENANT BRANDING SUPPORT:
+Keep PulseDesk as the platform name but allow tenant-specific login context such as:
+- organization display name
+- logo placeholder
+- optional theme override placeholder
+- tenant-specific welcome/login message
+
+CODE ARCHITECTURE REQUIREMENTS:
+Refactor cleanly and modularly.
+Separate:
+- tenant resolution logic
+- auth provider abstraction
+- Microsoft 365 / Entra auth provider
+- local auth provider
+- group/claim role mapping service
+- session management
+- tenant middleware
+- authorization middleware
+- audit logging
+- tenant admin auth settings UI
+
+Do NOT tightly couple authentication to one global Microsoft tenant.
+Do NOT hardcode one tenant’s values into the application.
+
+MICROSOFT 365 UX REQUIREMENTS:
+- polished modern clinical login page
+- clear “Sign in with Microsoft 365” action
+- tenant-aware context visible on login
+- clean unauthorized messaging
+- clean configuration/test failure messaging
+- no raw Microsoft/OIDC errors shown to end users
+
+DEVELOPMENT / DEMO SUPPORT:
+Support dev-friendly fallback paths such as:
+- tenant local mode
+- seeded test users
+- mock auth mode in development only
+- easy switching between local and m365 modes per tenant
+
+OPTIONAL NICE-TO-HAVE IF IT FITS CLEANLY:
+- support domain hint or tenant hint in the Microsoft login request
+- support admin-consent-ready setup guidance in the tenant settings UI
+- support storing Microsoft group object IDs for more reliable role mapping than display names
+- placeholder hooks for Microsoft Graph integration later
+
+FINAL DELIVERABLE EXPECTATION:
+The result should make PulseDesk a true multi-tenant SaaS application with tenant-specific Microsoft 365 / Microsoft Entra ID authentication, tenant-specific role mappings, tenant-scoped local fallback admins, strong tenant isolation, and a clean architecture suitable for monetization across multiple healthcare clients.

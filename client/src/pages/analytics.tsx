@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PulseLoader } from "@/components/pulse-line";
 import {
   BarChart3, TrendingUp, Clock, AlertTriangle,
   CheckCircle2, RefreshCw, Cpu, Users2,
@@ -89,13 +89,8 @@ export default function AnalyticsPage() {
     return (
       <div className="flex flex-col h-full">
         <PageHeader title="Analytics" description="Loading operational data..." />
-        <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-48" />)}
-          </div>
+        <div className="flex-1 flex items-center justify-center">
+          <PulseLoader />
         </div>
       </div>
     );

@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/status-badge";
+import { PulseLoader } from "@/components/pulse-line";
 import {
   Ticket,
   AlertTriangle,
@@ -76,12 +76,18 @@ function KpiCard({ label, value, sub, icon: Icon, iconColor = "text-muted-foregr
   label: string; value: number | string; sub?: string;
   icon: any; iconColor?: string; href?: string; alert?: boolean;
 }) {
+  const hasValue = typeof value === "number" ? value > 0 : !!value;
   const inner = (
     <div className={`rounded-xl border p-4 ${href ? "hover-elevate cursor-pointer" : ""} ${alert ? "border-rose-200 bg-rose-50/60 dark:border-rose-800/40 dark:bg-rose-950/20" : "bg-card"}`}
       data-testid={`kpi-${label.toLowerCase().replace(/\s/g, "-")}`}>
       <div className="flex items-center justify-between mb-1">
         <span className={`text-[11px] font-medium tracking-wide uppercase ${alert ? "text-rose-700 dark:text-rose-400" : "text-muted-foreground"}`}>{label}</span>
-        <Icon className={`h-4 w-4 ${alert ? "text-rose-500" : iconColor}`} />
+        <div className="relative">
+          <Icon className={`h-4 w-4 ${alert ? "text-rose-500" : iconColor}`} />
+          {alert && hasValue && (
+            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-rose-500 pulse-dot-critical" />
+          )}
+        </div>
       </div>
       <p className={`text-2xl font-bold tabular-nums ${alert ? "text-rose-700 dark:text-rose-400" : ""}`}>{value}</p>
       {sub && <p className={`text-[11px] mt-0.5 ${alert ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground"}`}>{sub}</p>}
@@ -141,14 +147,8 @@ export default function Dashboard() {
     return (
       <div className="flex flex-col h-full">
         <PageHeader title="Dashboard" description="Loading operational data..." />
-        <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[96px]" />)}
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Skeleton className="h-64 lg:col-span-2" />
-            <Skeleton className="h-64" />
-          </div>
+        <div className="flex-1 flex items-center justify-center">
+          <PulseLoader />
         </div>
       </div>
     );

@@ -3,7 +3,6 @@ import { useParams, useLocation } from "wouter";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -19,6 +18,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { StatusBadge } from "@/components/status-badge";
+import { PulseLoader } from "@/components/pulse-line";
 import { canManageTickets, canAssignTickets, canAddNotes, isReadOnly, canEscalate } from "@/lib/permissions";
 import { format, formatDistanceToNow } from "date-fns";
 import {
@@ -122,12 +122,8 @@ export default function TicketDetail() {
     return (
       <div className="flex flex-col h-full">
         <PageHeader title="Ticket Details" description="Loading..." />
-        <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
-          <Skeleton className="h-32" />
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Skeleton className="h-64 lg:col-span-2" />
-            <Skeleton className="h-64" />
-          </div>
+        <div className="flex-1 flex items-center justify-center">
+          <PulseLoader />
         </div>
       </div>
     );

@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ROLE_LABELS } from "@/lib/permissions";
+import { PulseLine } from "@/components/pulse-line";
 
 export function AppSidebar() {
   const [location] = useLocation();
@@ -105,6 +106,9 @@ export function AppSidebar() {
           </DropdownMenu>
         )}
       </SidebarHeader>
+      <div className="px-4 -mt-1 mb-1">
+        <PulseLine variant="divider" width="100%" height={8} color="hsl(var(--accent))" animate={false} className="opacity-25" />
+      </div>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Issue Management</SidebarGroupLabel>

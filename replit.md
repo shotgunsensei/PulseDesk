@@ -45,10 +45,16 @@ The application follows a monolithic full-stack architecture with a React fronte
 - `--success`: 146 50% 36%
 - `--warning`: 43 100% 44%
 
+### Brand Expression Components
+- `PulseLine` (`client/src/components/pulse-line.tsx`): SVG pulse/ECG waveform component with variants (full, minimal, divider). Used as decorative motifs.
+- `PulseLoader` (`client/src/components/pulse-line.tsx`): Branded loading state with animated pulse waveform and "Loading..." text. Includes `role="status"` and `aria-live="polite"` for accessibility.
+- `PulseDivider` (`client/src/components/pulse-line.tsx`): Decorative pulse-line section divider with gradient lines.
+- CSS animations: `pulse-line-draw` (SVG draw-on), `pulse-glow` (opacity cycle), `pulse-dot-critical` (pulsing alert dot). All respect `prefers-reduced-motion`.
+
 ### Components
 - `StatusBadge` (`client/src/components/status-badge.tsx`): Unified badge component for ticket-status, ticket-priority, asset-status, supply-status, facility-status, facility-priority. Sizes: xs, sm, md.
 - `PageHeader` (`client/src/components/page-header.tsx`): Standard page header with sidebar trigger, title, description, action/actions slots.
-- `AppSidebar` (`client/src/components/app-sidebar.tsx`): Dark navy sidebar with role-based nav visibility, org switcher, user footer with role label.
+- `AppSidebar` (`client/src/components/app-sidebar.tsx`): Dark navy sidebar with teal pulse-line divider, role-based nav visibility, org switcher, user footer with role label.
 
 ### Permissions
 - `client/src/lib/permissions.ts`: Role-based permission utilities

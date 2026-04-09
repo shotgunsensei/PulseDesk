@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { HeartPulse, Shield, Clock, BarChart3 } from "lucide-react";
+import { PulseLine, PulseDivider } from "@/components/pulse-line";
 
 export default function AuthPage() {
   const { login, register } = useAuth();
@@ -42,34 +43,48 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen flex">
       <div className="hidden lg:flex lg:w-[45%] bg-primary items-center justify-center p-12 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary to-[hsl(213,65%,25%)]" />
+        <div className="absolute inset-0 bg-gradient-to-br from-primary to-[hsl(213,65%,22%)]" />
+
+        <div className="absolute bottom-0 left-0 right-0 opacity-[0.06]">
+          <PulseLine variant="full" width="100%" height={80} color="white" animate />
+        </div>
+        <div className="absolute top-[30%] left-0 right-0 opacity-[0.04]">
+          <PulseLine variant="minimal" width="100%" height={40} color="white" animate={false} />
+        </div>
+
         <div className="relative max-w-md text-center">
-          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-accent mb-6">
+          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-accent mb-6 shadow-lg shadow-accent/20">
             <HeartPulse className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-white mb-3">PulseDesk</h1>
-          <p className="text-primary-foreground/70 text-sm leading-relaxed">
-            Internal operations management for healthcare facilities.
-            Track issues, coordinate departments, and keep your facility running smoothly.
+          <h1 className="text-3xl font-bold tracking-tight text-white mb-2">PulseDesk</h1>
+          <p className="text-[11px] uppercase tracking-[0.2em] text-accent/80 font-medium mb-4">Operations Management</p>
+          <p className="text-primary-foreground/60 text-sm leading-relaxed max-w-xs mx-auto">
+            The operational heartbeat of your healthcare facility.
+            Clarity, control, and responsiveness — when it matters most.
           </p>
-          <div className="mt-10 grid grid-cols-3 gap-6 text-center">
+
+          <div className="my-8">
+            <PulseDivider className="text-white/30" />
+          </div>
+
+          <div className="grid grid-cols-3 gap-6 text-center">
             <div>
-              <div className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white/10 mb-2">
+              <div className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white/10 border border-white/10 mb-2">
                 <Shield className="h-5 w-5 text-accent" />
               </div>
-              <p className="text-[11px] text-primary-foreground/60 mt-1">Role-Based Access</p>
+              <p className="text-[11px] text-primary-foreground/50 mt-1 font-medium">Role-Based Access</p>
             </div>
             <div>
-              <div className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white/10 mb-2">
+              <div className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white/10 border border-white/10 mb-2">
                 <Clock className="h-5 w-5 text-accent" />
               </div>
-              <p className="text-[11px] text-primary-foreground/60 mt-1">Issue Tracking</p>
+              <p className="text-[11px] text-primary-foreground/50 mt-1 font-medium">Issue Tracking</p>
             </div>
             <div>
-              <div className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white/10 mb-2">
+              <div className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white/10 border border-white/10 mb-2">
                 <BarChart3 className="h-5 w-5 text-accent" />
               </div>
-              <p className="text-[11px] text-primary-foreground/60 mt-1">Operational Analytics</p>
+              <p className="text-[11px] text-primary-foreground/50 mt-1 font-medium">Analytics</p>
             </div>
           </div>
         </div>
@@ -78,11 +93,11 @@ export default function AuthPage() {
       <div className="flex-1 flex items-center justify-center p-6 bg-background">
         <div className="w-full max-w-sm space-y-6">
           <div className="lg:hidden text-center mb-2">
-            <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-accent mb-3">
+            <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-accent shadow-md shadow-accent/20 mb-3">
               <HeartPulse className="h-6 w-6 text-white" />
             </div>
             <h1 className="text-xl font-bold tracking-tight">PulseDesk</h1>
-            <p className="text-xs text-muted-foreground mt-1">Internal Operations Management</p>
+            <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground mt-1 font-medium">Operations Management</p>
           </div>
 
           <Tabs defaultValue="login">
