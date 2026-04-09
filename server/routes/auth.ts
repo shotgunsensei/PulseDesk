@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import crypto from "crypto";
 import { z } from "zod";
 import { storage } from "../storage";
 import { requireAuth, requireOrg, requireMinRole, resolveTenant } from "../middleware";
@@ -194,17 +195,49 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
     req.session.authSource = "local";
 
     const userOrgs = await storage.getUserOrgs(user.id);
+    let selectedOrgId: string | undefined;
 
     if (org) {
       const membership = await storage.getMembership(org.id, user.id);
       if (membership) {
-        req.session.orgId = org.id;
+        selectedOrgId = org.id;
       } else if (userOrgs.length > 0) {
-        req.session.orgId = userOrgs[0].id;
+        selectedOrgId = userOrgs[0].id;
       }
     } else if (userOrgs.length > 0) {
-      req.session.orgId = userOrgs[0].id;
+      selectedOrgId = userOrgs[0].id;
     }
+
+    if (selectedOrgId && !orgSlug) {
+      const orgAuthConfig = await storage.getOrgAuthConfig(selectedOrgId);
+      if (orgAuthConfig?.authMode === "m365") {
+        await logAuthEvent(req, {
+          orgId: selectedOrgId,
+          userId: user.id,
+          eventType: "login_rejected",
+          authSource: "local",
+          details: { reason: "Organization requires M365 sign-in; local login via direct path blocked" },
+          success: false,
+        });
+        return res.status(403).json({ error: "This organization requires Microsoft 365 sign-in. Please use your organization code to sign in." });
+      }
+      if (orgAuthConfig?.authMode === "hybrid") {
+        const mem = await storage.getMembership(selectedOrgId, user.id);
+        if (mem && !["admin", "owner"].includes(mem.role)) {
+          await logAuthEvent(req, {
+            orgId: selectedOrgId,
+            userId: user.id,
+            eventType: "login_rejected",
+            authSource: "local",
+            details: { reason: "Hybrid mode: local login restricted to admin/owner via direct path", role: mem.role },
+            success: false,
+          });
+          return res.status(403).json({ error: "This organization requires Microsoft 365 sign-in. Local login is available only for administrators." });
+        }
+      }
+    }
+
+    req.session.orgId = selectedOrgId;
 
     req.session.save((err) => {
       if (err) return res.status(500).json({ error: "Session error" });
@@ -415,7 +448,7 @@ router.get("/api/auth/m365/callback", async (req: Request, res: Response) => {
 
       user = await storage.createUser({
         username: finalUsername,
-        password: await hashPassword(require("crypto").randomBytes(32).toString("hex")),
+        password: await hashPassword(crypto.randomBytes(32).toString("hex")),
         fullName: result.displayName || finalUsername,
         phone: "",
         email: result.email || "",

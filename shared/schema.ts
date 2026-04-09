@@ -8,6 +8,7 @@ import {
   boolean,
   pgEnum,
   jsonb,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -297,7 +298,9 @@ export const orgRoleMappings = pgTable("org_role_mappings", {
   displayLabel: text("display_label"),
   pulsedeskRole: text("pulsedesk_role").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  uniqueOrgGroup: uniqueIndex("idx_org_role_mappings_org_group").on(table.orgId, table.entraGroupId),
+}));
 
 export const authAuditLog = pgTable("auth_audit_log", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

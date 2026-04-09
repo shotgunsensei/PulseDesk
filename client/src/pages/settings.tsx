@@ -675,6 +675,36 @@ function AuthenticationSettings() {
               </p>
             </div>
 
+            <div>
+              <Label htmlFor="entra-post-logout-uri">Post-Logout Redirect URI</Label>
+              <Input
+                id="entra-post-logout-uri"
+                data-testid="input-entra-post-logout-uri"
+                value={form?.entraPostLogoutRedirectUri || ""}
+                onChange={(e) => updateField("entraPostLogoutRedirectUri", e.target.value)}
+                className="mt-1 text-xs"
+                placeholder="https://your-domain.com/auth"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Where users are redirected after signing out of Microsoft 365
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="entra-allowed-domains">Allowed Email Domains</Label>
+              <Input
+                id="entra-allowed-domains"
+                data-testid="input-entra-allowed-domains"
+                value={(form?.entraAllowedDomains || []).join(", ")}
+                onChange={(e) => updateField("entraAllowedDomains", e.target.value.split(",").map((d: string) => d.trim()).filter(Boolean))}
+                className="mt-1 text-xs"
+                placeholder="yourorg.com, subsidiary.com"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Comma-separated list of allowed email domains. Leave empty to allow all domains in the tenant.
+              </p>
+            </div>
+
             <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
               <div>
                 <p className="text-sm font-medium">Just-in-Time Provisioning</p>

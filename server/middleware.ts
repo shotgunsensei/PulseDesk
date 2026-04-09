@@ -73,13 +73,26 @@ export function requireRole(...allowedRoles: string[]) {
 
 export async function resolveTenant(req: Request, res: Response, next: NextFunction) {
   const slug = req.params.slug || req.query.org as string;
-  if (!slug) {
-    return res.status(400).json({ error: "Organization identifier required" });
+
+  let org: any = null;
+
+  if (slug) {
+    org = await storage.getOrgBySlug(slug);
+    if (!org) {
+      return res.status(404).json({ error: "Organization not found" });
+    }
+  } else if (req.session?.orgId) {
+    org = await storage.getOrg(req.session.orgId);
+  } else {
+    const host = req.hostname;
+    const subdomain = host.split(".")[0];
+    if (subdomain && subdomain !== "www" && subdomain !== "localhost") {
+      org = await storage.getOrgBySlug(subdomain);
+    }
   }
 
-  const org = await storage.getOrgBySlug(slug);
   if (!org) {
-    return res.status(404).json({ error: "Organization not found" });
+    return res.status(400).json({ error: "Organization identifier required. Provide org slug, sign in first, or use a subdomain." });
   }
 
   const authConfig = await storage.getOrgAuthConfig(org.id);
