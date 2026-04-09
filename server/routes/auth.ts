@@ -198,8 +198,17 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
       const membership = await storage.getMembership(org.id, user.id);
       if (membership) {
         selectedOrgId = org.id;
-      } else if (userOrgs.length > 0) {
-        selectedOrgId = userOrgs[0].id;
+      } else {
+        await logAuthEvent(req, {
+          orgId: org.id,
+          userId: user.id,
+          eventType: "login_rejected",
+          authSource: "local",
+          tenantResolved: orgSlug,
+          details: { reason: "User is not a member of the requested organization" },
+          success: false,
+        });
+        return res.status(403).json({ error: "You are not a member of this organization" });
       }
     } else if (userOrgs.length > 0) {
       selectedOrgId = userOrgs[0].id;
@@ -253,6 +262,8 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
   }
 });
 
+const DEV_M365_MOCK = process.env.NODE_ENV === "development" && process.env.DEV_M365_MOCK === "true";
+
 router.get("/api/auth/m365/login", resolveTenant, async (req: Request, res: Response) => {
   try {
     const org = (req as any).resolvedOrg;
@@ -260,6 +271,16 @@ router.get("/api/auth/m365/login", resolveTenant, async (req: Request, res: Resp
 
     if (!authConfig || authConfig.authMode === "local") {
       return res.status(400).json({ error: "Microsoft 365 login is not enabled for this organization" });
+    }
+
+    if (DEV_M365_MOCK) {
+      req.session.entraState = "dev-mock-state";
+      req.session.entraNonce = "dev-mock-nonce";
+      req.session.entraOrgId = org.id;
+      return req.session.save((err) => {
+        if (err) return res.status(500).json({ error: "Session error" });
+        res.json({ redirectUrl: `/api/auth/m365/callback?code=dev-mock-code&state=dev-mock-state` });
+      });
     }
 
     let clientSecret = null;
@@ -307,16 +328,67 @@ router.get("/api/auth/m365/callback", async (req: Request, res: Response) => {
       return res.redirect("/?error=invalid_session");
     }
 
+    if (DEV_M365_MOCK && req.query.code === "dev-mock-code") {
+      const org = await storage.getOrg(orgId);
+      if (!org) return res.redirect("/?error=org_not_found");
+
+      const mockEmail = `dev-user@${org.slug}.local`;
+      const mockOid = `dev-mock-oid-${org.id}`;
+      let user = await storage.getUserByEntraObjectId(mockOid, orgId);
+      if (!user) {
+        user = await storage.createUser({
+          username: `dev-m365-${Date.now()}`,
+          password: await hashPassword(crypto.randomBytes(32).toString("hex")),
+          fullName: "Dev M365 User",
+          phone: "",
+          email: mockEmail,
+        });
+        await storage.updateUser(user.id, { entraObjectId: mockOid, authSource: "m365" });
+        await storage.createMembership(org.id, user.id, "staff");
+      }
+      req.session.userId = user.id;
+      req.session.orgId = org.id;
+      req.session.authSource = "m365";
+      delete req.session.entraState;
+      delete req.session.entraNonce;
+      delete req.session.entraOrgId;
+      await logAuthEvent(req, {
+        orgId: org.id,
+        userId: user.id,
+        eventType: "m365_login_success",
+        authSource: "m365",
+        details: { mockMode: true },
+        success: true,
+      });
+      return req.session.save((err) => {
+        if (err) return res.redirect("/?error=session_error");
+        res.redirect("/");
+      });
+    }
+
+    const savedNonce = req.session.entraNonce;
     const receivedState = req.query.state as string;
-    if (savedState && receivedState !== savedState) {
+
+    if (!savedState || !receivedState || receivedState !== savedState) {
       await logAuthEvent(req, {
         orgId,
         eventType: "m365_callback_failed",
         authSource: "m365",
-        details: { reason: "State mismatch" },
+        details: { reason: !savedState ? "Missing saved state (session expired)" : !receivedState ? "Missing state parameter" : "State mismatch" },
         success: false,
       });
       return res.redirect("/?error=state_mismatch");
+    }
+
+    if (!savedNonce) {
+      await logAuthEvent(req, {
+        orgId,
+        eventType: "m365_callback_failed",
+        authSource: "m365",
+        details: { reason: "Missing saved nonce (session expired)" },
+        success: false,
+      });
+      return res.redirect("/?error=invalid_session");
     }
 
     const org = await storage.getOrg(orgId);

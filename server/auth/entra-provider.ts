@@ -113,6 +113,9 @@ export class EntraAuthProvider implements AuthProvider {
       const expectedIssuer = buildIssuer(config.entraTenantId);
 
       const savedNonce = req.session.entraNonce;
+      if (!savedNonce) {
+        return { success: false, error: "Missing nonce in session — possible session expiry or replay" };
+      }
 
       let claims: any;
       try {
@@ -127,7 +130,7 @@ export class EntraAuthProvider implements AuthProvider {
         return { success: false, error: "ID token verification failed: " + verifyErr.message };
       }
 
-      if (savedNonce && claims.nonce !== savedNonce) {
+      if (claims.nonce !== savedNonce) {
         return { success: false, error: "ID token nonce mismatch" };
       }
 
