@@ -253,6 +253,32 @@ export async function ensureSchema() {
       );
     `);
 
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE onboarding_status AS ENUM ('pending','in_progress','complete','skipped');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS onboarding_items (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id varchar NOT NULL REFERENCES orgs(id),
+        title text NOT NULL,
+        description text DEFAULT '',
+        route text DEFAULT '',
+        sort_order integer NOT NULL DEFAULT 0,
+        status onboarding_status NOT NULL DEFAULT 'pending',
+        completion_source text DEFAULT 'manual',
+        completed_by varchar REFERENCES users(id),
+        completed_at timestamp,
+        dismissed_at timestamp,
+        auto_complete_key text,
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+
     await client.query("COMMIT");
     console.log("Schema verification complete - all tables ensured.");
   } catch (err) {

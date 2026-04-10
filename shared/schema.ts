@@ -598,6 +598,51 @@ export const PLAN_LIMITS = {
   unlimited: { maxMembers: Infinity, maxTickets: Infinity, entraEnabled: true, label: "Unlimited", price: 200 },
 } as const;
 
+export const onboardingStatusEnum = pgEnum("onboarding_status", [
+  "pending",
+  "in_progress",
+  "complete",
+  "skipped",
+]);
+
+export const onboardingItems = pgTable("onboarding_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id),
+  title: text("title").notNull(),
+  description: text("description").default(""),
+  route: text("route").default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+  status: onboardingStatusEnum("status").notNull().default("pending"),
+  completionSource: text("completion_source").default("manual"),
+  completedBy: varchar("completed_by").references(() => users.id),
+  completedAt: timestamp("completed_at"),
+  dismissedAt: timestamp("dismissed_at"),
+  autoCompleteKey: text("auto_complete_key"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertOnboardingItemSchema = createInsertSchema(onboardingItems).pick({
+  title: true,
+  description: true,
+  route: true,
+  sortOrder: true,
+  status: true,
+});
+
+export type OnboardingItem = typeof onboardingItems.$inferSelect;
+export type InsertOnboardingItem = z.infer<typeof insertOnboardingItemSchema>;
+
+export const DEFAULT_ONBOARDING_ITEMS = [
+  { title: "Configure departments", description: "Set up your facility's departments for ticket routing", route: "/departments", sortOrder: 1, autoCompleteKey: "departments" },
+  { title: "Register equipment & assets", description: "Add medical equipment and facility assets to track", route: "/assets", sortOrder: 2, autoCompleteKey: "assets" },
+  { title: "Add vendor contacts", description: "Register external vendors for service tracking", route: "/vendors", sortOrder: 3, autoCompleteKey: "vendors" },
+  { title: "Invite team members", description: "Add staff to your organization", route: "/settings", sortOrder: 4, autoCompleteKey: "members" },
+  { title: "Submit your first issue", description: "Create your first operations ticket", route: "/submit", sortOrder: 5, autoCompleteKey: "tickets" },
+];
+
 export const DEFAULT_DEPARTMENTS = [
   "Radiology",
   "Front Desk",

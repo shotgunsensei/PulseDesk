@@ -46,6 +46,7 @@ export default function AssetsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding"] });
       setOpen(false);
       setForm({ assetTag: "", name: "", assetType: "", location: "", departmentId: "", serviceVendor: "", warrantyNotes: "", maintenanceNotes: "", status: "active" });
       toast({ title: "Equipment registered" });
@@ -57,6 +58,7 @@ export default function AssetsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding"] });
       toast({ title: "Equipment removed" });
     },
   });

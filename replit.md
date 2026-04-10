@@ -19,8 +19,9 @@ The application follows a monolithic full-stack architecture with a React fronte
 - Vendor directory with emergency contacts
 - Dashboard with operational KPIs, aging buckets, performance metrics
 - Analytics page with ticket volume, category breakdown, department distribution
-- Settings for profile, organization, team member management
+- Settings for profile, organization, team member management, billing
 - PD-XXXXX auto-generated ticket numbering
+- Database-backed onboarding system with auto-completion
 
 ## Architecture
 
@@ -76,12 +77,14 @@ The application follows a monolithic full-stack architecture with a React fronte
 ## File Structure
 
 ### Shared
-- `shared/schema.ts` - Drizzle schema, Zod insert schemas, type exports, label constants
+- `shared/schema.ts` - Drizzle schema, Zod insert schemas, type exports, label constants, onboarding defaults
 
 ### Server
-- `server/index.ts` - Express app entry point
-- `server/routes/index.ts` - Route registration with session middleware
+- `server/index.ts` - Express app entry point with startup logging (DB, migration, session verification)
+- `server/routes/index.ts` - Route registration with session middleware (explicit table name, error logging)
 - `server/routes/auth.ts` - Auth (login, register, logout, profile, password change, members list, M365 SSO, auth config, role mappings, audit log)
+- `server/routes/onboarding.ts` - Onboarding items CRUD, auto-completion, reorder
+- `server/routes/billing.ts` - Billing status with Stripe sync status, checkout, portal, plans
 - `server/auth/index.ts` - Auth provider registry and re-exports
 - `server/auth/providers.ts` - AuthProvider interface, AuthProviderConfig, result types
 - `server/auth/local-provider.ts` - Local (bcrypt) authentication provider
@@ -97,9 +100,10 @@ The application follows a monolithic full-stack architecture with a React fronte
 - `server/routes/vendors.ts` - Vendor CRUD
 - `server/routes/analytics.ts` - Analytics data aggregation
 - `server/routes/admin.ts` - Super admin endpoints
-- `server/storage.ts` - Storage layer with all CRUD methods
+- `server/storage.ts` - Storage layer with all CRUD methods including onboarding
 - `server/seed.ts` - Demo data seeding (Metro Health Network)
 - `server/middleware.ts` - Auth middleware (requireAuth, requireOrg, requireSuperAdmin)
+- `server/migrate.ts` - Schema migration with session table + onboarding_items table
 
 ### Frontend
 - `client/src/App.tsx` - Main app with routing
@@ -118,127 +122,33 @@ The application follows a monolithic full-stack architecture with a React fronte
 - **Reviewer**: username=reviewer, password=Reviewer2026!
 - **Super admin**: username=Johntwms355, password=Admin2026!
 
-## Phase 3 Additions
+## Session & Auth System
+- Session store: `connect-pg-simple` with explicit `tableName: "session"` and `errorLog` handler
+- Session table explicitly created in `server/migrate.ts` (not relying on auto-create)
+- Cookie: maxAge=30d, httpOnly=true, secure=production-only, sameSite=lax
+- Trust proxy: `app.set("trust proxy", 1)` for Replit reverse proxy
+- Session save errors logged with stack trace via `[session.save error]` prefix
+- Login success logs session ID for debugging
+- Startup sequence: DB connect → migrations → seed → session table verify → Stripe sync → routes register
 
-### API-Level Role Enforcement
-- `requireRole(...roles)` middleware: Checks membership role against exact list (e.g., `requireRole("admin")`)
-- `requireMinRole(role)` middleware: Checks membership role against hierarchy threshold (e.g., `requireMinRole("technician")`)
-- Applied across all CRUD routes: ticket create (staff+), ticket update (technician+), ticket delete (supervisor+), department/asset/vendor write operations (supervisor+ or admin), analytics (supervisor+), org settings (admin), membership management (admin)
+## Database-Backed Onboarding System
+- **Table**: `onboarding_items` with fields: id, org_id, title, description, route, sort_order, status (pending/in_progress/complete/skipped), completion_source (manual/auto), completed_by, completed_at, dismissed_at, auto_complete_key, created_at, updated_at
+- **Auto-completion rules**: departments (count>0), assets (count>0), vendors (count>0), members (count>1), tickets (count>0)
+- **Default items**: 5 starter tasks seeded per org on first access
+- **API**: GET/POST /api/onboarding, PATCH /api/onboarding/:id, POST /api/onboarding/:id/complete, POST /api/onboarding/:id/skip, POST /api/onboarding/reorder
+- **Dashboard UI**: Progress bar, auto/manual completion badges, skip/complete hover actions, click-through navigation
+- **Cache invalidation**: `/api/onboarding` invalidated alongside `/api/dashboard` on all CRUD mutations
 
-### Session & Auth Hardening
-- Session expiration detection via `pulsedesk:session-expired` custom event
-- 401 responses from API automatically trigger toast + redirect to login
-- `sessionExpired` state in AuthContext for UI awareness
-- JSON error responses from all API routes (not plain text)
-
-### Frontend Protection
-- `ErrorBoundary` component wraps the entire app and the main content area
-- `RoleGate` component enforces role-based route access (renders Unauthorized page for insufficient permissions)
-- `Unauthorized` page component for 403 states
-- Improved `NotFound` page with PulseDesk branding
-
-### Demo Mode
-- `VITE_DEMO_MODE=true` environment flag enables demo banner
-- `DemoBanner` component shows subtle amber notification bar
-
-### Notification Center
-- Real-time notification system backed by `notifications` table in PostgreSQL
-- Notifications created on: ticket created, ticket assigned, ticket status changed, ticket note added, ticket escalated
-- `GET /api/notifications` - fetch user's notifications (most recent 50)
-- `GET /api/notifications/unread-count` - unread count for badge
-- `POST /api/notifications/:id/read` - mark single notification read
-- `POST /api/notifications/read-all` - mark all read
-- Auto-polls every 15s for unread count, 30s for full list
-- Clicking a notification navigates to the related ticket
-
-### Export/Print Readiness
-- Export placeholder button on analytics page
-- Print buttons on analytics and ticket detail pages
-- Print CSS media query already configured in index.css
-
-### Settings Enhancements
-- Preferences tab with notification settings placeholder and account info display
-- Operational settings section (timezone, business hours, SLA placeholder) for admins
-- Organization tab gated to admin role only
-- Team tab gated to admin role only
-- Supervisor invite code generation added
-- Better form validation with inline error messages
-
-### Form Hardening
-- Submit issue form with client-side validation (title length, patient-impact description requirement)
-- Inline `FieldError` component with destructive styling
-- Helper text on form fields for guidance
-- Note content validation on ticket detail
-
-## Microsoft 365 / Entra ID Authentication
-
-### Architecture
-- **Provider abstraction**: `AuthProvider` interface with `LocalAuthProvider` and `EntraAuthProvider` implementations
-- **Auth modes per org**: `local` (passwords only), `m365` (Microsoft SSO only), `hybrid` (both, with local fallback for admins)
-- **Tenant-aware login**: Login page resolves org by slug, shows appropriate sign-in options
-- **OIDC authorization code flow**: Entra provider constructs OIDC authorize URL with state/nonce, handles callback token exchange + userinfo via Microsoft Graph
-
-### Role Mapping
-- Maps Entra ID security group Object IDs to PulseDesk roles
-- Highest-level matching role wins when user belongs to multiple groups
-- `entraGroupId` is the stable UUID from Azure AD (not display name)
-- `displayLabel` is optional human-readable label for admin UI
-- Unmapped users default to `staff` role
-
-### JIT Provisioning
-- Creates user + org membership on first M365 login when enabled
-- Generates username from UPN prefix (e.g., `john.doe@org.com` → `john.doe`)
-- Refreshes profile (name, email, department, job title) on subsequent logins
-- Updates role mapping on each login if group memberships change
-
-### Security
-- Client secrets encrypted at rest with AES-256-GCM (key derived from SESSION_SECRET via scrypt)
-- Stored as `iv:tag:ciphertext` hex format in `org_auth_config.entra_client_secret_encrypted`
-- State parameter validated on callback to prevent CSRF
-- Session stores `authSource` to distinguish local vs M365 users
-
-### Database Tables
-- `org_auth_config`: Per-org auth configuration (mode, Entra tenant/client IDs, encrypted secret, JIT toggle, test status, Graph placeholders)
-- `org_role_mappings`: Entra group ID → PulseDesk role mappings with optional display labels
-- `auth_audit_log`: Login events, config changes, JIT provisioning events with IP/user-agent tracking
-- Extended `users`: `auth_source`, `entra_object_id`, `entra_upn`, `entra_department`, `entra_job_title`, `entra_manager_id`, `graph_last_synced_at`, `last_login_at`
-
-### API Endpoints
-- `GET /api/auth/tenant/:slug` - Public: resolve org auth mode for login page
-- `GET /api/auth/m365/login?org=<slug>` - Initiate M365 OIDC flow
-- `GET /api/auth/m365/callback` - Handle OIDC callback + JIT provisioning
-- `GET /api/auth/config` - Admin: get org auth configuration
-- `PUT /api/auth/config` - Admin: update org auth configuration
-- `POST /api/auth/config/test` - Admin: test Entra connection (OIDC discovery check)
-- `GET /api/auth/role-mappings` - Admin: list role mappings
-- `POST /api/auth/role-mappings` - Admin: create role mapping
-- `DELETE /api/auth/role-mappings/:id` - Admin: delete role mapping
-- `GET /api/auth/audit-log` - Admin: view auth events
-
-### Admin UI (Settings → Auth tab)
-- Auth mode selector (local/hybrid/m365)
-- Entra configuration form (tenant ID, client ID, client secret, redirect URI)
-- JIT provisioning toggle
-- Connection test button with status display
-- Group-to-role mapping editor (add/remove mappings with group Object ID + display label)
-- Graph integration placeholder section
-- Auth audit log viewer
-
-### Stripe Billing & Subscriptions
+## Stripe Billing & Subscriptions
 - **Stripe integration** via Replit connector (`stripe-replit-sync` for webhook sync + schema management)
 - **Products**: Pro ($60/mo), Pro Plus ($80/mo), Enterprise ($100/mo), Unlimited ($200/mo) — seeded via `server/seed-products.ts`
 - **Plan limits**: Free (5 users, local login only), Pro (50 users, 365/Entra), Pro Plus (100 users, 365/Entra), Enterprise (200 users, all features), Unlimited (unlimited users, all features)
 - **Feature gating**: Member limit enforced on join; Entra/365 login gated by plan (Free = local only, Pro+ = Entra enabled); auth config update blocked server-side for Free plan
-- **Stripe schema**: Managed automatically by `stripe-replit-sync` — DO NOT create tables in `stripe` schema
+- **Billing status API**: Returns plan, subscription status (active/trialing/etc), stripeSyncStatus (connected/unavailable), usage bars, limits
+- **Billing UI**: Shows subscription status indicator, usage progress bars, Stripe sync status banner when unavailable, Entra lock warning
 - **Webhook**: Registered at `/api/stripe/webhook` BEFORE `express.json()` middleware in `server/index.ts`
-- **Billing UI**: Settings → Billing tab with current plan, usage, upgrade options, and Stripe portal link
 - **Subscription sync**: `syncOrgPlanFromStripe()` in billing route checks `stripe.subscriptions` and updates org plan on each status check
 - **Files**: `server/stripeClient.ts`, `server/webhookHandlers.ts`, `server/routes/billing.ts`, `server/seed-products.ts`
-
-### Dashboard Reactivity
-- `queryClient.ts`: `refetchOnWindowFocus: true`, `staleTime: 30s`
-- Dashboard query: `refetchInterval: 30000` (30s auto-refresh)
-- Ticket mutations invalidate related query caches
 
 ## Key Design Decisions
 - Roles: owner, admin, supervisor, staff, technician, readonly
@@ -252,4 +162,4 @@ The application follows a monolithic full-stack architecture with a React fronte
 - PulseLoader used consistently across all pages as the branded loading indicator (no Skeleton loading states)
 - Department/vendor create gated to supervisor+ (matches API requireMinRole("supervisor"))
 - Department/vendor delete gated to admin only (matches API requireMinRole("admin"))
-- All PWA/manifest/service-worker references use PulseDesk branding (no TradeFlowKit remnants)
+- All PWA/manifest/service-worker references use PulseDesk branding

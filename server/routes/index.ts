@@ -17,6 +17,7 @@ import analyticsRouter from "./analytics";
 import adminRouter from "./admin";
 import notificationsRouter from "./notifications";
 import billingRouter from "./billing";
+import onboardingRouter from "./onboarding";
 
 declare module "express-session" {
   interface SessionData {
@@ -35,12 +36,20 @@ const PgSession = connectPgSimple(session);
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   const isProduction = process.env.NODE_ENV === "production";
 
+  const sessionStore = new PgSession({
+    pool: pool as any,
+    tableName: "session",
+    createTableIfMissing: true,
+    errorLog: (err: Error) => {
+      console.error("[session-store error]", err.message, err.stack);
+    },
+  });
+
+  console.log(`[session] Store initialized: table=session, secure=${isProduction}, sameSite=lax, maxAge=30d`);
+
   app.use(
     session({
-      store: new PgSession({
-        pool: pool as any,
-        createTableIfMissing: true,
-      }),
+      store: sessionStore,
       secret: getSessionSecret(),
       resave: false,
       saveUninitialized: false,
@@ -65,6 +74,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use(adminRouter);
   app.use(notificationsRouter);
   app.use(billingRouter);
+  app.use(onboardingRouter);
 
   return httpServer;
 }

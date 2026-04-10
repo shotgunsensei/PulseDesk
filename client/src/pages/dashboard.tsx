@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
@@ -28,10 +28,13 @@ import {
   Shield,
   ArrowRight,
   Sparkles,
+  SkipForward,
+  CircleDot,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   TICKET_STATUS_LABELS,
   TICKET_PRIORITY_LABELS,
@@ -103,20 +106,59 @@ function KpiCard({ label, value, sub, icon: Icon, iconColor = "text-muted-foregr
   return href ? <Link href={href}>{inner}</Link> : inner;
 }
 
-function AdminOnboarding({ stats }: { stats: DashboardStats }) {
-  const { data: vendors } = useQuery<{ id: string }[]>({ queryKey: ["/api/vendors"], staleTime: 0 });
-  const { data: members } = useQuery<{ userId: string }[]>({ queryKey: ["/api/memberships"], staleTime: 0 });
+interface OnboardingItemData {
+  id: string;
+  title: string;
+  description: string;
+  route: string;
+  sortOrder: number;
+  status: string;
+  completionSource: string | null;
+  completedAt: string | null;
+  autoCompleteKey: string | null;
+  systemComplete?: boolean;
+}
 
-  const steps = [
-    { label: "Configure departments", href: "/departments", icon: ClipboardList, done: Object.keys(stats.departmentCounts).length > 0 },
-    { label: "Register equipment & assets", href: "/assets", icon: Cpu, done: stats.totalAssets > 0 },
-    { label: "Add vendor contacts", href: "/vendors", icon: Users, done: (vendors?.length || 0) > 0 },
-    { label: "Invite team members", href: "/settings", icon: Shield, done: (members?.length || 0) > 1 },
-    { label: "Submit your first issue", href: "/submit", icon: Ticket, done: stats.totalTickets > 0 },
-  ];
+const STEP_ICONS: Record<string, any> = {
+  departments: ClipboardList,
+  assets: Cpu,
+  vendors: Users,
+  members: Shield,
+  tickets: Ticket,
+};
 
-  const completedCount = steps.filter(s => s.done).length;
-  if (completedCount === steps.length) return null;
+function AdminOnboarding() {
+  const { data: items = [], isLoading } = useQuery<OnboardingItemData[]>({
+    queryKey: ["/api/onboarding"],
+    staleTime: 0,
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("POST", `/api/onboarding/${id}/complete`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding"] });
+    },
+  });
+
+  const skipMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("POST", `/api/onboarding/${id}/skip`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding"] });
+    },
+  });
+
+  if (isLoading) return null;
+
+  const activeItems = items.filter(i => i.status !== "skipped");
+  const completedCount = activeItems.filter(i => i.status === "complete").length;
+  const totalCount = activeItems.length;
+  if (totalCount === 0 || completedCount === totalCount) return null;
+
+  const progressPct = Math.round((completedCount / totalCount) * 100);
 
   return (
     <Card data-testid="admin-onboarding">
@@ -124,30 +166,74 @@ function AdminOnboarding({ stats }: { stats: DashboardStats }) {
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
           Getting Started
-          <span className="ml-auto text-xs text-muted-foreground font-normal">{completedCount}/{steps.length} complete</span>
+          <span className="ml-auto text-xs text-muted-foreground font-normal">{completedCount}/{totalCount} complete</span>
         </CardTitle>
       </CardHeader>
       <CardContent>
+        <div className="w-full h-1.5 rounded-full bg-muted mb-3 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-primary transition-all duration-500"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
         <p className="text-xs text-muted-foreground mb-3">
-          Set up your facility in a few steps. Completed items are marked with a check.
+          Set up your facility in a few steps. Items auto-complete as you add data.
         </p>
         <div className="space-y-1.5">
-          {steps.map((s) => (
-            <Link key={s.label} href={s.href}>
-              <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 hover:bg-muted/40 transition-colors cursor-pointer group" data-testid={`onboard-step-${s.label.toLowerCase().replace(/\s/g, "-")}`}>
-                <div className="flex items-center gap-2.5">
-                  {s.done ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                  ) : (
-                    <div className="h-4 w-4 rounded-full border-2 shrink-0 border-muted-foreground/30" />
-                  )}
-                  <s.icon className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className={`text-sm ${s.done ? "text-muted-foreground line-through" : "font-medium"}`}>{s.label}</span>
-                </div>
-                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+          {items.filter(i => i.status !== "skipped").map((item) => {
+            const Icon = STEP_ICONS[item.autoCompleteKey || ""] || CircleDot;
+            const isDone = item.status === "complete";
+            return (
+              <div key={item.id} className="flex items-center gap-2 rounded-lg border px-3 py-2.5 group" data-testid={`onboard-step-${item.id}`}>
+                <Link href={item.route || "#"} className="flex items-center gap-2.5 flex-1 min-w-0">
+                  <div className="flex items-center gap-2.5 flex-1 min-w-0 hover:opacity-80 transition-opacity cursor-pointer">
+                    {isDone ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <div className="h-4 w-4 rounded-full border-2 shrink-0 border-muted-foreground/30" />
+                    )}
+                    <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <span className={`text-sm block truncate ${isDone ? "text-muted-foreground line-through" : "font-medium"}`}>{item.title}</span>
+                      {item.description && !isDone && (
+                        <span className="text-[11px] text-muted-foreground block truncate">{item.description}</span>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+                {isDone && item.completionSource === "auto" && (
+                  <span className="text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded shrink-0">auto</span>
+                )}
+                {!isDone && (
+                  <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={(e) => { e.stopPropagation(); completeMutation.mutate(item.id); }}
+                      disabled={completeMutation.isPending}
+                      data-testid={`button-complete-${item.id}`}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={(e) => { e.stopPropagation(); skipMutation.mutate(item.id); }}
+                      disabled={skipMutation.isPending}
+                      data-testid={`button-skip-${item.id}`}
+                    >
+                      <SkipForward className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
+                )}
+                {!isDone && (
+                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                )}
               </div>
-            </Link>
-          ))}
+            );
+          })}
         </div>
       </CardContent>
     </Card>
@@ -264,7 +350,7 @@ export default function Dashboard() {
           <KpiCard label="Resolved" value={stats.resolvedThisMonth} sub="this month" icon={CheckCircle2} iconColor="text-emerald-600" />
         </div>
 
-        {role === "admin" && <AdminOnboarding stats={stats} />}
+        {role === "admin" && <AdminOnboarding />}
         {role !== "admin" && <RoleGuidance role={role} />}
 
         {(stats.waitingDeptCount > 0 || stats.waitingVendorCount > 0 || stats.escalatedCount > 0 || stats.patientImpactingCount > 0 || stats.unassignedCount > 0) && (

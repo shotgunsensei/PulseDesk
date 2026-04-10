@@ -16,6 +16,7 @@ import {
   orgRoleMappings,
   authAuditLog,
   notifications,
+  onboardingItems,
   type User,
   type InsertUser,
   type Org,
@@ -40,6 +41,7 @@ import {
   type InsertOrgAuthConfig,
   type OrgRoleMapping,
   type AuthAuditLogEntry,
+  type OnboardingItem,
 } from "@shared/schema";
 import { randomBytes } from "crypto";
 
@@ -128,6 +130,11 @@ export interface IStorage {
   deleteOrgRoleMapping(orgId: string, id: string): Promise<void>;
   deleteAllOrgRoleMappings(orgId: string): Promise<void>;
 
+  getOnboardingItems(orgId: string): Promise<OnboardingItem[]>;
+  createOnboardingItem(orgId: string, data: Partial<OnboardingItem>): Promise<OnboardingItem>;
+  updateOnboardingItem(orgId: string, id: string, data: Partial<OnboardingItem>): Promise<OnboardingItem | undefined>;
+  seedOnboardingItems(orgId: string): Promise<void>;
+
   createAuthAuditLog(entry: {
     orgId?: string | null;
     userId?: string | null;
@@ -199,6 +206,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteOrg(id: string): Promise<void> {
+    await db.delete(onboardingItems).where(eq(onboardingItems.orgId, id));
     await db.delete(notifications).where(eq(notifications.orgId, id));
     await db.delete(authAuditLog).where(eq(authAuditLog.orgId, id));
     await db.delete(orgRoleMappings).where(eq(orgRoleMappings.orgId, id));
@@ -815,6 +823,44 @@ export class DatabaseStorage implements IStorage {
       .where(eq(authAuditLog.orgId, orgId))
       .orderBy(desc(authAuditLog.createdAt))
       .limit(limit);
+  }
+
+  async getOnboardingItems(orgId: string): Promise<OnboardingItem[]> {
+    return db.select().from(onboardingItems)
+      .where(eq(onboardingItems.orgId, orgId))
+      .orderBy(onboardingItems.sortOrder);
+  }
+
+  async createOnboardingItem(orgId: string, data: Partial<OnboardingItem>): Promise<OnboardingItem> {
+    const [item] = await db.insert(onboardingItems).values({
+      orgId,
+      title: data.title || "",
+      description: data.description || "",
+      route: data.route || "",
+      sortOrder: data.sortOrder || 0,
+      status: (data.status as any) || "pending",
+      autoCompleteKey: data.autoCompleteKey || null,
+      completionSource: data.completionSource || "manual",
+    }).returning();
+    return item;
+  }
+
+  async updateOnboardingItem(orgId: string, id: string, data: Partial<OnboardingItem>): Promise<OnboardingItem | undefined> {
+    const updateData: any = { ...data, updatedAt: new Date() };
+    const [item] = await db.update(onboardingItems)
+      .set(updateData)
+      .where(and(eq(onboardingItems.orgId, orgId), eq(onboardingItems.id, id)))
+      .returning();
+    return item;
+  }
+
+  async seedOnboardingItems(orgId: string): Promise<void> {
+    const { DEFAULT_ONBOARDING_ITEMS } = await import("@shared/schema");
+    const existing = await this.getOnboardingItems(orgId);
+    if (existing.length > 0) return;
+    for (const item of DEFAULT_ONBOARDING_ITEMS) {
+      await this.createOnboardingItem(orgId, item);
+    }
   }
 }
 

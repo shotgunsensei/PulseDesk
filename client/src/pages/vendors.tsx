@@ -29,6 +29,7 @@ export default function VendorsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding"] });
       setOpen(false);
       setForm({ name: "", serviceType: "", phone: "", email: "", emergencyContact: "", contractNotes: "" });
       toast({ title: "Vendor added" });
@@ -40,6 +41,7 @@ export default function VendorsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding"] });
       toast({ title: "Vendor removed" });
     },
   });

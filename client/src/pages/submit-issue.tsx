@@ -40,6 +40,7 @@ export default function SubmitIssue() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding"] });
       toast({ title: "Issue reported successfully", description: "Your issue has been logged and the operations team has been notified." });
       setLocation("/tickets");
     },

@@ -165,13 +165,13 @@ export default function SettingsPage() {
   const updateRoleMutation = useMutation({
     mutationFn: ({ userId, role }: { userId: string; role: string }) =>
       apiRequest("PATCH", `/api/memberships/${userId}/role`, { role }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/memberships"] }); queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }); toast({ title: "Role updated" }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/memberships"] }); queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }); queryClient.invalidateQueries({ queryKey: ["/api/onboarding"] }); toast({ title: "Role updated" }); },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const removeMemberMutation = useMutation({
     mutationFn: (userId: string) => apiRequest("DELETE", `/api/memberships/${userId}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/memberships"] }); queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }); toast({ title: "Member removed" }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/memberships"] }); queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }); queryClient.invalidateQueries({ queryKey: ["/api/onboarding"] }); toast({ title: "Member removed" }); },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
@@ -500,6 +500,8 @@ interface BillingStatus {
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   planExpiresAt: string | null;
+  subscriptionStatus: string | null;
+  stripeSyncStatus: string;
   limits: { maxMembers: number | null; maxTickets: number | null; entraEnabled: boolean };
   usage: { members: number; tickets: number };
 }
@@ -635,20 +637,66 @@ function BillingSettings() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg border p-3 text-center">
-              <p className="text-lg font-bold tabular-nums">{billing?.usage.members || 0}</p>
-              <p className="text-[11px] text-muted-foreground">
-                / {billing?.limits.maxMembers ?? "Unlimited"} members
-              </p>
+          {billing?.subscriptionStatus && (
+            <div className="flex items-center gap-2 text-xs">
+              <div className={`h-2 w-2 rounded-full ${billing.subscriptionStatus === "active" ? "bg-emerald-500" : billing.subscriptionStatus === "trialing" ? "bg-blue-500" : "bg-amber-500"}`} />
+              <span className="text-muted-foreground">
+                Subscription: <span className="font-medium capitalize">{billing.subscriptionStatus}</span>
+                {billing.planExpiresAt && (
+                  <> · Renews {new Date(billing.planExpiresAt).toLocaleDateString()}</>
+                )}
+              </span>
             </div>
-            <div className="rounded-lg border p-3 text-center">
-              <p className="text-lg font-bold tabular-nums">{billing?.usage.tickets || 0}</p>
-              <p className="text-[11px] text-muted-foreground">
-                / {billing?.limits.maxTickets ?? "Unlimited"} tickets
-              </p>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg border p-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] text-muted-foreground">Members</span>
+                <span className="text-xs font-medium tabular-nums">
+                  {billing?.usage.members || 0} / {billing?.limits.maxMembers ?? "\u221E"}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    billing?.limits.maxMembers && (billing?.usage.members || 0) >= billing.limits.maxMembers
+                      ? "bg-rose-500"
+                      : "bg-primary"
+                  }`}
+                  style={{
+                    width: `${billing?.limits.maxMembers
+                      ? Math.min(((billing?.usage.members || 0) / billing.limits.maxMembers) * 100, 100)
+                      : 5}%`,
+                  }}
+                />
+              </div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] text-muted-foreground">Tickets</span>
+                <span className="text-xs font-medium tabular-nums">
+                  {billing?.usage.tickets || 0} / {billing?.limits.maxTickets ?? "\u221E"}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${billing?.limits.maxTickets ? Math.min(((billing?.usage.tickets || 0) / billing.limits.maxTickets) * 100, 100) : 5}%` }}
+                />
+              </div>
             </div>
           </div>
+
+          {billing?.stripeSyncStatus === "unavailable" && (
+            <div className="flex items-start gap-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-3">
+              <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-blue-800 dark:text-blue-200">Stripe sync pending</p>
+                <p className="text-[11px] text-blue-600 dark:text-blue-400">Billing data is syncing. Your plan status may update shortly.</p>
+              </div>
+            </div>
+          )}
 
           {!planConfig.entraEnabled && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">

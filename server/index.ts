@@ -88,14 +88,34 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  log("Connecting to database...", "startup");
+  try {
+    const { pool: dbPool } = await import("./db");
+    const testResult = await dbPool.query("SELECT current_database(), current_user");
+    log(`Database connected: db=${testResult.rows[0].current_database}, user=${testResult.rows[0].current_user}`, "startup");
+  } catch (dbErr: any) {
+    log(`DATABASE CONNECTION FAILED: ${dbErr.message}`, "startup");
+    process.exit(1);
+  }
+
+  log("Running schema migrations...", "startup");
   const { ensureSchema } = await import("./migrate");
   await ensureSchema();
+  log("Schema migrations complete", "startup");
 
   const { seedDatabase, ensureSuperAdmin, ensureDemoAccount, ensureReviewerAccount } = await import("./seed");
   await seedDatabase();
   await ensureSuperAdmin();
   await ensureDemoAccount();
   await ensureReviewerAccount();
+
+  try {
+    const { pool: dbPool } = await import("./db");
+    const sessionCheck = await dbPool.query(`SELECT COUNT(*) as cnt FROM "session"`);
+    log(`Session table verified: ${sessionCheck.rows[0].cnt} existing sessions`, "startup");
+  } catch (sessErr: any) {
+    log(`SESSION TABLE CHECK FAILED: ${sessErr.message}`, "startup");
+  }
 
   try {
     const { runMigrations } = await import('stripe-replit-sync');
@@ -113,7 +133,9 @@ app.use((req, res, next) => {
     log(`Stripe init skipped: ${err.message}`, "stripe");
   }
 
+  log("Registering routes and session middleware...", "startup");
   await registerRoutes(httpServer, app);
+  log("Routes registered, accepting traffic", "startup");
 
   app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) {

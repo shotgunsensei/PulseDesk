@@ -102,7 +102,10 @@ router.post("/api/auth/register", async (req: Request, res: Response) => {
     req.session.userId = user.id;
     req.session.authSource = "local";
     req.session.save((err) => {
-      if (err) return res.status(500).json({ error: "Session error" });
+      if (err) {
+        console.error("[session.save error] register:", err.message, err.stack);
+        return res.status(500).json({ error: "Session error" });
+      }
       logAuthEvent(req, { userId: user.id, eventType: "register", authSource: "local", success: true });
       res.json({ user: { ...user, password: undefined } });
     });
@@ -248,7 +251,11 @@ router.post("/api/auth/login", async (req: Request, res: Response) => {
     req.session.orgId = selectedOrgId;
 
     req.session.save((err) => {
-      if (err) return res.status(500).json({ error: "Session error" });
+      if (err) {
+        console.error("[session.save error] login:", err.message, err.stack);
+        return res.status(500).json({ error: "Session error" });
+      }
+      console.log(`[session] Login session saved: sid=${req.sessionID}, userId=${user.id}, orgId=${req.session.orgId}`);
       logAuthEvent(req, {
         orgId: req.session.orgId,
         userId: user.id,

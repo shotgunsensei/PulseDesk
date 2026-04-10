@@ -103,7 +103,12 @@ async function getApprovedPriceIds(): Promise<Set<string>> {
 
 router.get("/api/billing/status", requireAuth, requireOrg, async (req: Request, res: Response) => {
   try {
-    await syncOrgPlanFromStripe(req.session.orgId!);
+    let stripeSyncStatus = "connected";
+    try {
+      await syncOrgPlanFromStripe(req.session.orgId!);
+    } catch {
+      stripeSyncStatus = "unavailable";
+    }
 
     const org = await storage.getOrg(req.session.orgId!);
     if (!org) return res.status(404).json({ error: "Org not found" });
@@ -112,11 +117,27 @@ router.get("/api/billing/status", requireAuth, requireOrg, async (req: Request, 
     const plan = (org as any).plan || "free";
     const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
 
+    let subscriptionStatus: string | null = null;
+    if ((org as any).stripeSubscriptionId) {
+      try {
+        const subResult = await db.execute(sql`
+          SELECT s.status FROM stripe.subscriptions s
+          WHERE s.id = ${(org as any).stripeSubscriptionId}
+          LIMIT 1
+        `);
+        subscriptionStatus = subResult.rows.length > 0 ? (subResult.rows[0] as any).status : null;
+      } catch {
+        subscriptionStatus = null;
+      }
+    }
+
     res.json({
       plan,
       stripeCustomerId: (org as any).stripeCustomerId || null,
       stripeSubscriptionId: (org as any).stripeSubscriptionId || null,
       planExpiresAt: (org as any).planExpiresAt || null,
+      subscriptionStatus,
+      stripeSyncStatus,
       limits: {
         maxMembers: limits.maxMembers === Infinity ? null : limits.maxMembers,
         maxTickets: limits.maxTickets === Infinity ? null : limits.maxTickets,
@@ -160,7 +181,11 @@ router.post("/api/billing/checkout", requireAuth, requireOrg, requireMinRole("ad
       await storage.updateOrg(org.id, { stripeCustomerId: customerId } as any);
     }
 
-    const baseUrl = `https://${req.get('host')}`;
+    const baseUrl = process.env.REPLIT_DEPLOYMENT_URL
+      ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+      : process.env.REPL_SLUG
+        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+        : `https://${req.get('host')}`;
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       payment_method_types: ['card'],
@@ -187,7 +212,11 @@ router.post("/api/billing/portal", requireAuth, requireOrg, requireMinRole("admi
     if (!customerId) return res.status(400).json({ error: "No billing account linked" });
 
     const stripe = await getUncachableStripeClient();
-    const baseUrl = `https://${req.get('host')}`;
+    const baseUrl = process.env.REPLIT_DEPLOYMENT_URL
+      ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+      : process.env.REPL_SLUG
+        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+        : `https://${req.get('host')}`;
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: `${baseUrl}/settings`,
