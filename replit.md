@@ -152,6 +152,7 @@ The application follows a monolithic full-stack architecture with a React fronte
 - **Billing status API**: Returns plan, subscription status (active/trialing/etc), stripeSyncStatus (connected/unavailable), usage bars, limits
 - **Webhook**: Registered at `/api/stripe/webhook` BEFORE `express.json()` middleware in `server/index.ts`
 - **Subscription sync**: `syncOrgPlanFromStripe()` in billing route checks `stripe.subscriptions` and updates org plan on each status check
+- **Stripe API fallback**: All billing endpoints (`/api/billing/plans`, `getApprovedPriceIds`, `syncOrgPlanFromStripe`) first query `stripe.*` DB tables; if empty, fall back to querying the Stripe API directly. This ensures billing works even when `stripe-replit-sync` backfill hasn't populated the DB tables.
 - **Files**: `server/stripeClient.ts`, `server/webhookHandlers.ts`, `server/routes/billing.ts`, `server/seed-products.ts`, `client/src/pages/billing.tsx`
 
 ## Key Design Decisions

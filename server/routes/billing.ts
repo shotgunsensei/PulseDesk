@@ -73,81 +73,80 @@ router.get("/api/billing/plans", requireAuth, requireOrg, async (req: Request, r
 const ALLOWED_PLAN_METADATA = ["pro", "pro_plus", "enterprise", "unlimited"];
 
 async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
+  const org = await storage.getOrg(orgId);
+  if (!org) return;
+  const customerId = (org as any).stripeCustomerId;
+  if (!customerId) return;
+
+  let subId: string | null = null;
+  let subStatus: string | null = null;
+  let periodEnd: number | null = null;
+  let planMeta: string | null = null;
+
   try {
-    const org = await storage.getOrg(orgId);
-    if (!org) return;
-    const customerId = (org as any).stripeCustomerId;
-    if (!customerId) return;
-
-    let subId: string | null = null;
-    let subStatus: string | null = null;
-    let periodEnd: number | null = null;
-    let planMeta: string | null = null;
-
-    try {
-      const subResult = await db.execute(sql`
-        SELECT s.id, s.status, s.current_period_end, p.metadata as product_metadata
-        FROM stripe.subscriptions s
-        JOIN stripe.prices pr ON s.items->'data'->0->'price'->>'id' = pr.id
-        JOIN stripe.products p ON pr.product = p.id
-        WHERE s.customer = ${customerId}
-        AND s.status IN ('active', 'trialing')
-        ORDER BY s.created DESC
-        LIMIT 1
-      `);
-      if (subResult.rows.length > 0) {
-        const row = subResult.rows[0] as any;
-        subId = row.id;
-        subStatus = row.status;
-        periodEnd = row.current_period_end;
-        const meta = typeof row.product_metadata === 'string' ? JSON.parse(row.product_metadata) : row.product_metadata;
-        planMeta = meta?.plan;
-      }
-    } catch {}
-
-    if (!subId) {
-      try {
-        const stripe = await getUncachableStripeClient();
-        const subs = await stripe.subscriptions.list({
-          customer: customerId,
-          status: "active",
-          limit: 1,
-          expand: ["data.items.data.price.product"],
-        });
-        if (subs.data.length > 0) {
-          const sub = subs.data[0];
-          subId = sub.id;
-          subStatus = sub.status;
-          periodEnd = sub.current_period_end;
-          const product = sub.items.data[0]?.price?.product;
-          const productMeta = typeof product === "object" && product !== null ? (product as any).metadata : null;
-          planMeta = productMeta?.plan;
-        }
-      } catch {}
+    const subResult = await db.execute(sql`
+      SELECT s.id, s.status, s.current_period_end, p.metadata as product_metadata
+      FROM stripe.subscriptions s
+      JOIN stripe.prices pr ON s.items->'data'->0->'price'->>'id' = pr.id
+      JOIN stripe.products p ON pr.product = p.id
+      WHERE s.customer = ${customerId}
+      AND s.status IN ('active', 'trialing')
+      ORDER BY s.created DESC
+      LIMIT 1
+    `);
+    if (subResult.rows.length > 0) {
+      const row = subResult.rows[0] as any;
+      subId = row.id;
+      subStatus = row.status;
+      periodEnd = row.current_period_end;
+      const meta = typeof row.product_metadata === 'string' ? JSON.parse(row.product_metadata) : row.product_metadata;
+      planMeta = meta?.plan;
     }
+  } catch {}
 
-    if (subId && subStatus && planMeta) {
-      const stripePlan = ALLOWED_PLAN_METADATA.includes(planMeta) ? planMeta : "pro";
-      const currentPlan = (org as any).plan || "free";
-      if (stripePlan !== currentPlan || (org as any).stripeSubscriptionId !== subId) {
-        await storage.updateOrg(orgId, {
-          plan: stripePlan,
-          stripeSubscriptionId: subId,
-          planExpiresAt: periodEnd ? new Date(periodEnd * 1000) : null,
-        } as any);
-      }
-    } else if (!subId) {
-      const currentPlan = (org as any).plan || "free";
-      if (currentPlan !== "free") {
-        await storage.updateOrg(orgId, {
-          plan: "free",
-          stripeSubscriptionId: null,
-          planExpiresAt: null,
-        } as any);
-      }
+  if (!subId) {
+    const stripe = await getUncachableStripeClient();
+    const allSubs: any[] = [];
+    for (const status of ["active", "trialing"] as const) {
+      const subs = await stripe.subscriptions.list({
+        customer: customerId,
+        status,
+        limit: 1,
+        expand: ["data.items.data.price.product"],
+      });
+      allSubs.push(...subs.data);
     }
-  } catch (err) {
-    // stripe connection may not be ready yet
+    allSubs.sort((a, b) => b.created - a.created);
+    if (allSubs.length > 0) {
+      const sub = allSubs[0];
+      subId = sub.id;
+      subStatus = sub.status;
+      periodEnd = sub.current_period_end;
+      const product = sub.items.data[0]?.price?.product;
+      const productMeta = typeof product === "object" && product !== null ? (product as any).metadata : null;
+      planMeta = productMeta?.plan;
+    }
+  }
+
+  if (subId && subStatus && planMeta) {
+    const stripePlan = ALLOWED_PLAN_METADATA.includes(planMeta) ? planMeta : "pro";
+    const currentPlan = (org as any).plan || "free";
+    if (stripePlan !== currentPlan || (org as any).stripeSubscriptionId !== subId) {
+      await storage.updateOrg(orgId, {
+        plan: stripePlan,
+        stripeSubscriptionId: subId,
+        planExpiresAt: periodEnd ? new Date(periodEnd * 1000) : null,
+      } as any);
+    }
+  } else if (!subId) {
+    const currentPlan = (org as any).plan || "free";
+    if (currentPlan !== "free") {
+      await storage.updateOrg(orgId, {
+        plan: "free",
+        stripeSubscriptionId: null,
+        planExpiresAt: null,
+      } as any);
+    }
   }
 }
 
@@ -160,6 +159,7 @@ async function getApprovedPriceIds(): Promise<Set<string>> {
       WHERE p.active = true AND pr.active = true
       AND (p.metadata->>'plan' IN ('pro', 'pro_plus', 'enterprise', 'unlimited'))
       AND p.name LIKE 'PulseDesk%'
+      AND pr.recurring IS NOT NULL
     `);
     if (result.rows.length > 0) {
       return new Set(result.rows.map((r: any) => r.id));
@@ -172,7 +172,7 @@ async function getApprovedPriceIds(): Promise<Set<string>> {
     const ids = new Set<string>();
     for (const p of products.data) {
       if (!p.name.startsWith("PulseDesk") || !ALLOWED_PLAN_METADATA.includes(p.metadata?.plan)) continue;
-      const prices = await stripe.prices.list({ product: p.id, active: true });
+      const prices = await stripe.prices.list({ product: p.id, active: true, type: "recurring" });
       for (const pr of prices.data) ids.add(pr.id);
     }
     return ids;
@@ -206,8 +206,16 @@ router.get("/api/billing/status", requireAuth, requireOrg, async (req: Request, 
           LIMIT 1
         `);
         subscriptionStatus = subResult.rows.length > 0 ? (subResult.rows[0] as any).status : null;
-      } catch {
-        subscriptionStatus = null;
+      } catch {}
+
+      if (!subscriptionStatus) {
+        try {
+          const stripe = await getUncachableStripeClient();
+          const sub = await stripe.subscriptions.retrieve((org as any).stripeSubscriptionId);
+          subscriptionStatus = sub.status;
+        } catch {
+          subscriptionStatus = null;
+        }
       }
     }
 
