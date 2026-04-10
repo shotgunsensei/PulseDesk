@@ -70,7 +70,7 @@ export function requireRole(...allowedRoles: string[]) {
     if (!membership) {
       return res.status(403).json({ error: "Not a member of this organization" });
     }
-    if (!allowedRoles.includes(membership.role)) {
+    if (membership.role !== "owner" && !allowedRoles.includes(membership.role)) {
       return res.status(403).json({ error: "Insufficient permissions" });
     }
     next();
