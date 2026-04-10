@@ -227,6 +227,19 @@ export async function ensureSchema() {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS "session" (
+        "sid" varchar NOT NULL COLLATE "default",
+        "sess" json NOT NULL,
+        "expire" timestamp(6) NOT NULL,
+        CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
+      );
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS notifications (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         org_id varchar NOT NULL REFERENCES orgs(id),
