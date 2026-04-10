@@ -14,7 +14,7 @@ PORT = "5000"
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["bash", "script/start.sh"]
+run = ["npm", "run", "start"]
 build = ["npm", "run", "build"]
 
 [workflows]
