@@ -15,6 +15,7 @@ import {
   orgAuthConfig,
   orgRoleMappings,
   authAuditLog,
+  notifications,
   type User,
   type InsertUser,
   type Org,
@@ -34,6 +35,7 @@ import {
   type Vendor,
   type InsertVendor,
   type InviteCode,
+  type Notification,
   type OrgAuthConfig,
   type InsertOrgAuthConfig,
   type OrgRoleMapping,
@@ -105,6 +107,13 @@ export interface IStorage {
   createVendor(orgId: string, data: InsertVendor): Promise<Vendor>;
   updateVendor(orgId: string, id: string, data: Partial<Vendor>): Promise<Vendor | undefined>;
   deleteVendor(orgId: string, id: string): Promise<void>;
+
+  createNotification(orgId: string, userId: string, type: string, title: string, message: string, ticketId?: string | null): Promise<Notification>;
+  getUserNotifications(orgId: string, userId: string, limit?: number): Promise<Notification[]>;
+  getUnreadNotificationCount(orgId: string, userId: string): Promise<number>;
+  markNotificationRead(orgId: string, userId: string, id: string): Promise<void>;
+  markAllNotificationsRead(orgId: string, userId: string): Promise<void>;
+  notifyOrgMembers(orgId: string, excludeUserId: string, type: string, title: string, message: string, ticketId?: string | null, targetUserId?: string | null): Promise<void>;
 
   getDashboardStats(orgId: string): Promise<any>;
   getOrgCounts(orgId: string): Promise<{ tickets: number; departments: number; assets: number; members: number }>;
@@ -190,6 +199,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteOrg(id: string): Promise<void> {
+    await db.delete(notifications).where(eq(notifications.orgId, id));
     await db.delete(authAuditLog).where(eq(authAuditLog.orgId, id));
     await db.delete(orgRoleMappings).where(eq(orgRoleMappings.orgId, id));
     await db.delete(orgAuthConfig).where(eq(orgAuthConfig.orgId, id));
@@ -516,6 +526,63 @@ export class DatabaseStorage implements IStorage {
 
   async deleteVendor(orgId: string, id: string): Promise<void> {
     await db.delete(vendors).where(and(eq(vendors.orgId, orgId), eq(vendors.id, id)));
+  }
+
+  async createNotification(orgId: string, userId: string, type: string, title: string, message: string, ticketId?: string | null): Promise<Notification> {
+    const [n] = await db.insert(notifications).values({
+      orgId,
+      userId,
+      type: type as any,
+      title,
+      message,
+      ticketId: ticketId || null,
+    }).returning();
+    return n;
+  }
+
+  async getUserNotifications(orgId: string, userId: string, limit = 50): Promise<Notification[]> {
+    return db.select().from(notifications)
+      .where(and(eq(notifications.orgId, orgId), eq(notifications.userId, userId)))
+      .orderBy(desc(notifications.createdAt))
+      .limit(limit);
+  }
+
+  async getUnreadNotificationCount(orgId: string, userId: string): Promise<number> {
+    const [result] = await db.select({ cnt: count() }).from(notifications)
+      .where(and(
+        eq(notifications.orgId, orgId),
+        eq(notifications.userId, userId),
+        eq(notifications.read, false)
+      ));
+    return Number(result?.cnt || 0);
+  }
+
+  async markNotificationRead(orgId: string, userId: string, id: string): Promise<void> {
+    await db.update(notifications).set({ read: true })
+      .where(and(eq(notifications.id, id), eq(notifications.orgId, orgId), eq(notifications.userId, userId)));
+  }
+
+  async markAllNotificationsRead(orgId: string, userId: string): Promise<void> {
+    await db.update(notifications).set({ read: true })
+      .where(and(eq(notifications.orgId, orgId), eq(notifications.userId, userId), eq(notifications.read, false)));
+  }
+
+  async notifyOrgMembers(orgId: string, excludeUserId: string, type: string, title: string, message: string, ticketId?: string | null, targetUserId?: string | null): Promise<void> {
+    try {
+      if (targetUserId) {
+        if (targetUserId !== excludeUserId) {
+          await this.createNotification(orgId, targetUserId, type, title, message, ticketId);
+        }
+        return;
+      }
+      const mems = await db.select().from(memberships).where(eq(memberships.orgId, orgId));
+      const userIds = mems.map(m => m.userId).filter(id => id !== excludeUserId);
+      for (const uid of userIds) {
+        await this.createNotification(orgId, uid, type, title, message, ticketId);
+      }
+    } catch (err) {
+      console.error("Error creating notifications:", err);
+    }
   }
 
   async getOrgCounts(orgId: string): Promise<{ tickets: number; departments: number; assets: number; members: number }> {

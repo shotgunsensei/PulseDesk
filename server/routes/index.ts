@@ -15,6 +15,8 @@ import facilityRequestsRouter from "./facilityRequests";
 import vendorsRouter from "./vendors";
 import analyticsRouter from "./analytics";
 import adminRouter from "./admin";
+import notificationsRouter from "./notifications";
+import billingRouter from "./billing";
 
 declare module "express-session" {
   interface SessionData {
@@ -61,6 +63,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use(vendorsRouter);
   app.use(analyticsRouter);
   app.use(adminRouter);
+  app.use(notificationsRouter);
+  app.use(billingRouter);
 
   return httpServer;
 }

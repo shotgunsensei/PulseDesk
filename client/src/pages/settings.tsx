@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Check, Trash2, UserCog, Clock, Building2, Shield, Bell, KeyRound, Plus, CheckCircle2, XCircle, AlertTriangle, Globe, RefreshCw, Users, Info } from "lucide-react";
+import { Copy, Check, Trash2, UserCog, Clock, Building2, Shield, Bell, KeyRound, Plus, CheckCircle2, XCircle, AlertTriangle, Globe, RefreshCw, Users, Info, CreditCard, Zap, Crown, ExternalLink } from "lucide-react";
 const MicrosoftIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
     <rect x="1" y="1" width="9" height="9" fill="#F25022" />
@@ -21,6 +21,7 @@ const MicrosoftIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 import { ROLE_LABELS, canManageSettings } from "@/lib/permissions";
+import { PLAN_LIMITS } from "@shared/schema";
 
 interface MemberWithUser {
   userId: string;
@@ -200,10 +201,11 @@ export default function SettingsPage() {
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         <div className="max-w-2xl mx-auto">
           <Tabs defaultValue="profile">
-            <TabsList className={`w-full grid ${isAdmin ? "grid-cols-3 sm:grid-cols-5" : "grid-cols-2"}`}>
+            <TabsList className={`w-full grid ${isAdmin ? "grid-cols-3 sm:grid-cols-6" : "grid-cols-2"}`}>
               <TabsTrigger value="profile" data-testid="tab-profile">Profile</TabsTrigger>
               {isAdmin && <TabsTrigger value="organization" data-testid="tab-organization">Organization</TabsTrigger>}
               {isAdmin && <TabsTrigger value="team" data-testid="tab-team">Team</TabsTrigger>}
+              {isAdmin && <TabsTrigger value="billing" data-testid="tab-billing">Billing</TabsTrigger>}
               {isAdmin && <TabsTrigger value="authentication" data-testid="tab-authentication">Auth</TabsTrigger>}
               <TabsTrigger value="preferences" data-testid="tab-preferences">Preferences</TabsTrigger>
             </TabsList>
@@ -426,6 +428,12 @@ export default function SettingsPage() {
             )}
 
             {isAdmin && (
+              <TabsContent value="billing" className="space-y-4 mt-4">
+                <BillingSettings />
+              </TabsContent>
+            )}
+
+            {isAdmin && (
               <TabsContent value="authentication" className="space-y-4 mt-4">
                 <AuthenticationSettings />
               </TabsContent>
@@ -441,12 +449,21 @@ export default function SettingsPage() {
                   <CardDescription>Configure how you receive updates about operations</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="rounded-lg bg-muted/50 border p-4 text-center">
-                    <Bell className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-                    <p className="text-sm font-medium text-muted-foreground">Notification preferences</p>
-                    <p className="text-xs text-muted-foreground/70 mt-1">
-                      Email and in-app notification settings will be available in a future update.
-                    </p>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 rounded-lg border">
+                      <div>
+                        <p className="text-sm font-medium">In-app notifications</p>
+                        <p className="text-xs text-muted-foreground">Receive notifications for ticket updates, assignments, and escalations</p>
+                      </div>
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Email notifications</p>
+                        <p className="text-xs text-muted-foreground/70">Email delivery coming in a future update</p>
+                      </div>
+                      <Clock className="h-4 w-4 text-muted-foreground/40" />
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -475,6 +492,226 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+interface BillingStatus {
+  plan: string;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  planExpiresAt: string | null;
+  limits: { maxMembers: number | null; maxTickets: number | null };
+  usage: { members: number; tickets: number };
+}
+
+interface StripePlan {
+  product_id: string;
+  product_name: string;
+  product_description: string;
+  product_metadata: any;
+  price_id: string;
+  unit_amount: number;
+  currency: string;
+  interval: string;
+}
+
+function BillingSettings() {
+  const { toast } = useToast();
+
+  const { data: billing, isLoading: billingLoading } = useQuery<BillingStatus>({
+    queryKey: ["/api/billing/status"],
+  });
+
+  const { data: plans = [] } = useQuery<StripePlan[]>({
+    queryKey: ["/api/billing/plans"],
+  });
+
+  const checkoutMutation = useMutation({
+    mutationFn: async (priceId: string) => {
+      const res = await apiRequest("POST", "/api/billing/checkout", { priceId });
+      return await res.json();
+    },
+    onSuccess: (data: { url: string }) => {
+      if (data.url) window.location.href = data.url;
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const portalMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/billing/portal");
+      return await res.json();
+    },
+    onSuccess: (data: { url: string }) => {
+      if (data.url) window.location.href = data.url;
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  if (billingLoading) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center">
+          <p className="text-sm text-muted-foreground">Loading billing information...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const currentPlan = billing?.plan || "free";
+  const planConfig = PLAN_LIMITS[currentPlan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
+
+  const groupedPlans: Record<string, StripePlan[]> = {};
+  for (const p of plans) {
+    const key = p.product_id;
+    if (!groupedPlans[key]) groupedPlans[key] = [];
+    groupedPlans[key].push(p);
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <CreditCard className="h-4 w-4" />
+            Current Plan
+          </CardTitle>
+          <CardDescription>Your organization's subscription and usage</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+            <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${
+              currentPlan === "enterprise" ? "bg-violet-100 dark:bg-violet-900/30" :
+              currentPlan === "pro" ? "bg-blue-100 dark:bg-blue-900/30" :
+              "bg-slate-100 dark:bg-slate-800"
+            }`}>
+              {currentPlan === "enterprise" ? <Crown className="h-5 w-5 text-violet-600" /> :
+               currentPlan === "pro" ? <Zap className="h-5 w-5 text-blue-600" /> :
+               <CreditCard className="h-5 w-5 text-slate-500" />}
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium">{planConfig.label} Plan</p>
+              <p className="text-xs text-muted-foreground">
+                {currentPlan === "free" ? "Basic features for small teams" :
+                 currentPlan === "pro" ? "Professional features for growing teams" :
+                 "Full features for large organizations"}
+              </p>
+            </div>
+            {billing?.stripeSubscriptionId && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => portalMutation.mutate()}
+                disabled={portalMutation.isPending}
+                data-testid="button-manage-billing"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Manage
+              </Button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg border p-3 text-center">
+              <p className="text-lg font-bold tabular-nums">{billing?.usage.members || 0}</p>
+              <p className="text-[11px] text-muted-foreground">
+                / {billing?.limits.maxMembers ?? "Unlimited"} members
+              </p>
+            </div>
+            <div className="rounded-lg border p-3 text-center">
+              <p className="text-lg font-bold tabular-nums">{billing?.usage.tickets || 0}</p>
+              <p className="text-[11px] text-muted-foreground">
+                / {billing?.limits.maxTickets ?? "Unlimited"} tickets
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {currentPlan === "free" && Object.keys(groupedPlans).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Zap className="h-4 w-4" />
+              Upgrade Your Plan
+            </CardTitle>
+            <CardDescription>Unlock more features for your team</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {Object.entries(groupedPlans).map(([productId, prices]) => {
+              const product = prices[0];
+              const monthly = prices.find(p => p.interval === "month");
+              const yearly = prices.find(p => p.interval === "year");
+              const planMeta = product.product_metadata;
+
+              return (
+                <div key={productId} className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    {planMeta?.plan === "enterprise" ?
+                      <Crown className="h-4 w-4 text-violet-600" /> :
+                      <Zap className="h-4 w-4 text-blue-600" />}
+                    <span className="font-medium text-sm">{product.product_name}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{product.product_description}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {monthly && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1"
+                        onClick={() => checkoutMutation.mutate(monthly.price_id)}
+                        disabled={checkoutMutation.isPending}
+                        data-testid={`button-subscribe-${planMeta?.plan || "plan"}-monthly`}
+                      >
+                        ${(monthly.unit_amount / 100).toFixed(0)}/mo
+                      </Button>
+                    )}
+                    {yearly && (
+                      <Button
+                        size="sm"
+                        className="gap-1"
+                        onClick={() => checkoutMutation.mutate(yearly.price_id)}
+                        disabled={checkoutMutation.isPending}
+                        data-testid={`button-subscribe-${planMeta?.plan || "plan"}-yearly`}
+                      >
+                        ${(yearly.unit_amount / 100).toFixed(0)}/yr
+                        <span className="text-[10px] opacity-70">Save ~20%</span>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {currentPlan !== "free" && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center space-y-2">
+              <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto" />
+              <p className="text-sm font-medium">You're on the {planConfig.label} plan</p>
+              <p className="text-xs text-muted-foreground">
+                Manage your subscription, update payment method, or view invoices.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 mt-2"
+                onClick={() => portalMutation.mutate()}
+                disabled={portalMutation.isPending}
+                data-testid="button-billing-portal"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open Billing Portal
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </>
   );
 }
 

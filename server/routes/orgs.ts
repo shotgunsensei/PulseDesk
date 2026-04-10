@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
 import { requireAuth, requireOrg, requireRole } from "../middleware";
-import { DEFAULT_DEPARTMENTS } from "@shared/schema";
+import { DEFAULT_DEPARTMENTS, PLAN_LIMITS } from "@shared/schema";
 
 const router = Router();
 
@@ -51,6 +51,16 @@ router.post("/api/orgs/join", requireAuth, async (req: Request, res: Response) =
 
     const existing = await storage.getMembership(invite.orgId, req.session.userId!);
     if (existing) return res.status(400).json({ error: "Already a member" });
+
+    const org = await storage.getOrg(invite.orgId);
+    const plan = (org as any)?.plan || "free";
+    const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
+    if (limits.maxMembers !== Infinity) {
+      const counts = await storage.getOrgCounts(invite.orgId);
+      if (counts.members >= limits.maxMembers) {
+        return res.status(403).json({ error: `Member limit reached (${limits.maxMembers}). Organization needs to upgrade their plan.` });
+      }
+    }
 
     await storage.createMembership(invite.orgId, req.session.userId!, invite.role);
     req.session.orgId = invite.orgId;

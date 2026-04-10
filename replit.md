@@ -142,9 +142,14 @@ The application follows a monolithic full-stack architecture with a React fronte
 - `DemoBanner` component shows subtle amber notification bar
 
 ### Notification Center
-- `NotificationCenter` dropdown with placeholder notifications (assignment, overdue, escalation, resolution, supply)
-- Integrated in sidebar header (desktop) and top bar (mobile)
-- "Preview" badge indicates feature is in foundation stage
+- Real-time notification system backed by `notifications` table in PostgreSQL
+- Notifications created on: ticket created, ticket assigned, ticket status changed, ticket note added, ticket escalated
+- `GET /api/notifications` - fetch user's notifications (most recent 50)
+- `GET /api/notifications/unread-count` - unread count for badge
+- `POST /api/notifications/:id/read` - mark single notification read
+- `POST /api/notifications/read-all` - mark all read
+- Auto-polls every 15s for unread count, 30s for full list
+- Clicking a notification navigates to the related ticket
 
 ### Export/Print Readiness
 - Export placeholder button on analytics page
@@ -219,8 +224,23 @@ The application follows a monolithic full-stack architecture with a React fronte
 - Graph integration placeholder section
 - Auth audit log viewer
 
+### Stripe Billing & Subscriptions
+- **Stripe integration** via Replit connector (`stripe-replit-sync` for webhook sync + schema management)
+- **Products**: PulseDesk Pro ($49/mo, $470/yr) and PulseDesk Enterprise ($149/mo, $1420/yr) — seeded via `server/seed-products.ts`
+- **Plan limits**: Free (5 members, 50 tickets), Pro (25 members, unlimited tickets), Enterprise (unlimited)
+- **Feature gating**: Enforced at API level on ticket creation and membership joining
+- **Stripe schema**: Managed automatically by `stripe-replit-sync` — DO NOT create tables in `stripe` schema
+- **Webhook**: Registered at `/api/stripe/webhook` BEFORE `express.json()` middleware in `server/index.ts`
+- **Billing UI**: Settings → Billing tab with current plan, usage, upgrade options, and Stripe portal link
+- **Subscription sync**: `syncOrgPlanFromStripe()` in billing route checks `stripe.subscriptions` and updates org plan on each status check
+- **Files**: `server/stripeClient.ts`, `server/webhookHandlers.ts`, `server/routes/billing.ts`, `server/seed-products.ts`
+
+### Dashboard Reactivity
+- `queryClient.ts`: `refetchOnWindowFocus: true`, `staleTime: 30s`
+- Dashboard query: `refetchInterval: 30000` (30s auto-refresh)
+- Ticket mutations invalidate related query caches
+
 ## Key Design Decisions
-- No Stripe, subscriptions, or Twilio/SMS features
 - Roles: owner, admin, supervisor, staff, technician, readonly
 - Ticket numbering: PD-XXXXX (auto-incrementing counter per org)
 - Organization creation auto-seeds 10 default departments

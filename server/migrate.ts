@@ -171,6 +171,62 @@ export async function ensureSchema() {
       );
     `);
 
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE notification_type AS ENUM ('ticket_created','ticket_assigned','ticket_status_changed','ticket_note_added','ticket_escalated','ticket_overdue','supply_request_update','facility_request_update');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE org_plan AS ENUM ('free','pro','enterprise');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE orgs ADD COLUMN plan org_plan NOT NULL DEFAULT 'free';
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE orgs ADD COLUMN stripe_customer_id text;
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE orgs ADD COLUMN stripe_subscription_id text;
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE orgs ADD COLUMN plan_expires_at timestamp;
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id varchar NOT NULL REFERENCES orgs(id),
+        user_id varchar NOT NULL REFERENCES users(id),
+        type notification_type NOT NULL,
+        title text NOT NULL,
+        message text NOT NULL,
+        ticket_id varchar REFERENCES tickets(id),
+        read boolean NOT NULL DEFAULT false,
+        created_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+
     await client.query("COMMIT");
     console.log("Schema verification complete - all tables ensured.");
   } catch (err) {

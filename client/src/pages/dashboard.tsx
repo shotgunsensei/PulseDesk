@@ -232,6 +232,7 @@ export default function Dashboard() {
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard"],
     enabled: !!org,
+    refetchInterval: 30000,
   });
 
   if (isLoading) {

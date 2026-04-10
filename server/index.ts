@@ -30,6 +30,24 @@ const authLimiter = rateLimit({
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
 
+app.post(
+  '/api/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    try {
+      const signature = req.headers['stripe-signature'];
+      if (!signature) return res.status(400).json({ error: 'Missing signature' });
+      const sig = Array.isArray(signature) ? signature[0] : signature;
+      const { WebhookHandlers } = await import('./webhookHandlers');
+      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
+      res.status(200).json({ received: true });
+    } catch (err: any) {
+      console.error('[stripe webhook error]', err.message);
+      res.status(400).json({ error: err.message });
+    }
+  }
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -78,6 +96,22 @@ app.use((req, res, next) => {
   await ensureSuperAdmin();
   await ensureDemoAccount();
   await ensureReviewerAccount();
+
+  try {
+    const { runMigrations } = await import('stripe-replit-sync');
+    const databaseUrl = process.env.DATABASE_URL;
+    if (databaseUrl) {
+      await runMigrations({ databaseUrl });
+      const { getStripeSync } = await import('./stripeClient');
+      const stripeSync = await getStripeSync();
+      const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+      await stripeSync.findOrCreateManagedWebhook(`${webhookBaseUrl}/api/stripe/webhook`);
+      await stripeSync.syncBackfill();
+      log("Stripe sync initialized");
+    }
+  } catch (err: any) {
+    log(`Stripe init skipped: ${err.message}`, "stripe");
+  }
 
   await registerRoutes(httpServer, app);
 

@@ -105,6 +105,12 @@ export const users = pgTable("users", {
   lastLoginAt: timestamp("last_login_at"),
 });
 
+export const orgPlanEnum = pgEnum("org_plan", [
+  "free",
+  "pro",
+  "enterprise",
+]);
+
 export const orgs = pgTable("orgs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -113,6 +119,10 @@ export const orgs = pgTable("orgs", {
   email: text("email").default(""),
   address: text("address").default(""),
   logoUrl: text("logo_url"),
+  plan: orgPlanEnum("plan").notNull().default("free"),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  planExpiresAt: timestamp("plan_expires_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -303,6 +313,33 @@ export const orgRoleMappings = pgTable("org_role_mappings", {
   uniqueOrgGroup: uniqueIndex("idx_org_role_mappings_org_group").on(table.orgId, table.entraGroupId),
 }));
 
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "ticket_created",
+  "ticket_assigned",
+  "ticket_status_changed",
+  "ticket_note_added",
+  "ticket_escalated",
+  "ticket_overdue",
+  "supply_request_update",
+  "facility_request_update",
+]);
+
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id),
+  userId: varchar("user_id")
+    .notNull()
+    .references(() => users.id),
+  type: notificationTypeEnum("type").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  ticketId: varchar("ticket_id").references(() => tickets.id),
+  read: boolean("read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const authAuditLog = pgTable("auth_audit_log", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orgId: varchar("org_id").references(() => orgs.id),
@@ -434,6 +471,7 @@ export type InsertFacilityRequest = z.infer<typeof insertFacilityRequestSchema>;
 export type Vendor = typeof vendors.$inferSelect;
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type InviteCode = typeof inviteCodes.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;
 export type OrgAuthConfig = typeof orgAuthConfig.$inferSelect;
 export type OrgRoleMapping = typeof orgRoleMappings.$inferSelect;
 export type AuthAuditLogEntry = typeof authAuditLog.$inferSelect;
@@ -549,6 +587,12 @@ export const ROLE_LABELS: Record<string, string> = {
   technician: "Technician",
   readonly: "Read-Only Executive",
 };
+
+export const PLAN_LIMITS = {
+  free: { maxMembers: 5, maxTickets: 50, label: "Free" },
+  pro: { maxMembers: 25, maxTickets: Infinity, label: "Pro" },
+  enterprise: { maxMembers: Infinity, maxTickets: Infinity, label: "Enterprise" },
+} as const;
 
 export const DEFAULT_DEPARTMENTS = [
   "Radiology",
