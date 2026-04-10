@@ -61,7 +61,6 @@ async function migrateStaleRoles() {
       const r2 = await client.query(`UPDATE memberships SET role = 'readonly' WHERE role = 'viewer'`);
       if (r2.rowCount && r2.rowCount > 0) console.log(`[migration] Migrated ${r2.rowCount} memberships: viewer → readonly`);
 
-      await client.query(`ALTER TABLE memberships ALTER COLUMN role SET DEFAULT 'admin'::membership_role`);
     }
 
     if (tables.has("invite_codes")) {
@@ -70,8 +69,6 @@ async function migrateStaleRoles() {
 
       const r4 = await client.query(`UPDATE invite_codes SET role = 'readonly' WHERE role = 'viewer'`);
       if (r4.rowCount && r4.rowCount > 0) console.log(`[migration] Migrated ${r4.rowCount} invite_codes: viewer → readonly`);
-
-      await client.query(`ALTER TABLE invite_codes ALTER COLUMN role SET DEFAULT 'admin'::membership_role`);
     }
 
     console.log(`[migration] Stale role migration and defaults update complete`);

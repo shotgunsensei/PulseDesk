@@ -20,6 +20,8 @@ export const membershipRoleEnum = pgEnum("membership_role", [
   "staff",
   "technician",
   "readonly",
+  "tech",
+  "viewer",
 ]);
 
 export const ticketPriorityEnum = pgEnum("ticket_priority", [
@@ -111,6 +113,8 @@ export const orgPlanEnum = pgEnum("org_plan", [
   "pro_plus",
   "enterprise",
   "unlimited",
+  "individual",
+  "small_business",
 ]);
 
 export const orgs = pgTable("orgs", {
@@ -136,7 +140,7 @@ export const memberships = pgTable("memberships", {
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
-  role: membershipRoleEnum("role").notNull().default("admin"),
+  role: membershipRoleEnum("role").notNull().default("tech"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -146,7 +150,7 @@ export const inviteCodes = pgTable("invite_codes", {
     .notNull()
     .references(() => orgs.id),
   code: text("code").notNull().unique(),
-  role: membershipRoleEnum("role").notNull().default("admin"),
+  role: membershipRoleEnum("role").notNull().default("tech"),
   expiresAt: timestamp("expires_at"),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
