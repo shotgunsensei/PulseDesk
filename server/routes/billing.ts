@@ -10,29 +10,62 @@ const router = Router();
 
 router.get("/api/billing/plans", requireAuth, requireOrg, async (req: Request, res: Response) => {
   try {
-    const result = await db.execute(sql`
-      SELECT
-        p.id as product_id,
-        p.name as product_name,
-        p.description as product_description,
-        p.metadata as product_metadata,
-        pr.id as price_id,
-        pr.unit_amount,
-        pr.currency,
-        pr.recurring->>'interval' as interval
-      FROM stripe.products p
-      JOIN stripe.prices pr ON pr.product = p.id
-      WHERE p.active = true AND pr.active = true
-        AND p.metadata->>'plan' IN ('pro', 'pro_plus', 'enterprise', 'unlimited')
-        AND p.name LIKE 'PulseDesk%'
-      ORDER BY pr.unit_amount ASC
-    `);
-    res.json(result.rows);
-  } catch (err: any) {
-    if (err.message?.includes('stripe.products') || err.message?.includes('does not exist')) {
-      res.json([]);
-      return;
+    let rows: any[] = [];
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          p.id as product_id,
+          p.name as product_name,
+          p.description as product_description,
+          p.metadata as product_metadata,
+          pr.id as price_id,
+          pr.unit_amount,
+          pr.currency,
+          pr.recurring->>'interval' as interval
+        FROM stripe.products p
+        JOIN stripe.prices pr ON pr.product = p.id
+        WHERE p.active = true AND pr.active = true
+          AND p.metadata->>'plan' IN ('pro', 'pro_plus', 'enterprise', 'unlimited')
+          AND p.name LIKE 'PulseDesk%'
+        ORDER BY pr.unit_amount ASC
+      `);
+      rows = result.rows as any[];
+    } catch {
+      rows = [];
     }
+
+    if (rows.length === 0) {
+      try {
+        const stripe = await getUncachableStripeClient();
+        const products = await stripe.products.list({ limit: 100, active: true });
+        const pulseProducts = products.data.filter(
+          (p) => p.name.startsWith("PulseDesk") && ALLOWED_PLAN_METADATA.includes(p.metadata?.plan)
+        );
+        for (const product of pulseProducts) {
+          const prices = await stripe.prices.list({ product: product.id, active: true });
+          for (const price of prices.data) {
+            if (price.recurring?.interval === "month") {
+              rows.push({
+                product_id: product.id,
+                product_name: product.name,
+                product_description: product.description,
+                product_metadata: product.metadata,
+                price_id: price.id,
+                unit_amount: price.unit_amount,
+                currency: price.currency,
+                interval: price.recurring.interval,
+              });
+            }
+          }
+        }
+        rows.sort((a, b) => (a.unit_amount || 0) - (b.unit_amount || 0));
+      } catch {
+        rows = [];
+      }
+    }
+
+    res.json(rows);
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -46,31 +79,64 @@ async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
     const customerId = (org as any).stripeCustomerId;
     if (!customerId) return;
 
-    const subResult = await db.execute(sql`
-      SELECT s.id, s.status, s.current_period_end, p.metadata as product_metadata
-      FROM stripe.subscriptions s
-      JOIN stripe.prices pr ON s.items->'data'->0->'price'->>'id' = pr.id
-      JOIN stripe.products p ON pr.product = p.id
-      WHERE s.customer = ${customerId}
-      AND s.status IN ('active', 'trialing')
-      ORDER BY s.created DESC
-      LIMIT 1
-    `);
+    let subId: string | null = null;
+    let subStatus: string | null = null;
+    let periodEnd: number | null = null;
+    let planMeta: string | null = null;
 
-    if (subResult.rows.length > 0) {
-      const sub = subResult.rows[0] as any;
-      const meta = typeof sub.product_metadata === 'string' ? JSON.parse(sub.product_metadata) : sub.product_metadata;
-      const rawPlan = meta?.plan;
-      const stripePlan = ALLOWED_PLAN_METADATA.includes(rawPlan) ? rawPlan : "pro";
+    try {
+      const subResult = await db.execute(sql`
+        SELECT s.id, s.status, s.current_period_end, p.metadata as product_metadata
+        FROM stripe.subscriptions s
+        JOIN stripe.prices pr ON s.items->'data'->0->'price'->>'id' = pr.id
+        JOIN stripe.products p ON pr.product = p.id
+        WHERE s.customer = ${customerId}
+        AND s.status IN ('active', 'trialing')
+        ORDER BY s.created DESC
+        LIMIT 1
+      `);
+      if (subResult.rows.length > 0) {
+        const row = subResult.rows[0] as any;
+        subId = row.id;
+        subStatus = row.status;
+        periodEnd = row.current_period_end;
+        const meta = typeof row.product_metadata === 'string' ? JSON.parse(row.product_metadata) : row.product_metadata;
+        planMeta = meta?.plan;
+      }
+    } catch {}
+
+    if (!subId) {
+      try {
+        const stripe = await getUncachableStripeClient();
+        const subs = await stripe.subscriptions.list({
+          customer: customerId,
+          status: "active",
+          limit: 1,
+          expand: ["data.items.data.price.product"],
+        });
+        if (subs.data.length > 0) {
+          const sub = subs.data[0];
+          subId = sub.id;
+          subStatus = sub.status;
+          periodEnd = sub.current_period_end;
+          const product = sub.items.data[0]?.price?.product;
+          const productMeta = typeof product === "object" && product !== null ? (product as any).metadata : null;
+          planMeta = productMeta?.plan;
+        }
+      } catch {}
+    }
+
+    if (subId && subStatus && planMeta) {
+      const stripePlan = ALLOWED_PLAN_METADATA.includes(planMeta) ? planMeta : "pro";
       const currentPlan = (org as any).plan || "free";
-      if (stripePlan !== currentPlan || (org as any).stripeSubscriptionId !== sub.id) {
+      if (stripePlan !== currentPlan || (org as any).stripeSubscriptionId !== subId) {
         await storage.updateOrg(orgId, {
           plan: stripePlan,
-          stripeSubscriptionId: sub.id,
-          planExpiresAt: sub.current_period_end ? new Date(sub.current_period_end * 1000) : null,
+          stripeSubscriptionId: subId,
+          planExpiresAt: periodEnd ? new Date(periodEnd * 1000) : null,
         } as any);
       }
-    } else {
+    } else if (!subId) {
       const currentPlan = (org as any).plan || "free";
       if (currentPlan !== "free") {
         await storage.updateOrg(orgId, {
@@ -81,7 +147,7 @@ async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
       }
     }
   } catch (err) {
-    // stripe schema may not be ready yet
+    // stripe connection may not be ready yet
   }
 }
 
@@ -95,7 +161,21 @@ async function getApprovedPriceIds(): Promise<Set<string>> {
       AND (p.metadata->>'plan' IN ('pro', 'pro_plus', 'enterprise', 'unlimited'))
       AND p.name LIKE 'PulseDesk%'
     `);
-    return new Set(result.rows.map((r: any) => r.id));
+    if (result.rows.length > 0) {
+      return new Set(result.rows.map((r: any) => r.id));
+    }
+  } catch {}
+
+  try {
+    const stripe = await getUncachableStripeClient();
+    const products = await stripe.products.list({ limit: 100, active: true });
+    const ids = new Set<string>();
+    for (const p of products.data) {
+      if (!p.name.startsWith("PulseDesk") || !ALLOWED_PLAN_METADATA.includes(p.metadata?.plan)) continue;
+      const prices = await stripe.prices.list({ product: p.id, active: true });
+      for (const pr of prices.data) ids.add(pr.id);
+    }
+    return ids;
   } catch {
     return new Set();
   }
