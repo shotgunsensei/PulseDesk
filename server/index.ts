@@ -70,6 +70,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  const { ensureSchema } = await import("./migrate");
+  await ensureSchema();
+
   const { seedDatabase, ensureSuperAdmin, ensureDemoAccount, ensureReviewerAccount } = await import("./seed");
   await seedDatabase();
   await ensureSuperAdmin();
