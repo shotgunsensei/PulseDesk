@@ -103,7 +103,7 @@ The application follows a monolithic full-stack architecture with a React fronte
 - `server/storage.ts` - Storage layer with all CRUD methods including onboarding
 - `server/seed.ts` - Demo data seeding (Metro Health Network)
 - `server/middleware.ts` - Auth middleware (requireAuth, requireOrg, requireSuperAdmin, requireRole, requireMinRole). Owner role bypasses requireRole checks.
-- `server/migrate.ts` - Schema migration with session table + onboarding_items table
+- `server/migrate.ts` - Schema migration with enum fixes (membership_role + org_plan), stale role migration, column default updates, session table + onboarding_items table
 
 ### Frontend
 - `client/src/App.tsx` - Main app with routing
@@ -155,7 +155,8 @@ The application follows a monolithic full-stack architecture with a React fronte
 - **Files**: `server/stripeClient.ts`, `server/webhookHandlers.ts`, `server/routes/billing.ts`, `server/seed-products.ts`, `client/src/pages/billing.tsx`
 
 ## Key Design Decisions
-- Roles: owner, admin, supervisor, staff, technician, readonly
+- Roles: owner, admin, supervisor, staff, technician, readonly (DB enum also contains legacy `tech`/`viewer` values — unused, harmless, cannot be removed without type recreation)
+- org_plan: free, pro, pro_plus, enterprise, unlimited (DB enum also contains legacy `individual`/`small_business` values — unused)
 - Ticket numbering: PD-XXXXX (auto-incrementing counter per org)
 - Organization creation auto-seeds 10 default departments
 - Healthcare-appropriate blue/teal color scheme

@@ -1,6 +1,93 @@
 import { pool } from "./db";
 
+async function migrateEnums() {
+  const client = await pool.connect();
+  try {
+    const enumFixesNeeded: { type: string; value: string }[] = [
+      { type: "membership_role", value: "owner" },
+      { type: "membership_role", value: "admin" },
+      { type: "membership_role", value: "supervisor" },
+      { type: "membership_role", value: "staff" },
+      { type: "membership_role", value: "technician" },
+      { type: "membership_role", value: "readonly" },
+      { type: "org_plan", value: "free" },
+      { type: "org_plan", value: "pro" },
+      { type: "org_plan", value: "pro_plus" },
+      { type: "org_plan", value: "enterprise" },
+      { type: "org_plan", value: "unlimited" },
+    ];
+
+    for (const { type, value } of enumFixesNeeded) {
+      const typeExists = await client.query(
+        `SELECT 1 FROM pg_type WHERE typname = $1`,
+        [type]
+      );
+      if (typeExists.rows.length === 0) continue;
+
+      const valueExists = await client.query(
+        `SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid WHERE t.typname = $1 AND e.enumlabel = $2`,
+        [type, value]
+      );
+      if (valueExists.rows.length === 0) {
+        try {
+          await client.query(`ALTER TYPE ${type} ADD VALUE '${value}'`);
+          console.log(`[migration] Added '${value}' to enum ${type}`);
+        } catch (err: any) {
+          if (err.code === '42710') continue;
+          throw err;
+        }
+      }
+    }
+  } finally {
+    client.release();
+  }
+}
+
+async function migrateStaleRoles() {
+  const client = await pool.connect();
+  try {
+    const tablesExist = await client.query(
+      `SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('memberships', 'invite_codes')`
+    );
+    const tables = new Set(tablesExist.rows.map((r: any) => r.tablename));
+    if (tables.size === 0) return;
+
+    await client.query("BEGIN");
+
+    if (tables.has("memberships")) {
+      const r1 = await client.query(`UPDATE memberships SET role = 'technician' WHERE role = 'tech'`);
+      if (r1.rowCount && r1.rowCount > 0) console.log(`[migration] Migrated ${r1.rowCount} memberships: tech → technician`);
+
+      const r2 = await client.query(`UPDATE memberships SET role = 'readonly' WHERE role = 'viewer'`);
+      if (r2.rowCount && r2.rowCount > 0) console.log(`[migration] Migrated ${r2.rowCount} memberships: viewer → readonly`);
+
+      await client.query(`ALTER TABLE memberships ALTER COLUMN role SET DEFAULT 'staff'::membership_role`);
+    }
+
+    if (tables.has("invite_codes")) {
+      const r3 = await client.query(`UPDATE invite_codes SET role = 'technician' WHERE role = 'tech'`);
+      if (r3.rowCount && r3.rowCount > 0) console.log(`[migration] Migrated ${r3.rowCount} invite_codes: tech → technician`);
+
+      const r4 = await client.query(`UPDATE invite_codes SET role = 'readonly' WHERE role = 'viewer'`);
+      if (r4.rowCount && r4.rowCount > 0) console.log(`[migration] Migrated ${r4.rowCount} invite_codes: viewer → readonly`);
+
+      await client.query(`ALTER TABLE invite_codes ALTER COLUMN role SET DEFAULT 'staff'::membership_role`);
+    }
+
+    console.log(`[migration] Stale role migration and defaults update complete`);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function ensureSchema() {
+  await migrateEnums();
+  await migrateStaleRoles();
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -185,18 +272,6 @@ export async function ensureSchema() {
       END $$;
     `);
 
-    await client.query(`
-      DO $$ BEGIN
-        ALTER TYPE org_plan ADD VALUE IF NOT EXISTS 'pro_plus';
-      EXCEPTION WHEN duplicate_object THEN NULL;
-      END $$;
-    `);
-    await client.query(`
-      DO $$ BEGIN
-        ALTER TYPE org_plan ADD VALUE IF NOT EXISTS 'unlimited';
-      EXCEPTION WHEN duplicate_object THEN NULL;
-      END $$;
-    `);
 
     await client.query(`
       DO $$ BEGIN
