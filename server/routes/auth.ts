@@ -816,6 +816,18 @@ router.put("/api/auth/config", requireAuth, requireOrg, requireMinRole("admin"),
     const body = parsed.data;
 
     if (body.authMode === "m365" || body.authMode === "hybrid") {
+      const org = await storage.getOrg(orgId);
+      const plan = (org as any)?.plan || "free";
+      const { PLAN_LIMITS } = await import("@shared/schema");
+      const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
+      if (!limits.entraEnabled) {
+        return res.status(403).json({
+          error: "Microsoft 365/Entra login requires a Pro plan or higher. Please upgrade your subscription.",
+        });
+      }
+    }
+
+    if (body.authMode === "m365" || body.authMode === "hybrid") {
       const existingConfig = await storage.getOrgAuthConfig(orgId);
       const hasExistingSecret = existingConfig?.entraClientSecretEncrypted;
       const hasNewSecret = body.entraClientSecret && body.entraClientSecret !== "***";

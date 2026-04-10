@@ -180,7 +180,20 @@ export async function ensureSchema() {
 
     await client.query(`
       DO $$ BEGIN
-        CREATE TYPE org_plan AS ENUM ('free','pro','enterprise');
+        CREATE TYPE org_plan AS ENUM ('free','pro','pro_plus','enterprise','unlimited');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TYPE org_plan ADD VALUE IF NOT EXISTS 'pro_plus';
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TYPE org_plan ADD VALUE IF NOT EXISTS 'unlimited';
       EXCEPTION WHEN duplicate_object THEN NULL;
       END $$;
     `);

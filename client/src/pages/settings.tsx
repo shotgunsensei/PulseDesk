@@ -500,7 +500,7 @@ interface BillingStatus {
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   planExpiresAt: string | null;
-  limits: { maxMembers: number | null; maxTickets: number | null };
+  limits: { maxMembers: number | null; maxTickets: number | null; entraEnabled: boolean };
   usage: { members: number; tickets: number };
 }
 
@@ -561,12 +561,45 @@ function BillingSettings() {
   const currentPlan = billing?.plan || "free";
   const planConfig = PLAN_LIMITS[currentPlan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
 
+  const planOrder = ["pro", "pro_plus", "enterprise", "unlimited"];
+  const currentPlanIndex = planOrder.indexOf(currentPlan);
+
   const groupedPlans: Record<string, StripePlan[]> = {};
   for (const p of plans) {
     const key = p.product_id;
     if (!groupedPlans[key]) groupedPlans[key] = [];
     groupedPlans[key].push(p);
   }
+
+  const sortedGroupedPlans = Object.entries(groupedPlans).sort(([, a], [, b]) => {
+    const aMin = Math.min(...a.map(p => p.unit_amount));
+    const bMin = Math.min(...b.map(p => p.unit_amount));
+    return aMin - bMin;
+  });
+
+  const getPlanIcon = (plan: string) => {
+    if (plan === "unlimited") return <Crown className="h-5 w-5 text-amber-600" />;
+    if (plan === "enterprise") return <Crown className="h-5 w-5 text-violet-600" />;
+    if (plan === "pro_plus") return <Zap className="h-5 w-5 text-indigo-600" />;
+    if (plan === "pro") return <Zap className="h-5 w-5 text-blue-600" />;
+    return <CreditCard className="h-5 w-5 text-slate-500" />;
+  };
+
+  const getPlanBg = (plan: string) => {
+    if (plan === "unlimited") return "bg-amber-100 dark:bg-amber-900/30";
+    if (plan === "enterprise") return "bg-violet-100 dark:bg-violet-900/30";
+    if (plan === "pro_plus") return "bg-indigo-100 dark:bg-indigo-900/30";
+    if (plan === "pro") return "bg-blue-100 dark:bg-blue-900/30";
+    return "bg-slate-100 dark:bg-slate-800";
+  };
+
+  const getPlanDescription = (plan: string) => {
+    if (plan === "unlimited") return "All features, unlimited users";
+    if (plan === "enterprise") return "All features, up to 200 users";
+    if (plan === "pro_plus") return "365/Entra login, up to 100 users";
+    if (plan === "pro") return "365/Entra login, up to 50 users";
+    return "Local login only, up to 5 users";
+  };
 
   return (
     <>
@@ -580,22 +613,12 @@ function BillingSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
-            <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${
-              currentPlan === "enterprise" ? "bg-violet-100 dark:bg-violet-900/30" :
-              currentPlan === "pro" ? "bg-blue-100 dark:bg-blue-900/30" :
-              "bg-slate-100 dark:bg-slate-800"
-            }`}>
-              {currentPlan === "enterprise" ? <Crown className="h-5 w-5 text-violet-600" /> :
-               currentPlan === "pro" ? <Zap className="h-5 w-5 text-blue-600" /> :
-               <CreditCard className="h-5 w-5 text-slate-500" />}
+            <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${getPlanBg(currentPlan)}`}>
+              {getPlanIcon(currentPlan)}
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium">{planConfig.label} Plan</p>
-              <p className="text-xs text-muted-foreground">
-                {currentPlan === "free" ? "Basic features for small teams" :
-                 currentPlan === "pro" ? "Professional features for growing teams" :
-                 "Full features for large organizations"}
-              </p>
+              <p className="text-xs text-muted-foreground">{getPlanDescription(currentPlan)}</p>
             </div>
             {billing?.stripeSubscriptionId && (
               <Button
@@ -626,60 +649,68 @@ function BillingSettings() {
               </p>
             </div>
           </div>
+
+          {!planConfig.entraEnabled && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
+              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-amber-800 dark:text-amber-200">Microsoft 365/Entra login locked</p>
+                <p className="text-[11px] text-amber-600 dark:text-amber-400">Upgrade to Pro or higher to enable SSO with Microsoft 365 / Entra ID.</p>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {currentPlan === "free" && Object.keys(groupedPlans).length > 0 && (
+      {sortedGroupedPlans.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Zap className="h-4 w-4" />
-              Upgrade Your Plan
+              {currentPlan === "free" ? "Upgrade Your Plan" : "Change Plan"}
             </CardTitle>
-            <CardDescription>Unlock more features for your team</CardDescription>
+            <CardDescription>
+              {currentPlan === "free"
+                ? "Unlock 365/Entra login and more users"
+                : "Switch to a different plan"}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {Object.entries(groupedPlans).map(([productId, prices]) => {
+            {sortedGroupedPlans.map(([productId, prices]) => {
               const product = prices[0];
               const monthly = prices.find(p => p.interval === "month");
-              const yearly = prices.find(p => p.interval === "year");
-              const planMeta = product.product_metadata;
+              const planMeta = typeof product.product_metadata === 'string'
+                ? JSON.parse(product.product_metadata)
+                : product.product_metadata;
+              const planKey = planMeta?.plan || "";
+              const planIdx = planOrder.indexOf(planKey);
+              const isCurrentPlan = planKey === currentPlan;
+              const isDowngrade = planIdx < currentPlanIndex;
 
               return (
-                <div key={productId} className="rounded-lg border p-4 space-y-3">
+                <div key={productId} className={`rounded-lg border p-4 space-y-3 ${isCurrentPlan ? "border-primary bg-primary/5" : ""}`}>
                   <div className="flex items-center gap-2">
-                    {planMeta?.plan === "enterprise" ?
-                      <Crown className="h-4 w-4 text-violet-600" /> :
-                      <Zap className="h-4 w-4 text-blue-600" />}
+                    {getPlanIcon(planKey)}
                     <span className="font-medium text-sm">{product.product_name}</span>
+                    {isCurrentPlan && (
+                      <span className="ml-auto text-[10px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">Current</span>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground">{product.product_description}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {monthly && (
+                  {monthly && !isCurrentPlan && (
+                    <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant={isDowngrade ? "outline" : "default"}
                         className="gap-1"
                         onClick={() => checkoutMutation.mutate(monthly.price_id)}
                         disabled={checkoutMutation.isPending}
-                        data-testid={`button-subscribe-${planMeta?.plan || "plan"}-monthly`}
+                        data-testid={`button-subscribe-${planKey}-monthly`}
                       >
-                        ${(monthly.unit_amount / 100).toFixed(0)}/mo
+                        {isDowngrade ? "Downgrade" : "Subscribe"} — ${(monthly.unit_amount / 100).toFixed(0)}/mo
                       </Button>
-                    )}
-                    {yearly && (
-                      <Button
-                        size="sm"
-                        className="gap-1"
-                        onClick={() => checkoutMutation.mutate(yearly.price_id)}
-                        disabled={checkoutMutation.isPending}
-                        data-testid={`button-subscribe-${planMeta?.plan || "plan"}-yearly`}
-                      >
-                        ${(yearly.unit_amount / 100).toFixed(0)}/yr
-                        <span className="text-[10px] opacity-70">Save ~20%</span>
-                      </Button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -720,6 +751,13 @@ function AuthenticationSettings() {
   const [newMapping, setNewMapping] = useState({ entraGroupId: "", pulsedeskRole: "staff", displayLabel: "" });
   const [clientSecretField, setClientSecretField] = useState("");
   const [showAuditLog, setShowAuditLog] = useState(false);
+
+  const { data: billingStatus } = useQuery<BillingStatus>({
+    queryKey: ["/api/billing/status"],
+  });
+  const orgPlan = billingStatus?.plan || "free";
+  const planLimits = PLAN_LIMITS[orgPlan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
+  const entraLocked = !planLimits.entraEnabled;
 
   const { data: authConfig, isLoading: configLoading } = useQuery<AuthConfig>({
     queryKey: ["/api/auth/config"],
@@ -834,28 +872,38 @@ function AuthenticationSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            {AUTH_MODE_OPTIONS.map((opt) => (
-              <label
-                key={opt.value}
-                className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
-                  form?.authMode === opt.value ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-                }`}
-                data-testid={`radio-auth-mode-${opt.value}`}
-              >
-                <input
-                  type="radio"
-                  name="authMode"
-                  value={opt.value}
-                  checked={form?.authMode === opt.value}
-                  onChange={() => updateField("authMode", opt.value)}
-                  className="mt-0.5"
-                />
-                <div>
-                  <p className="text-sm font-medium">{opt.label}</p>
-                  <p className="text-xs text-muted-foreground">{opt.description}</p>
-                </div>
-              </label>
-            ))}
+            {AUTH_MODE_OPTIONS.map((opt) => {
+              const isEntraMode = opt.value === "m365" || opt.value === "hybrid";
+              const isDisabled = isEntraMode && entraLocked;
+              return (
+                <label
+                  key={opt.value}
+                  className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
+                    isDisabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                  } ${
+                    form?.authMode === opt.value ? "border-primary bg-primary/5" : isDisabled ? "" : "hover:bg-muted/50"
+                  }`}
+                  data-testid={`radio-auth-mode-${opt.value}`}
+                >
+                  <input
+                    type="radio"
+                    name="authMode"
+                    value={opt.value}
+                    checked={form?.authMode === opt.value}
+                    onChange={() => !isDisabled && updateField("authMode", opt.value)}
+                    disabled={isDisabled}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <p className="text-sm font-medium">{opt.label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {opt.description}
+                      {isDisabled && " — requires Pro plan or higher"}
+                    </p>
+                  </div>
+                </label>
+              );
+            })}
           </div>
         </CardContent>
       </Card>

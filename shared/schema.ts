@@ -108,7 +108,9 @@ export const users = pgTable("users", {
 export const orgPlanEnum = pgEnum("org_plan", [
   "free",
   "pro",
+  "pro_plus",
   "enterprise",
+  "unlimited",
 ]);
 
 export const orgs = pgTable("orgs", {
@@ -589,9 +591,11 @@ export const ROLE_LABELS: Record<string, string> = {
 };
 
 export const PLAN_LIMITS = {
-  free: { maxMembers: 5, maxTickets: 50, label: "Free" },
-  pro: { maxMembers: 25, maxTickets: Infinity, label: "Pro" },
-  enterprise: { maxMembers: Infinity, maxTickets: Infinity, label: "Enterprise" },
+  free: { maxMembers: 5, maxTickets: Infinity, entraEnabled: false, label: "Free", price: 0 },
+  pro: { maxMembers: 50, maxTickets: Infinity, entraEnabled: true, label: "Pro", price: 60 },
+  pro_plus: { maxMembers: 100, maxTickets: Infinity, entraEnabled: true, label: "Pro Plus", price: 80 },
+  enterprise: { maxMembers: 200, maxTickets: Infinity, entraEnabled: true, label: "Enterprise", price: 100 },
+  unlimited: { maxMembers: Infinity, maxTickets: Infinity, entraEnabled: true, label: "Unlimited", price: 200 },
 } as const;
 
 export const DEFAULT_DEPARTMENTS = [

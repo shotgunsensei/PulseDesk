@@ -226,9 +226,9 @@ The application follows a monolithic full-stack architecture with a React fronte
 
 ### Stripe Billing & Subscriptions
 - **Stripe integration** via Replit connector (`stripe-replit-sync` for webhook sync + schema management)
-- **Products**: PulseDesk Pro ($49/mo, $470/yr) and PulseDesk Enterprise ($149/mo, $1420/yr) — seeded via `server/seed-products.ts`
-- **Plan limits**: Free (5 members, 50 tickets), Pro (25 members, unlimited tickets), Enterprise (unlimited)
-- **Feature gating**: Enforced at API level on ticket creation and membership joining
+- **Products**: Pro ($60/mo), Pro Plus ($80/mo), Enterprise ($100/mo), Unlimited ($200/mo) — seeded via `server/seed-products.ts`
+- **Plan limits**: Free (5 users, local login only), Pro (50 users, 365/Entra), Pro Plus (100 users, 365/Entra), Enterprise (200 users, all features), Unlimited (unlimited users, all features)
+- **Feature gating**: Member limit enforced on join; Entra/365 login gated by plan (Free = local only, Pro+ = Entra enabled); auth config update blocked server-side for Free plan
 - **Stripe schema**: Managed automatically by `stripe-replit-sync` — DO NOT create tables in `stripe` schema
 - **Webhook**: Registered at `/api/stripe/webhook` BEFORE `express.json()` middleware in `server/index.ts`
 - **Billing UI**: Settings → Billing tab with current plan, usage, upgrade options, and Stripe portal link

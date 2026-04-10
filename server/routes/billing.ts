@@ -35,7 +35,7 @@ router.get("/api/billing/plans", requireAuth, requireOrg, async (req: Request, r
   }
 });
 
-const ALLOWED_PLAN_METADATA = ["pro", "enterprise"];
+const ALLOWED_PLAN_METADATA = ["pro", "pro_plus", "enterprise", "unlimited"];
 
 async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
   try {
@@ -90,7 +90,7 @@ async function getApprovedPriceIds(): Promise<Set<string>> {
       FROM stripe.prices pr
       JOIN stripe.products p ON pr.product = p.id
       WHERE p.active = true AND pr.active = true
-      AND (p.metadata->>'plan' IN ('pro', 'enterprise'))
+      AND (p.metadata->>'plan' IN ('pro', 'pro_plus', 'enterprise', 'unlimited'))
     `);
     return new Set(result.rows.map((r: any) => r.id));
   } catch {
@@ -117,6 +117,7 @@ router.get("/api/billing/status", requireAuth, requireOrg, async (req: Request, 
       limits: {
         maxMembers: limits.maxMembers === Infinity ? null : limits.maxMembers,
         maxTickets: limits.maxTickets === Infinity ? null : limits.maxTickets,
+        entraEnabled: limits.entraEnabled,
       },
       usage: {
         members: counts.members,
