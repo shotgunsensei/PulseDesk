@@ -642,7 +642,11 @@ router.get("/api/auth/me", requireAuth, async (req: Request, res: Response) => {
 
     let orgCounts = null;
     if (org) {
-      orgCounts = await storage.getOrgCounts(org.id);
+      try {
+        orgCounts = await storage.getOrgCounts(org.id);
+      } catch {
+        orgCounts = { tickets: 0, departments: 0, assets: 0, members: 0 };
+      }
     }
 
     let authConfig = null;
