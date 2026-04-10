@@ -112,7 +112,6 @@ async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
         customer: customerId,
         status,
         limit: 1,
-        expand: ["data.items.data.price.product"],
       });
       allSubs.push(...subs.data);
     }
@@ -122,9 +121,13 @@ async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
       subId = sub.id;
       subStatus = sub.status;
       periodEnd = sub.current_period_end;
-      const product = sub.items.data[0]?.price?.product;
-      const productMeta = typeof product === "object" && product !== null ? (product as any).metadata : null;
-      planMeta = productMeta?.plan;
+      const priceId = sub.items?.data?.[0]?.price?.id;
+      if (priceId) {
+        const price = await stripe.prices.retrieve(priceId, { expand: ["product"] });
+        const product = price.product;
+        const productMeta = typeof product === "object" && product !== null ? (product as any).metadata : null;
+        planMeta = productMeta?.plan;
+      }
     }
   }
 
