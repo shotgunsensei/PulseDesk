@@ -165,13 +165,13 @@ export default function SettingsPage() {
   const updateRoleMutation = useMutation({
     mutationFn: ({ userId, role }: { userId: string; role: string }) =>
       apiRequest("PATCH", `/api/memberships/${userId}/role`, { role }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/memberships"] }); toast({ title: "Role updated" }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/memberships"] }); queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }); toast({ title: "Role updated" }); },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const removeMemberMutation = useMutation({
     mutationFn: (userId: string) => apiRequest("DELETE", `/api/memberships/${userId}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/memberships"] }); toast({ title: "Member removed" }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/memberships"] }); queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] }); toast({ title: "Member removed" }); },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 

@@ -104,8 +104,8 @@ function KpiCard({ label, value, sub, icon: Icon, iconColor = "text-muted-foregr
 }
 
 function AdminOnboarding({ stats }: { stats: DashboardStats }) {
-  const { data: vendors } = useQuery<{ id: string }[]>({ queryKey: ["/api/vendors"] });
-  const { data: members } = useQuery<{ userId: string }[]>({ queryKey: ["/api/memberships"] });
+  const { data: vendors } = useQuery<{ id: string }[]>({ queryKey: ["/api/vendors"], staleTime: 0 });
+  const { data: members } = useQuery<{ userId: string }[]>({ queryKey: ["/api/memberships"], staleTime: 0 });
 
   const steps = [
     { label: "Configure departments", href: "/departments", icon: ClipboardList, done: Object.keys(stats.departmentCounts).length > 0 },

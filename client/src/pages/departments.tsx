@@ -30,6 +30,7 @@ export default function DepartmentsPage() {
     mutationFn: (data: any) => apiRequest("POST", "/api/departments", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/departments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       setOpen(false);
       setName("");
       setDescription("");
@@ -41,6 +42,7 @@ export default function DepartmentsPage() {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/departments/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/departments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       toast({ title: "Department deleted" });
     },
   });

@@ -28,6 +28,7 @@ export default function VendorsPage() {
     mutationFn: (data: any) => apiRequest("POST", "/api/vendors", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       setOpen(false);
       setForm({ name: "", serviceType: "", phone: "", email: "", emergencyContact: "", contractNotes: "" });
       toast({ title: "Vendor added" });
@@ -38,6 +39,7 @@ export default function VendorsPage() {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/vendors/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       toast({ title: "Vendor removed" });
     },
   });

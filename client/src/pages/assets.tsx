@@ -45,6 +45,7 @@ export default function AssetsPage() {
     mutationFn: (data: any) => apiRequest("POST", "/api/assets", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       setOpen(false);
       setForm({ assetTag: "", name: "", assetType: "", location: "", departmentId: "", serviceVendor: "", warrantyNotes: "", maintenanceNotes: "", status: "active" });
       toast({ title: "Equipment registered" });
@@ -55,6 +56,7 @@ export default function AssetsPage() {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/assets/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       toast({ title: "Equipment removed" });
     },
   });
