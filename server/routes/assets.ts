@@ -49,7 +49,8 @@ router.patch("/api/assets/:id", requireAuth, requireOrg, requireMinRole("technic
 
 router.delete("/api/assets/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
   try {
-    await storage.deleteAsset(req.session.orgId!, req.params.id);
+    const deleted = await storage.deleteAsset(req.session.orgId!, req.params.id);
+    if (!deleted) return res.status(404).json({ error: "Asset not found" });
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

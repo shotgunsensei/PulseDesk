@@ -14,7 +14,6 @@ router.get("/api/onboarding", requireAuth, requireOrg, async (req: Request, res:
     const vendors = await storage.getVendors(orgId);
 
     const autoCompleteMap: Record<string, boolean> = {
-      departments: counts.departments > 0,
       assets: counts.assets > 0,
       vendors: vendors.length > 0,
       members: counts.members > 1,

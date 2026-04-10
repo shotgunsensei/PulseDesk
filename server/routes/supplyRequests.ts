@@ -49,7 +49,8 @@ router.patch("/api/supply-requests/:id", requireAuth, requireOrg, requireMinRole
 
 router.delete("/api/supply-requests/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
   try {
-    await storage.deleteSupplyRequest(req.session.orgId!, req.params.id);
+    const deleted = await storage.deleteSupplyRequest(req.session.orgId!, req.params.id);
+    if (!deleted) return res.status(404).json({ error: "Supply request not found" });
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

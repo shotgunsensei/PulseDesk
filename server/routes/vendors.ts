@@ -45,7 +45,8 @@ router.patch("/api/vendors/:id", requireAuth, requireOrg, requireMinRole("superv
 
 router.delete("/api/vendors/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
   try {
-    await storage.deleteVendor(req.session.orgId!, req.params.id);
+    const deleted = await storage.deleteVendor(req.session.orgId!, req.params.id);
+    if (!deleted) return res.status(404).json({ error: "Vendor not found" });
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

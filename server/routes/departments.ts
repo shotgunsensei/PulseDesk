@@ -45,7 +45,8 @@ router.patch("/api/departments/:id", requireAuth, requireOrg, requireMinRole("su
 
 router.delete("/api/departments/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
   try {
-    await storage.deleteDepartment(req.session.orgId!, req.params.id);
+    const deleted = await storage.deleteDepartment(req.session.orgId!, req.params.id);
+    if (!deleted) return res.status(404).json({ error: "Department not found" });
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

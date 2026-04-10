@@ -148,7 +148,8 @@ router.post("/api/tickets/:id/notes", requireAuth, requireOrg, requireMinRole("s
 
 router.delete("/api/tickets/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
   try {
-    await storage.deleteTicket(req.session.orgId!, req.params.id);
+    const deleted = await storage.deleteTicket(req.session.orgId!, req.params.id);
+    if (!deleted) return res.status(404).json({ error: "Ticket not found" });
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

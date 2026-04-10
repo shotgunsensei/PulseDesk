@@ -636,7 +636,7 @@ export type OnboardingItem = typeof onboardingItems.$inferSelect;
 export type InsertOnboardingItem = z.infer<typeof insertOnboardingItemSchema>;
 
 export const DEFAULT_ONBOARDING_ITEMS = [
-  { title: "Configure departments", description: "Set up your facility's departments for ticket routing", route: "/departments", sortOrder: 1, autoCompleteKey: "departments" },
+  { title: "Configure departments", description: "Review and customize your facility's departments for ticket routing", route: "/departments", sortOrder: 1, autoCompleteKey: null },
   { title: "Register equipment & assets", description: "Add medical equipment and facility assets to track", route: "/assets", sortOrder: 2, autoCompleteKey: "assets" },
   { title: "Add vendor contacts", description: "Register external vendors for service tracking", route: "/vendors", sortOrder: 3, autoCompleteKey: "vendors" },
   { title: "Invite team members", description: "Add staff to your organization", route: "/settings", sortOrder: 4, autoCompleteKey: "members" },

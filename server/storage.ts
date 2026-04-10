@@ -74,13 +74,13 @@ export interface IStorage {
   getDepartment(orgId: string, id: string): Promise<Department | undefined>;
   createDepartment(orgId: string, data: InsertDepartment): Promise<Department>;
   updateDepartment(orgId: string, id: string, data: Partial<Department>): Promise<Department | undefined>;
-  deleteDepartment(orgId: string, id: string): Promise<void>;
+  deleteDepartment(orgId: string, id: string): Promise<boolean>;
 
   getTickets(orgId: string): Promise<(Ticket & { departmentName?: string; reportedByName?: string; assignedToName?: string })[]>;
   getTicket(orgId: string, id: string): Promise<(Ticket & { departmentName?: string; reportedByName?: string; assignedToName?: string }) | undefined>;
   createTicket(orgId: string, data: InsertTicket, reportedBy: string): Promise<Ticket>;
   updateTicket(orgId: string, id: string, data: Partial<Ticket>): Promise<Ticket | undefined>;
-  deleteTicket(orgId: string, id: string): Promise<void>;
+  deleteTicket(orgId: string, id: string): Promise<boolean>;
   getNextTicketNumber(orgId: string): Promise<string>;
 
   getTicketEvents(orgId: string, ticketId: string): Promise<TicketEvent[]>;
@@ -90,25 +90,25 @@ export interface IStorage {
   getAsset(orgId: string, id: string): Promise<(Asset & { departmentName?: string }) | undefined>;
   createAsset(orgId: string, data: InsertAsset): Promise<Asset>;
   updateAsset(orgId: string, id: string, data: Partial<Asset>): Promise<Asset | undefined>;
-  deleteAsset(orgId: string, id: string): Promise<void>;
+  deleteAsset(orgId: string, id: string): Promise<boolean>;
 
   getSupplyRequests(orgId: string): Promise<(SupplyRequest & { departmentName?: string; requestedByName?: string })[]>;
   getSupplyRequest(orgId: string, id: string): Promise<(SupplyRequest & { departmentName?: string; requestedByName?: string }) | undefined>;
   createSupplyRequest(orgId: string, data: InsertSupplyRequest, requestedBy: string): Promise<SupplyRequest>;
   updateSupplyRequest(orgId: string, id: string, data: Partial<SupplyRequest>): Promise<SupplyRequest | undefined>;
-  deleteSupplyRequest(orgId: string, id: string): Promise<void>;
+  deleteSupplyRequest(orgId: string, id: string): Promise<boolean>;
 
   getFacilityRequests(orgId: string): Promise<(FacilityRequest & { requestedByName?: string; assignedToName?: string })[]>;
   getFacilityRequest(orgId: string, id: string): Promise<(FacilityRequest & { requestedByName?: string; assignedToName?: string }) | undefined>;
   createFacilityRequest(orgId: string, data: InsertFacilityRequest, requestedBy: string): Promise<FacilityRequest>;
   updateFacilityRequest(orgId: string, id: string, data: Partial<FacilityRequest>): Promise<FacilityRequest | undefined>;
-  deleteFacilityRequest(orgId: string, id: string): Promise<void>;
+  deleteFacilityRequest(orgId: string, id: string): Promise<boolean>;
 
   getVendors(orgId: string): Promise<Vendor[]>;
   getVendor(orgId: string, id: string): Promise<Vendor | undefined>;
   createVendor(orgId: string, data: InsertVendor): Promise<Vendor>;
   updateVendor(orgId: string, id: string, data: Partial<Vendor>): Promise<Vendor | undefined>;
-  deleteVendor(orgId: string, id: string): Promise<void>;
+  deleteVendor(orgId: string, id: string): Promise<boolean>;
 
   createNotification(orgId: string, userId: string, type: string, title: string, message: string, ticketId?: string | null): Promise<Notification>;
   getUserNotifications(orgId: string, userId: string, limit?: number): Promise<Notification[]>;
@@ -279,8 +279,9 @@ export class DatabaseStorage implements IStorage {
     return d;
   }
 
-  async deleteDepartment(orgId: string, id: string): Promise<void> {
-    await db.delete(departments).where(and(eq(departments.orgId, orgId), eq(departments.id, id)));
+  async deleteDepartment(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(departments).where(and(eq(departments.orgId, orgId), eq(departments.id, id))).returning({ id: departments.id });
+    return result.length > 0;
   }
 
   async getTickets(orgId: string): Promise<(Ticket & { departmentName?: string; reportedByName?: string; assignedToName?: string })[]> {
@@ -364,9 +365,10 @@ export class DatabaseStorage implements IStorage {
     return t;
   }
 
-  async deleteTicket(orgId: string, id: string): Promise<void> {
+  async deleteTicket(orgId: string, id: string): Promise<boolean> {
     await db.delete(ticketEvents).where(and(eq(ticketEvents.orgId, orgId), eq(ticketEvents.ticketId, id)));
-    await db.delete(tickets).where(and(eq(tickets.orgId, orgId), eq(tickets.id, id)));
+    const result = await db.delete(tickets).where(and(eq(tickets.orgId, orgId), eq(tickets.id, id))).returning({ id: tickets.id });
+    return result.length > 0;
   }
 
   async getTicketEvents(orgId: string, ticketId: string): Promise<TicketEvent[]> {
@@ -410,8 +412,9 @@ export class DatabaseStorage implements IStorage {
     return a;
   }
 
-  async deleteAsset(orgId: string, id: string): Promise<void> {
-    await db.delete(assets).where(and(eq(assets.orgId, orgId), eq(assets.id, id)));
+  async deleteAsset(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(assets).where(and(eq(assets.orgId, orgId), eq(assets.id, id))).returning({ id: assets.id });
+    return result.length > 0;
   }
 
   async getSupplyRequests(orgId: string): Promise<(SupplyRequest & { departmentName?: string; requestedByName?: string })[]> {
@@ -461,8 +464,9 @@ export class DatabaseStorage implements IStorage {
     return s;
   }
 
-  async deleteSupplyRequest(orgId: string, id: string): Promise<void> {
-    await db.delete(supplyRequests).where(and(eq(supplyRequests.orgId, orgId), eq(supplyRequests.id, id)));
+  async deleteSupplyRequest(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(supplyRequests).where(and(eq(supplyRequests.orgId, orgId), eq(supplyRequests.id, id))).returning({ id: supplyRequests.id });
+    return result.length > 0;
   }
 
   async getFacilityRequests(orgId: string): Promise<(FacilityRequest & { requestedByName?: string; assignedToName?: string })[]> {
@@ -509,8 +513,9 @@ export class DatabaseStorage implements IStorage {
     return f;
   }
 
-  async deleteFacilityRequest(orgId: string, id: string): Promise<void> {
-    await db.delete(facilityRequests).where(and(eq(facilityRequests.orgId, orgId), eq(facilityRequests.id, id)));
+  async deleteFacilityRequest(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(facilityRequests).where(and(eq(facilityRequests.orgId, orgId), eq(facilityRequests.id, id))).returning({ id: facilityRequests.id });
+    return result.length > 0;
   }
 
   async getVendors(orgId: string): Promise<Vendor[]> {
@@ -532,8 +537,9 @@ export class DatabaseStorage implements IStorage {
     return v;
   }
 
-  async deleteVendor(orgId: string, id: string): Promise<void> {
-    await db.delete(vendors).where(and(eq(vendors.orgId, orgId), eq(vendors.id, id)));
+  async deleteVendor(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(vendors).where(and(eq(vendors.orgId, orgId), eq(vendors.id, id))).returning({ id: vendors.id });
+    return result.length > 0;
   }
 
   async createNotification(orgId: string, userId: string, type: string, title: string, message: string, ticketId?: string | null): Promise<Notification> {

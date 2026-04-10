@@ -49,7 +49,8 @@ router.patch("/api/facility-requests/:id", requireAuth, requireOrg, requireMinRo
 
 router.delete("/api/facility-requests/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
   try {
-    await storage.deleteFacilityRequest(req.session.orgId!, req.params.id);
+    const deleted = await storage.deleteFacilityRequest(req.session.orgId!, req.params.id);
+    if (!deleted) return res.status(404).json({ error: "Facility request not found" });
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

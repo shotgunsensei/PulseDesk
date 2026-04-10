@@ -102,7 +102,7 @@ The application follows a monolithic full-stack architecture with a React fronte
 - `server/routes/admin.ts` - Super admin endpoints
 - `server/storage.ts` - Storage layer with all CRUD methods including onboarding
 - `server/seed.ts` - Demo data seeding (Metro Health Network)
-- `server/middleware.ts` - Auth middleware (requireAuth, requireOrg, requireSuperAdmin)
+- `server/middleware.ts` - Auth middleware (requireAuth, requireOrg, requireSuperAdmin, requireRole, requireMinRole). Owner role bypasses requireRole checks.
 - `server/migrate.ts` - Schema migration with session table + onboarding_items table
 
 ### Frontend
@@ -133,7 +133,7 @@ The application follows a monolithic full-stack architecture with a React fronte
 
 ## Database-Backed Onboarding System
 - **Table**: `onboarding_items` with fields: id, org_id, title, description, route, sort_order, status (pending/in_progress/complete/skipped), completion_source (manual/auto), completed_by, completed_at, dismissed_at, auto_complete_key, created_at, updated_at
-- **Auto-completion rules**: departments (count>0), assets (count>0), vendors (count>0), members (count>1), tickets (count>0)
+- **Auto-completion rules**: assets (count>0), vendors (count>0), members (count>1), tickets (count>0). Departments excluded from auto-completion since default departments are pre-seeded on org creation.
 - **Default items**: 5 starter tasks seeded per org on first access
 - **API**: GET/POST /api/onboarding, PATCH /api/onboarding/:id, POST /api/onboarding/:id/complete, POST /api/onboarding/:id/skip, POST /api/onboarding/reorder
 - **Dashboard UI**: Progress bar, auto/manual completion badges, skip/complete hover actions, click-through navigation
@@ -163,6 +163,7 @@ The application follows a monolithic full-stack architecture with a React fronte
 - Role-based UI visibility enforced in sidebar, action buttons, page elements, AND API routes
 - Dashboard enhanced with aging buckets, triage/resolution performance metrics, patient impact indicators
 - API routes return JSON error objects (`{ error: "message" }`) instead of plain text
+- Delete endpoints return 404 when no matching record found (prevents silent no-ops and ensures cross-tenant isolation is observable)
 - PulseLoader used consistently across all pages as the branded loading indicator (no Skeleton loading states)
 - Department/vendor create gated to supervisor+ (matches API requireMinRole("supervisor"))
 - Department/vendor delete gated to admin only (matches API requireMinRole("admin"))
