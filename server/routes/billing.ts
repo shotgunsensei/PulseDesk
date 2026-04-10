@@ -19,10 +19,12 @@ router.get("/api/billing/plans", requireAuth, requireOrg, async (req: Request, r
         pr.id as price_id,
         pr.unit_amount,
         pr.currency,
-        pr.recurring_interval as interval
+        pr.recurring->>'interval' as interval
       FROM stripe.products p
       JOIN stripe.prices pr ON pr.product = p.id
       WHERE p.active = true AND pr.active = true
+        AND p.metadata->>'plan' IN ('pro', 'pro_plus', 'enterprise', 'unlimited')
+        AND p.name LIKE 'PulseDesk%'
       ORDER BY pr.unit_amount ASC
     `);
     res.json(result.rows);
@@ -47,7 +49,7 @@ async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
     const subResult = await db.execute(sql`
       SELECT s.id, s.status, s.current_period_end, p.metadata as product_metadata
       FROM stripe.subscriptions s
-      JOIN stripe.prices pr ON s.items_data::jsonb->0->>'price' = pr.id
+      JOIN stripe.prices pr ON s.items->'data'->0->'price'->>'id' = pr.id
       JOIN stripe.products p ON pr.product = p.id
       WHERE s.customer = ${customerId}
       AND s.status IN ('active', 'trialing')
@@ -91,6 +93,7 @@ async function getApprovedPriceIds(): Promise<Set<string>> {
       JOIN stripe.products p ON pr.product = p.id
       WHERE p.active = true AND pr.active = true
       AND (p.metadata->>'plan' IN ('pro', 'pro_plus', 'enterprise', 'unlimited'))
+      AND p.name LIKE 'PulseDesk%'
     `);
     return new Set(result.rows.map((r: any) => r.id));
   } catch {
