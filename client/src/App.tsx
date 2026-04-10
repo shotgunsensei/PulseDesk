@@ -25,6 +25,7 @@ import FacilityRequestsPage from "@/pages/facility-requests";
 import VendorsPage from "@/pages/vendors";
 import AnalyticsPage from "@/pages/analytics";
 import SettingsPage from "@/pages/settings";
+import BillingPage from "@/pages/billing";
 import AdminPage from "@/pages/admin";
 import { canSubmitIssues, canViewAnalytics, isReadOnly, canManageSettings } from "@/lib/permissions";
 
@@ -103,6 +104,11 @@ function AppContent() {
                 <Route path="/analytics">
                   <RoleGate check={canViewAnalytics(role) || role === "admin"}>
                     <AnalyticsPage />
+                  </RoleGate>
+                </Route>
+                <Route path="/billing">
+                  <RoleGate check={canManageSettings(role)}>
+                    <BillingPage />
                   </RoleGate>
                 </Route>
                 <Route path="/settings">

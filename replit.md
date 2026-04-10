@@ -144,11 +144,15 @@ The application follows a monolithic full-stack architecture with a React fronte
 - **Products**: Pro ($60/mo), Pro Plus ($80/mo), Enterprise ($100/mo), Unlimited ($200/mo) — seeded via `server/seed-products.ts`
 - **Plan limits**: Free (5 users, local login only), Pro (50 users, 365/Entra), Pro Plus (100 users, 365/Entra), Enterprise (200 users, all features), Unlimited (unlimited users, all features)
 - **Feature gating**: Member limit enforced on join; Entra/365 login gated by plan (Free = local only, Pro+ = Entra enabled); auth config update blocked server-side for Free plan
+- **Dedicated Billing Page** (`/billing`): Full plan comparison with feature lists, usage bars, upgrade CTAs, success banner, billing portal access. Admin-only via `canManageSettings` route gate.
+- **Sidebar Billing nav**: CreditCard icon in System group, visible only to admins/owners
+- **Dashboard Upsell Card**: Shows on free-plan orgs for all users. Admins get "View Plans & Upgrade" CTA; non-admins see "ask your admin" message.
+- **Checkout flow**: Stripe Checkout with success/cancel redirects to `/billing?billing=success|cancelled`. Success triggers confetti-style banner + cache refresh.
+- **Paid plan management**: "Manage Billing" button, "Open Billing Portal" link, "Change Plan" option — all launch Stripe portal
 - **Billing status API**: Returns plan, subscription status (active/trialing/etc), stripeSyncStatus (connected/unavailable), usage bars, limits
-- **Billing UI**: Shows subscription status indicator, usage progress bars, Stripe sync status banner when unavailable, Entra lock warning
 - **Webhook**: Registered at `/api/stripe/webhook` BEFORE `express.json()` middleware in `server/index.ts`
 - **Subscription sync**: `syncOrgPlanFromStripe()` in billing route checks `stripe.subscriptions` and updates org plan on each status check
-- **Files**: `server/stripeClient.ts`, `server/webhookHandlers.ts`, `server/routes/billing.ts`, `server/seed-products.ts`
+- **Files**: `server/stripeClient.ts`, `server/webhookHandlers.ts`, `server/routes/billing.ts`, `server/seed-products.ts`, `client/src/pages/billing.tsx`
 
 ## Key Design Decisions
 - Roles: owner, admin, supervisor, staff, technician, readonly

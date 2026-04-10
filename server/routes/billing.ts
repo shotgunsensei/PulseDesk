@@ -191,8 +191,8 @@ router.post("/api/billing/checkout", requireAuth, requireOrg, requireMinRole("ad
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
-      success_url: `${baseUrl}/settings?billing=success`,
-      cancel_url: `${baseUrl}/settings?billing=cancelled`,
+      success_url: `${baseUrl}/billing?billing=success`,
+      cancel_url: `${baseUrl}/billing?billing=cancelled`,
       metadata: { orgId: org.id },
     });
 
@@ -219,7 +219,7 @@ router.post("/api/billing/portal", requireAuth, requireOrg, requireMinRole("admi
         : `https://${req.get('host')}`;
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
-      return_url: `${baseUrl}/settings`,
+      return_url: `${baseUrl}/billing`,
     });
 
     res.json({ url: session.url });

@@ -24,11 +24,12 @@ import {
   LogOut,
   ChevronDown,
   Shield,
+  CreditCard,
 } from "lucide-react";
 import pulsedeskLogo from "@assets/pulsedesklogo_1775753913991.png";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { canSubmitIssues, canViewAnalytics, isReadOnly } from "@/lib/permissions";
+import { canSubmitIssues, canViewAnalytics, isReadOnly, canManageSettings } from "@/lib/permissions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -153,6 +154,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {(canViewAnalytics(role) || role === "admin") && renderNavItem({ title: "Analytics", url: "/analytics", icon: BarChart3 })}
+              {canManageSettings(role) && renderNavItem({ title: "Billing", url: "/billing", icon: CreditCard })}
               {!isReadOnly(role) && renderNavItem({ title: "Settings", url: "/settings", icon: Settings })}
             </SidebarMenu>
           </SidebarGroupContent>

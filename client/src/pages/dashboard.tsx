@@ -40,7 +40,8 @@ import {
   TICKET_PRIORITY_LABELS,
   TICKET_CATEGORY_LABELS,
 } from "@shared/schema";
-import { canSubmitIssues, isReadOnly, ROLE_LABELS } from "@/lib/permissions";
+import { canSubmitIssues, isReadOnly, canManageSettings, ROLE_LABELS } from "@/lib/permissions";
+import { DashboardUpsellCard } from "@/pages/billing";
 
 interface DashboardStats {
   totalTickets: number;
@@ -352,6 +353,7 @@ export default function Dashboard() {
 
         {role === "admin" && <AdminOnboarding />}
         {role !== "admin" && <RoleGuidance role={role} />}
+        <DashboardUpsellCard />
 
         {(stats.waitingDeptCount > 0 || stats.waitingVendorCount > 0 || stats.escalatedCount > 0 || stats.patientImpactingCount > 0 || stats.unassignedCount > 0) && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
