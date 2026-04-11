@@ -2,11 +2,14 @@ import { Router, type Request, type Response } from "express";
 import { requireAuth, requireOrg, requireMinRole, requireFeature, requireSuperAdmin } from "../middleware";
 import { db } from "../db";
 import { z } from "zod";
-import { mailConnectors, connectorEvents, emailSettings } from "@shared/schema";
-import { desc, sql } from "drizzle-orm";
+import { mailConnectors, connectorEvents, emailSettings, orgs } from "@shared/schema";
+import { desc, eq, sql } from "drizzle-orm";
 import { encryptSecret, decryptSecret } from "../auth/crypto";
 import { getConnectorService } from "../services/connectors/registry";
 import type { ConnectorCredentials, ConnectorProvider } from "../services/connectors/types";
+import { storage } from "../storage";
+
+type ConnectorEventType = "poll_success" | "poll_error" | "auth_success" | "auth_error" | "disabled" | "enabled" | "config_changed";
 import {
   startPollerForConnector,
   stopPollerForConnector,
@@ -230,6 +233,23 @@ router.post("/api/connectors/:id/disconnect", requireAuth, requireOrg, requireMi
 
     stopPollerForConnector(connector.id);
 
+    let revokeError: string | undefined;
+    if (connector.credentialsEncrypted) {
+      try {
+        const creds: ConnectorCredentials = JSON.parse(decryptSecret(connector.credentialsEncrypted));
+        const service = getConnectorService(connector.provider as ConnectorProvider);
+        if (service.disconnect) {
+          const result = await service.disconnect(connector, creds);
+          if (!result.success) {
+            revokeError = result.error;
+          }
+        }
+      } catch (rErr: unknown) {
+        revokeError = rErr instanceof Error ? rErr.message : "Unknown revocation error";
+        console.error("[connectors] Provider token revocation failed:", revokeError);
+      }
+    }
+
     await db.update(mailConnectors).set({
       credentialsEncrypted: null,
       status: "pending_auth",
@@ -239,16 +259,21 @@ router.post("/api/connectors/:id/disconnect", requireAuth, requireOrg, requireMi
       updatedAt: new Date(),
     }).where(connectorById(connector.id));
 
+    const eventMessage = revokeError
+      ? `Connector disconnected (provider revocation warning: ${revokeError})`
+      : "Connector disconnected and credentials revoked";
+
     await db.insert(connectorEvents).values({
       connectorId: connector.id,
       orgId,
-      eventType: "disabled" as any,
-      message: "Connector disconnected and credentials revoked",
+      eventType: "disabled" as ConnectorEventType,
+      message: eventMessage,
     });
 
-    res.json({ disconnected: true });
-  } catch (err: any) {
-    res.status(500).json({ error: safeError(err) });
+    res.json({ disconnected: true, revokeWarning: revokeError || undefined });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: safeError({ message }) });
   }
 });
 
@@ -266,6 +291,28 @@ router.post("/api/connectors/:id/test", requireAuth, requireOrg, requireMinRole(
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.get("/api/connectors/:id/health", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const [connector] = await db.select().from(mailConnectors)
+      .where(connectorByIdAndOrg(req.params.id, orgId));
+    if (!connector) return res.status(404).json({ error: "Connector not found" });
+
+    const service = getConnectorService(connector.provider as ConnectorProvider);
+    const health = service.getHealth(connector);
+    const pollerStatus = getConnectorPollerStatusById(connector.id);
+
+    res.json({
+      ...health,
+      pollerRunning: pollerStatus?.running || false,
+      pollerDisabled: pollerStatus?.disabled || false,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: safeError({ message }) });
   }
 });
 
@@ -317,9 +364,10 @@ router.get("/api/connectors/:id/oauth/start", requireAuth, requireOrg, requireMi
 
     const result = await service.startOAuth(connector, redirectUri);
 
-    (req.session as any).connectorOAuthState = result.state;
-    (req.session as any).connectorOAuthId = connector.id;
-    (req.session as any).connectorOAuthProvider = connector.provider;
+    const sess = req.session as Record<string, unknown>;
+    sess.connectorOAuthState = result.state;
+    sess.connectorOAuthId = connector.id;
+    sess.connectorOAuthProvider = connector.provider;
 
     res.json({ redirectUrl: result.redirectUrl });
   } catch (err: any) {
@@ -335,10 +383,10 @@ router.get("/api/connectors/oauth/callback", async (req: Request, res: Response)
       return res.redirect(`/settings/email?connectorError=${encodeURIComponent(error)}`);
     }
 
-    const session = req.session as any;
-    const savedState = session.connectorOAuthState;
-    const connectorId = session.connectorOAuthId;
-    const provider = session.connectorOAuthProvider;
+    const callbackSession = req.session as Record<string, unknown>;
+    const savedState = callbackSession.connectorOAuthState as string | undefined;
+    const connectorId = callbackSession.connectorOAuthId as string | undefined;
+    const provider = callbackSession.connectorOAuthProvider as string | undefined;
 
     if (!savedState || !connectorId || !provider) {
       return res.redirect("/settings/email?connectorError=Invalid+session");
@@ -348,9 +396,9 @@ router.get("/api/connectors/oauth/callback", async (req: Request, res: Response)
       return res.redirect("/settings/email?connectorError=State+mismatch");
     }
 
-    delete session.connectorOAuthState;
-    delete session.connectorOAuthId;
-    delete session.connectorOAuthProvider;
+    delete callbackSession.connectorOAuthState;
+    delete callbackSession.connectorOAuthId;
+    delete callbackSession.connectorOAuthProvider;
 
     const [connector] = await db.select().from(mailConnectors).where(connectorById(connectorId));
     if (!connector) {
@@ -409,7 +457,7 @@ router.get("/api/admin/connectors", requireAuth, requireSuperAdmin, async (_req:
         return {
           ...sanitizeConnector(c),
           orgName: org?.name || "Unknown",
-          orgPlan: (org as any)?.plan || "free",
+          orgPlan: (org && "plan" in org ? (org as Record<string, unknown>).plan : "free") || "free",
           pollerRunning: pollerStatus?.running || false,
           pollerDisabled: pollerStatus?.disabled || false,
         };
@@ -426,6 +474,34 @@ router.get("/api/admin/connectors/pollers", requireAuth, requireSuperAdmin, asyn
     res.json(getConnectorPollerStatus());
   } catch (err: any) {
     res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.get("/api/admin/connectors/:id/events", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const connId = String(req.params.id);
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const events = await db.select().from(connectorEvents)
+      .where(sql`${connectorEvents.connectorId} = ${connId}`)
+      .orderBy(desc(connectorEvents.createdAt))
+      .limit(limit);
+    res.json(events);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: safeError({ message }) });
+  }
+});
+
+router.get("/api/admin/connectors/events", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const events = await db.select().from(connectorEvents)
+      .orderBy(desc(connectorEvents.createdAt))
+      .limit(limit);
+    res.json(events);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: safeError({ message }) });
   }
 });
 
@@ -483,17 +559,17 @@ router.post("/api/admin/connectors/:id/enable", requireAuth, requireSuperAdmin, 
   }
 });
 
-async function logEvent(connectorId: string, orgId: string, eventType: string, message: string, metadata?: any) {
+async function logEvent(connectorId: string, orgId: string, eventType: ConnectorEventType, message: string, metadata?: Record<string, unknown> | null) {
   try {
     await db.insert(connectorEvents).values({
       connectorId,
       orgId,
-      eventType: eventType as any,
+      eventType,
       message,
       metadata: metadata || null,
     });
-  } catch (err: any) {
-    console.error("[connectors] Failed to log event:", err.message);
+  } catch (err: unknown) {
+    console.error("[connectors] Failed to log event:", err instanceof Error ? err.message : "Unknown error");
   }
 }
 

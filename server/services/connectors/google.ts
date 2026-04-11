@@ -2,6 +2,7 @@ import type { MailConnector } from "@shared/schema";
 import type {
   ConnectorService,
   ConnectorCredentials,
+  ConnectorHealthStatus,
   FetchedEmail,
   OAuthStartResult,
   OAuthCallbackResult,
@@ -11,6 +12,7 @@ import crypto from "crypto";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 const SCOPES = [
   "https://mail.google.com/",
@@ -39,6 +41,16 @@ function buildImapConfig(connector: MailConnector, creds: ConnectorCredentials):
     folder: connector.imapFolder || "INBOX",
     useOAuth: true,
   };
+}
+
+interface GoogleTokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+}
+
+interface GoogleUserInfo {
+  email?: string;
 }
 
 export class GoogleConnectorService implements ConnectorService {
@@ -82,7 +94,7 @@ export class GoogleConnectorService implements ConnectorService {
         return { success: false, error: "Failed to exchange authorization code" };
       }
 
-      const tokenData = await tokenRes.json() as any;
+      const tokenData: GoogleTokenResponse = await tokenRes.json() as GoogleTokenResponse;
       const accessToken = tokenData.access_token;
       const refreshToken = tokenData.refresh_token;
       const expiresIn = tokenData.expires_in || 3600;
@@ -97,7 +109,7 @@ export class GoogleConnectorService implements ConnectorService {
 
       let emailAddress = "";
       if (userRes.ok) {
-        const userData = await userRes.json() as any;
+        const userData: GoogleUserInfo = await userRes.json() as GoogleUserInfo;
         emailAddress = userData.email || "";
       }
 
@@ -111,8 +123,9 @@ export class GoogleConnectorService implements ConnectorService {
           imapUser: emailAddress,
         },
       };
-    } catch (err: any) {
-      console.error("[google-connector] OAuth callback error:", err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error("[google-connector] OAuth callback error:", message);
       return { success: false, error: "OAuth processing failed" };
     }
   }
@@ -165,7 +178,7 @@ export class GoogleConnectorService implements ConnectorService {
 
       if (!res.ok) return null;
 
-      const data = await res.json() as any;
+      const data: GoogleTokenResponse = await res.json() as GoogleTokenResponse;
       return {
         ...credentials,
         accessToken: data.access_token,
@@ -174,6 +187,46 @@ export class GoogleConnectorService implements ConnectorService {
     } catch {
       return null;
     }
+  }
+
+  async disconnect(
+    _connector: MailConnector,
+    credentials: ConnectorCredentials,
+  ): Promise<{ success: boolean; error?: string }> {
+    const tokenToRevoke = credentials.accessToken || credentials.refreshToken;
+    if (!tokenToRevoke) {
+      return { success: true };
+    }
+
+    try {
+      const res = await fetch(`${GOOGLE_REVOKE_URL}?token=${encodeURIComponent(tokenToRevoke)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+        console.error("[google-connector] Token revocation failed:", body);
+        return { success: false, error: "Token revocation failed" };
+      }
+
+      return { success: true };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error("[google-connector] Revocation error:", message);
+      return { success: false, error: message };
+    }
+  }
+
+  getHealth(connector: MailConnector): ConnectorHealthStatus {
+    return {
+      healthy: connector.status === "active" && connector.enabled && connector.consecutiveFailures === 0,
+      status: connector.status,
+      lastPollAt: connector.lastPolledAt,
+      lastError: connector.lastError,
+      consecutiveFailures: connector.consecutiveFailures,
+      emailsProcessed: connector.emailsProcessed,
+    };
   }
 
   private async ensureFreshToken(

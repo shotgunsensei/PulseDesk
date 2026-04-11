@@ -28,6 +28,15 @@ export interface OAuthCallbackResult {
   credentials?: ConnectorCredentials;
 }
 
+export interface ConnectorHealthStatus {
+  healthy: boolean;
+  status: string;
+  lastPollAt: Date | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+  emailsProcessed: number;
+}
+
 export interface ConnectorService {
   readonly provider: ConnectorProvider;
 
@@ -62,4 +71,11 @@ export interface ConnectorService {
     connector: MailConnector,
     credentials: ConnectorCredentials,
   ): Promise<ConnectorCredentials | null>;
+
+  disconnect?(
+    connector: MailConnector,
+    credentials: ConnectorCredentials,
+  ): Promise<{ success: boolean; error?: string }>;
+
+  getHealth(connector: MailConnector): ConnectorHealthStatus;
 }

@@ -88,7 +88,7 @@ export async function startConnectorPolling() {
       const org = await storage.getOrg(connector.orgId);
       if (!org) continue;
 
-      const plan = (org as any).plan || "free";
+      const plan = (org && "plan" in org ? String((org as Record<string, unknown>).plan) : "free") || "free";
       const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
       if (!limits.emailToTicket) continue;
 
@@ -96,8 +96,8 @@ export async function startConnectorPolling() {
     }
 
     console.log(`[connector-poller] Started ${pollers.size} connector pollers`);
-  } catch (err: any) {
-    console.error("[connector-poller] Failed to initialize:", err.message);
+  } catch (err: unknown) {
+    console.error("[connector-poller] Failed to initialize:", err instanceof Error ? err.message : "Unknown error");
   }
 }
 
@@ -186,7 +186,7 @@ async function executePoll(connectorId: string, expectedVersion: number) {
     const org = await storage.getOrg(connector.orgId);
     if (!org) { stopPollerForConnector(connectorId); return; }
 
-    const plan = (org as any).plan || "free";
+    const plan = (org && "plan" in org ? String((org as Record<string, unknown>).plan) : "free") || "free";
     const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
     if (!limits.emailToTicket) { stopPollerForConnector(connectorId); return; }
 
@@ -325,17 +325,19 @@ function checkAutoDisable(connectorId: string, state: ConnectorPollerState) {
   }
 }
 
-async function logConnectorEvent(connectorId: string, orgId: string, eventType: string, message: string, metadata?: any) {
+type ConnectorEventType = "poll_success" | "poll_error" | "auth_success" | "auth_error" | "disabled" | "enabled" | "config_changed";
+
+async function logConnectorEvent(connectorId: string, orgId: string, eventType: ConnectorEventType, message: string, metadata?: Record<string, unknown> | null) {
   try {
     await db.insert(connectorEvents).values({
       connectorId,
       orgId,
-      eventType: eventType as any,
+      eventType,
       message,
       metadata: metadata || null,
     });
-  } catch (err: any) {
-    console.error(`[connector-poller] Failed to log event:`, err.message);
+  } catch (err: unknown) {
+    console.error(`[connector-poller] Failed to log event:`, err instanceof Error ? err.message : "Unknown error");
   }
 }
 

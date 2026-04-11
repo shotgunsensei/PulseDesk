@@ -2,6 +2,7 @@ import type { MailConnector } from "@shared/schema";
 import type {
   ConnectorService,
   ConnectorCredentials,
+  ConnectorHealthStatus,
   FetchedEmail,
   OAuthStartResult,
   OAuthCallbackResult,
@@ -44,6 +45,17 @@ function buildImapConfig(connector: MailConnector, creds: ConnectorCredentials):
     folder: connector.imapFolder || "INBOX",
     useOAuth: true,
   };
+}
+
+interface MsTokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+}
+
+interface MsGraphUser {
+  mail?: string;
+  userPrincipalName?: string;
 }
 
 export class MicrosoftConnectorService implements ConnectorService {
@@ -91,7 +103,7 @@ export class MicrosoftConnectorService implements ConnectorService {
         return { success: false, error: "Failed to exchange authorization code" };
       }
 
-      const tokenData = await tokenRes.json() as any;
+      const tokenData: MsTokenResponse = await tokenRes.json() as MsTokenResponse;
       const accessToken = tokenData.access_token;
       const refreshToken = tokenData.refresh_token;
       const expiresIn = tokenData.expires_in || 3600;
@@ -106,7 +118,7 @@ export class MicrosoftConnectorService implements ConnectorService {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (meRes.ok) {
-          const meData = await meRes.json() as any;
+          const meData: MsGraphUser = await meRes.json() as MsGraphUser;
           emailAddress = meData.mail || meData.userPrincipalName || "";
         }
       } catch {}
@@ -121,8 +133,9 @@ export class MicrosoftConnectorService implements ConnectorService {
           imapUser: emailAddress,
         },
       };
-    } catch (err: any) {
-      console.error("[microsoft-connector] OAuth callback error:", err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error("[microsoft-connector] OAuth callback error:", message);
       return { success: false, error: "OAuth processing failed" };
     }
   }
@@ -176,7 +189,7 @@ export class MicrosoftConnectorService implements ConnectorService {
 
       if (!res.ok) return null;
 
-      const data = await res.json() as any;
+      const data: MsTokenResponse = await res.json() as MsTokenResponse;
       return {
         ...credentials,
         accessToken: data.access_token,
@@ -186,6 +199,40 @@ export class MicrosoftConnectorService implements ConnectorService {
     } catch {
       return null;
     }
+  }
+
+  async disconnect(
+    _connector: MailConnector,
+    credentials: ConnectorCredentials,
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!credentials.refreshToken) {
+      return { success: true };
+    }
+
+    try {
+      const res = await fetch(`${MS_AUTH_BASE}/${TENANT}/oauth2/v2.0/logout`, {
+        method: "GET",
+      });
+      if (!res.ok) {
+        console.error("[microsoft-connector] Logout endpoint returned non-OK");
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error("[microsoft-connector] Logout error:", message);
+    }
+
+    return { success: true };
+  }
+
+  getHealth(connector: MailConnector): ConnectorHealthStatus {
+    return {
+      healthy: connector.status === "active" && connector.enabled && connector.consecutiveFailures === 0,
+      status: connector.status,
+      lastPollAt: connector.lastPolledAt,
+      lastError: connector.lastError,
+      consecutiveFailures: connector.consecutiveFailures,
+      emailsProcessed: connector.emailsProcessed,
+    };
   }
 
   private async ensureFreshToken(

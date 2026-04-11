@@ -2,6 +2,7 @@ import type { MailConnector } from "@shared/schema";
 import type {
   ConnectorService,
   ConnectorCredentials,
+  ConnectorHealthStatus,
   FetchedEmail,
 } from "./types";
 import { fetchUnseenEmails, markMessagesSeen, testImapConnection, type ImapConfig } from "../imapClient";
@@ -43,5 +44,16 @@ export class ImapConnectorService implements ConnectorService {
   ): Promise<void> {
     const config = buildImapConfig(connector, credentials);
     await markMessagesSeen(config, uids.map(u => Number(u)));
+  }
+
+  getHealth(connector: MailConnector): ConnectorHealthStatus {
+    return {
+      healthy: connector.status === "active" && connector.enabled && connector.consecutiveFailures === 0,
+      status: connector.status,
+      lastPollAt: connector.lastPolledAt,
+      lastError: connector.lastError,
+      consecutiveFailures: connector.consecutiveFailures,
+      emailsProcessed: connector.emailsProcessed,
+    };
   }
 }
