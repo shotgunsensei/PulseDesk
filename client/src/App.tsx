@@ -26,6 +26,7 @@ import VendorsPage from "@/pages/vendors";
 import AnalyticsPage from "@/pages/analytics";
 import SettingsPage from "@/pages/settings";
 import BillingPage from "@/pages/billing";
+import EmailSettingsPage from "@/pages/email-settings";
 import AdminPage from "@/pages/admin";
 import { canSubmitIssues, canViewAnalytics, isReadOnly, canManageSettings } from "@/lib/permissions";
 
@@ -109,6 +110,11 @@ function AppContent() {
                 <Route path="/billing">
                   <RoleGate check={canManageSettings(role)}>
                     <BillingPage />
+                  </RoleGate>
+                </Route>
+                <Route path="/email-settings">
+                  <RoleGate check={canManageSettings(role)}>
+                    <EmailSettingsPage />
                   </RoleGate>
                 </Route>
                 <Route path="/settings">

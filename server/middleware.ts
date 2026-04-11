@@ -108,6 +108,25 @@ export async function resolveTenant(req: Request, res: Response, next: NextFunct
   next();
 }
 
+export function requireFeature(feature: string) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.session.orgId) {
+      return res.status(400).json({ error: "No organization selected" });
+    }
+    const org = await storage.getOrg(req.session.orgId);
+    if (!org) {
+      return res.status(404).json({ error: "Organization not found" });
+    }
+    const plan = (org as any).plan || "free";
+    const { PLAN_LIMITS } = await import("@shared/schema");
+    const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
+    if (!(limits as any)[feature]) {
+      return res.status(403).json({ error: `This feature requires an upgraded plan`, feature, requiredPlans: ["enterprise", "unlimited"] });
+    }
+    next();
+  };
+}
+
 export function requireMinRole(minRole: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.session.userId || !req.session.orgId) {

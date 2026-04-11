@@ -25,6 +25,7 @@ import {
   ChevronDown,
   Shield,
   CreditCard,
+  Mail,
 } from "lucide-react";
 import pulsedeskLogo from "@assets/pulsedesklogo_1775753913991.png";
 import { useLocation, Link } from "wouter";
@@ -155,6 +156,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {(canViewAnalytics(role) || role === "admin") && renderNavItem({ title: "Analytics", url: "/analytics", icon: BarChart3 })}
               {canManageSettings(role) && renderNavItem({ title: "Billing", url: "/billing", icon: CreditCard })}
+              {canManageSettings(role) && renderNavItem({ title: "Email-to-Ticket", url: "/email-settings", icon: Mail })}
               {!isReadOnly(role) && renderNavItem({ title: "Settings", url: "/settings", icon: Settings })}
             </SidebarMenu>
           </SidebarGroupContent>

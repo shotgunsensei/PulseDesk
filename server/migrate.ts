@@ -354,6 +354,114 @@ export async function ensureSchema() {
       );
     `);
 
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE ticket_source AS ENUM ('manual','email');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE tickets ADD COLUMN source ticket_source NOT NULL DEFAULT 'manual';
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE inbound_email_status AS ENUM ('accepted','rejected','failed','threaded','created');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS email_settings (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id varchar NOT NULL REFERENCES orgs(id) UNIQUE,
+        inbound_alias text NOT NULL UNIQUE,
+        enabled boolean NOT NULL DEFAULT true,
+        default_department_id varchar REFERENCES departments(id),
+        default_assignee_id varchar REFERENCES users(id),
+        allowed_sender_domains text[],
+        auto_create_contacts boolean NOT NULL DEFAULT true,
+        append_replies_to_tickets boolean NOT NULL DEFAULT true,
+        unknown_sender_action text NOT NULL DEFAULT 'create_ticket',
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS email_contacts (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id varchar NOT NULL REFERENCES orgs(id),
+        email text NOT NULL,
+        name text DEFAULT '',
+        created_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_email_contacts_org_email
+        ON email_contacts(org_id, email);
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS inbound_email_log (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id varchar REFERENCES orgs(id),
+        message_id text,
+        from_email text NOT NULL,
+        from_name text DEFAULT '',
+        to_address text NOT NULL,
+        subject text DEFAULT '',
+        body_plain text DEFAULT '',
+        body_html text DEFAULT '',
+        in_reply_to text,
+        references_header text,
+        headers jsonb,
+        attachment_count integer NOT NULL DEFAULT 0,
+        spf_result text,
+        dkim_result text,
+        dmarc_result text,
+        status inbound_email_status NOT NULL,
+        status_reason text DEFAULT '',
+        ticket_id varchar REFERENCES tickets(id),
+        provider text DEFAULT 'mock',
+        created_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ticket_email_metadata (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        ticket_id varchar NOT NULL REFERENCES tickets(id),
+        org_id varchar NOT NULL REFERENCES orgs(id),
+        message_id text,
+        in_reply_to text,
+        references_header text,
+        from_email text NOT NULL,
+        from_name text DEFAULT '',
+        original_subject text DEFAULT '',
+        contact_id varchar REFERENCES email_contacts(id),
+        created_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_inbound_email_log_org ON inbound_email_log(org_id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_inbound_email_log_message_id ON inbound_email_log(message_id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_ticket_email_metadata_ticket ON ticket_email_metadata(ticket_id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_ticket_email_metadata_message_id ON ticket_email_metadata(message_id);
+    `);
+
     await client.query("COMMIT");
     console.log("Schema verification complete - all tables ensured.");
   } catch (err) {

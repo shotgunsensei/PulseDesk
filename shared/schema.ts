@@ -169,6 +169,11 @@ export const departments = pgTable("departments", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const ticketSourceEnum = pgEnum("ticket_source", [
+  "manual",
+  "email",
+]);
+
 export const tickets = pgTable("tickets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orgId: varchar("org_id")
@@ -177,6 +182,7 @@ export const tickets = pgTable("tickets", {
   ticketNumber: text("ticket_number").notNull(),
   title: text("title").notNull(),
   description: text("description").default(""),
+  source: ticketSourceEnum("source").notNull().default("manual"),
   category: ticketCategoryEnum("category").notNull().default("other"),
   priority: ticketPriorityEnum("priority").notNull().default("normal"),
   status: ticketStatusEnum("status").notNull().default("new"),
@@ -595,11 +601,11 @@ export const ROLE_LABELS: Record<string, string> = {
 };
 
 export const PLAN_LIMITS = {
-  free: { maxMembers: 5, maxTickets: Infinity, entraEnabled: false, label: "Free", price: 0 },
-  pro: { maxMembers: 50, maxTickets: Infinity, entraEnabled: true, label: "Pro", price: 60 },
-  pro_plus: { maxMembers: 100, maxTickets: Infinity, entraEnabled: true, label: "Pro Plus", price: 80 },
-  enterprise: { maxMembers: 200, maxTickets: Infinity, entraEnabled: true, label: "Enterprise", price: 100 },
-  unlimited: { maxMembers: Infinity, maxTickets: Infinity, entraEnabled: true, label: "Unlimited", price: 200 },
+  free: { maxMembers: 5, maxTickets: Infinity, entraEnabled: false, emailToTicket: false, label: "Free", price: 0 },
+  pro: { maxMembers: 50, maxTickets: Infinity, entraEnabled: true, emailToTicket: false, label: "Pro", price: 60 },
+  pro_plus: { maxMembers: 100, maxTickets: Infinity, entraEnabled: true, emailToTicket: false, label: "Pro Plus", price: 80 },
+  enterprise: { maxMembers: 200, maxTickets: Infinity, entraEnabled: true, emailToTicket: true, label: "Enterprise", price: 100 },
+  unlimited: { maxMembers: Infinity, maxTickets: Infinity, entraEnabled: true, emailToTicket: true, label: "Unlimited", price: 200 },
 } as const;
 
 export const onboardingStatusEnum = pgEnum("onboarding_status", [
@@ -659,3 +665,88 @@ export const DEFAULT_DEPARTMENTS = [
   "Facilities",
   "Clinical Operations",
 ];
+
+export const inboundEmailStatusEnum = pgEnum("inbound_email_status", [
+  "accepted",
+  "rejected",
+  "failed",
+  "threaded",
+  "created",
+]);
+
+export const emailSettings = pgTable("email_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id)
+    .unique(),
+  inboundAlias: text("inbound_alias").notNull().unique(),
+  enabled: boolean("enabled").default(true).notNull(),
+  defaultDepartmentId: varchar("default_department_id").references(() => departments.id),
+  defaultAssigneeId: varchar("default_assignee_id").references(() => users.id),
+  allowedSenderDomains: text("allowed_sender_domains").array(),
+  autoCreateContacts: boolean("auto_create_contacts").default(true).notNull(),
+  appendRepliesToTickets: boolean("append_replies_to_tickets").default(true).notNull(),
+  unknownSenderAction: text("unknown_sender_action").default("create_ticket").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const emailContacts = pgTable("email_contacts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id),
+  email: text("email").notNull(),
+  name: text("name").default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueOrgEmail: uniqueIndex("idx_email_contacts_org_email").on(table.orgId, table.email),
+}));
+
+export const inboundEmailLog = pgTable("inbound_email_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id").references(() => orgs.id),
+  messageId: text("message_id"),
+  fromEmail: text("from_email").notNull(),
+  fromName: text("from_name").default(""),
+  toAddress: text("to_address").notNull(),
+  subject: text("subject").default(""),
+  bodyPlain: text("body_plain").default(""),
+  bodyHtml: text("body_html").default(""),
+  inReplyTo: text("in_reply_to"),
+  references: text("references_header"),
+  headers: jsonb("headers"),
+  attachmentCount: integer("attachment_count").default(0).notNull(),
+  spfResult: text("spf_result"),
+  dkimResult: text("dkim_result"),
+  dmarcResult: text("dmarc_result"),
+  status: inboundEmailStatusEnum("status").notNull(),
+  statusReason: text("status_reason").default(""),
+  ticketId: varchar("ticket_id").references(() => tickets.id),
+  provider: text("provider").default("mock"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const ticketEmailMetadata = pgTable("ticket_email_metadata", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id")
+    .notNull()
+    .references(() => tickets.id),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id),
+  messageId: text("message_id"),
+  inReplyTo: text("in_reply_to"),
+  referencesHeader: text("references_header"),
+  fromEmail: text("from_email").notNull(),
+  fromName: text("from_name").default(""),
+  originalSubject: text("original_subject").default(""),
+  contactId: varchar("contact_id").references(() => emailContacts.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type EmailSettings = typeof emailSettings.$inferSelect;
+export type EmailContact = typeof emailContacts.$inferSelect;
+export type InboundEmailLog = typeof inboundEmailLog.$inferSelect;
+export type TicketEmailMetadata = typeof ticketEmailMetadata.$inferSelect;

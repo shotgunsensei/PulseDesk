@@ -1,0 +1,371 @@
+import { Router, type Request, type Response } from "express";
+import { requireAuth, requireOrg, requireMinRole, requireFeature, requireSuperAdmin } from "../middleware";
+import { storage } from "../storage";
+import { db } from "../db";
+import { z } from "zod";
+import {
+  emailSettings,
+  emailContacts,
+  inboundEmailLog,
+  PLAN_LIMITS,
+} from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
+import {
+  processInboundEmail,
+  getProvider,
+  generateAlias,
+  type ParsedEmail,
+} from "../services/emailProcessor";
+
+const router = Router();
+
+const RATE_LIMIT_WINDOW = 60 * 1000;
+const RATE_LIMIT_MAX = 30;
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(key: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(key);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= RATE_LIMIT_MAX;
+}
+
+function safeError(err: any): string {
+  if (process.env.NODE_ENV === "production") return "Internal server error";
+  return err?.message || "Unknown error";
+}
+
+const ALLOWED_PROVIDERS = new Set(["mock", "sendgrid", "mailgun", "postmark"]);
+
+const updateSettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  defaultDepartmentId: z.string().uuid().nullable().optional(),
+  defaultAssigneeId: z.string().uuid().nullable().optional(),
+  allowedSenderDomains: z.array(z.string().min(1).max(253)).optional(),
+  autoCreateContacts: z.boolean().optional(),
+  appendRepliesToTickets: z.boolean().optional(),
+  unknownSenderAction: z.enum(["create_ticket", "reject"]).optional(),
+});
+
+const testInboundSchema = z.object({
+  fromEmail: z.string().email(),
+  fromName: z.string().max(200).optional().default(""),
+  subject: z.string().min(1).max(500),
+  body: z.string().max(10000).optional().default(""),
+});
+
+router.get("/api/email/settings", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const org = await storage.getOrg(orgId);
+    const plan = ((org as any)?.plan || "free") as keyof typeof PLAN_LIMITS;
+    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+
+    if (!limits.emailToTicket) {
+      return res.json({ eligible: false, plan, settings: null });
+    }
+
+    const results = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
+    return res.json({ eligible: true, plan, settings: results[0] || null });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.post("/api/email/settings/initialize", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+
+    const existing = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
+    if (existing.length > 0) {
+      return res.json(existing[0]);
+    }
+
+    const org = await storage.getOrg(orgId);
+    if (!org) return res.status(404).json({ error: "Organization not found" });
+
+    const alias = generateAlias(org.slug);
+
+    const aliasCheck = await db.select().from(emailSettings).where(eq(emailSettings.inboundAlias, alias));
+    if (aliasCheck.length > 0) {
+      const uniqueAlias = `${alias}-${Date.now().toString(36).slice(-4)}`;
+      const [created] = await db.insert(emailSettings).values({
+        orgId,
+        inboundAlias: uniqueAlias,
+      }).returning();
+      return res.json(created);
+    }
+
+    const [created] = await db.insert(emailSettings).values({
+      orgId,
+      inboundAlias: alias,
+    }).returning();
+    return res.json(created);
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.patch("/api/email/settings", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const parsed = updateSettingsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
+    }
+
+    const data = parsed.data;
+    const updateData: any = { updatedAt: new Date() };
+
+    if (data.enabled !== undefined) updateData.enabled = data.enabled;
+    if (data.defaultDepartmentId !== undefined) updateData.defaultDepartmentId = data.defaultDepartmentId;
+    if (data.defaultAssigneeId !== undefined) updateData.defaultAssigneeId = data.defaultAssigneeId;
+    if (data.allowedSenderDomains !== undefined) updateData.allowedSenderDomains = data.allowedSenderDomains;
+    if (data.autoCreateContacts !== undefined) updateData.autoCreateContacts = data.autoCreateContacts;
+    if (data.appendRepliesToTickets !== undefined) updateData.appendRepliesToTickets = data.appendRepliesToTickets;
+    if (data.unknownSenderAction !== undefined) updateData.unknownSenderAction = data.unknownSenderAction;
+
+    const [updated] = await db
+      .update(emailSettings)
+      .set(updateData)
+      .where(eq(emailSettings.orgId, orgId))
+      .returning();
+
+    if (!updated) return res.status(404).json({ error: "Email settings not found. Initialize first." });
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.get("/api/email/events", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const events = await db
+      .select({
+        id: inboundEmailLog.id,
+        fromEmail: inboundEmailLog.fromEmail,
+        fromName: inboundEmailLog.fromName,
+        subject: inboundEmailLog.subject,
+        status: inboundEmailLog.status,
+        statusReason: inboundEmailLog.statusReason,
+        ticketId: inboundEmailLog.ticketId,
+        createdAt: inboundEmailLog.createdAt,
+      })
+      .from(inboundEmailLog)
+      .where(eq(inboundEmailLog.orgId, orgId))
+      .orderBy(desc(inboundEmailLog.createdAt))
+      .limit(limit);
+    res.json(events);
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.get("/api/email/contacts", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const contacts = await db
+      .select()
+      .from(emailContacts)
+      .where(eq(emailContacts.orgId, orgId))
+      .orderBy(desc(emailContacts.createdAt));
+    res.json(contacts);
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.post("/api/email/inbound/:provider", async (req: Request, res: Response) => {
+  try {
+    const providerName = req.params.provider;
+
+    if (!providerName || !ALLOWED_PROVIDERS.has(providerName)) {
+      return res.status(400).json({ error: "Unsupported provider" });
+    }
+
+    if (providerName === "mock" && process.env.NODE_ENV === "production") {
+      return res.status(403).json({ error: "Mock provider disabled in production" });
+    }
+
+    const provider = getProvider(providerName);
+
+    const headerObj: Record<string, string> = {};
+    for (const [key, val] of Object.entries(req.headers)) {
+      if (typeof val === "string") headerObj[key] = val;
+    }
+
+    if (!provider.verifySignature(req.body, headerObj)) {
+      return res.status(401).json({ error: "Invalid webhook signature" });
+    }
+
+    const clientKey = req.ip || "unknown";
+    if (!checkRateLimit(clientKey)) {
+      return res.status(429).json({ error: "Rate limit exceeded" });
+    }
+
+    const email = provider.parseWebhook(req.body, headerObj);
+    const result = await processInboundEmail(email);
+    res.json(result);
+  } catch (err: any) {
+    console.error("[email/inbound] Error processing webhook:", err.message);
+    res.status(500).json({ error: "Failed to process inbound email" });
+  }
+});
+
+router.post("/api/email/test-inbound", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const settings = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
+    if (settings.length === 0) {
+      return res.status(400).json({ error: "Email settings not initialized" });
+    }
+
+    const parsed = testInboundSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
+    }
+
+    const { fromEmail, fromName, subject, body } = parsed.data;
+
+    const testEmail: ParsedEmail = {
+      messageId: `<test-${Date.now()}@pulsedesk.support>`,
+      from: { email: fromEmail, name: fromName },
+      to: `${settings[0].inboundAlias}@pulsedesk.support`,
+      subject,
+      bodyPlain: body || subject,
+      bodyHtml: "",
+      provider: "mock",
+    };
+
+    const result = await processInboundEmail(testEmail);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.get("/api/admin/email/settings", requireAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
+  try {
+    const allSettings = await db
+      .select({
+        id: emailSettings.id,
+        orgId: emailSettings.orgId,
+        inboundAlias: emailSettings.inboundAlias,
+        enabled: emailSettings.enabled,
+        createdAt: emailSettings.createdAt,
+        updatedAt: emailSettings.updatedAt,
+      })
+      .from(emailSettings)
+      .orderBy(desc(emailSettings.createdAt));
+
+    const enriched = await Promise.all(
+      allSettings.map(async (s) => {
+        const org = await storage.getOrg(s.orgId);
+        return { ...s, orgName: org?.name || "Unknown", orgPlan: (org as any)?.plan || "free" };
+      })
+    );
+
+    res.json(enriched);
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.get("/api/admin/email/events", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+    const events = await db
+      .select({
+        id: inboundEmailLog.id,
+        orgId: inboundEmailLog.orgId,
+        fromEmail: inboundEmailLog.fromEmail,
+        fromName: inboundEmailLog.fromName,
+        subject: inboundEmailLog.subject,
+        status: inboundEmailLog.status,
+        statusReason: inboundEmailLog.statusReason,
+        ticketId: inboundEmailLog.ticketId,
+        provider: inboundEmailLog.provider,
+        createdAt: inboundEmailLog.createdAt,
+      })
+      .from(inboundEmailLog)
+      .orderBy(desc(inboundEmailLog.createdAt))
+      .limit(limit);
+    res.json(events);
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.post("/api/admin/email/toggle/:orgId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const { orgId } = req.params;
+    const { enabled } = req.body;
+
+    const [updated] = await db
+      .update(emailSettings)
+      .set({ enabled: !!enabled, updatedAt: new Date() })
+      .where(eq(emailSettings.orgId, orgId))
+      .returning();
+
+    if (!updated) return res.status(404).json({ error: "Settings not found" });
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.post("/api/admin/email/regenerate-alias/:orgId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const { orgId } = req.params;
+    const org = await storage.getOrg(orgId);
+    if (!org) return res.status(404).json({ error: "Org not found" });
+
+    const newAlias = `${generateAlias(org.slug)}-${Date.now().toString(36).slice(-4)}`;
+
+    const [updated] = await db
+      .update(emailSettings)
+      .set({ inboundAlias: newAlias, updatedAt: new Date() })
+      .where(eq(emailSettings.orgId, orgId))
+      .returning();
+
+    if (!updated) return res.status(404).json({ error: "Settings not found" });
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.post("/api/admin/email/replay/:eventId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const [event] = await db.select().from(inboundEmailLog).where(eq(inboundEmailLog.id, eventId));
+    if (!event) return res.status(404).json({ error: "Event not found" });
+    if (event.status !== "failed") return res.status(400).json({ error: "Only failed events can be replayed" });
+
+    const email: ParsedEmail = {
+      messageId: event.messageId || undefined,
+      from: { email: event.fromEmail, name: event.fromName || "" },
+      to: event.toAddress,
+      subject: event.subject || "",
+      bodyPlain: event.bodyPlain || "",
+      bodyHtml: event.bodyHtml || "",
+      inReplyTo: event.inReplyTo || undefined,
+      references: event.referencesHeader || undefined,
+      headers: (event.headers as any) || {},
+      provider: event.provider || "mock",
+    };
+
+    const result = await processInboundEmail(email);
+    res.json({ replayed: true, result });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+export default router;
