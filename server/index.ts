@@ -145,6 +145,16 @@ app.use((req, res, next) => {
     log(`IMAP polling init skipped: ${err.message}`, "startup");
   }
 
+  try {
+    const { initConnectorServices } = await import("./services/connectors/index");
+    initConnectorServices();
+    const { startConnectorPolling } = await import("./services/connectorPoller");
+    await startConnectorPolling();
+    log("Connector polling service started", "startup");
+  } catch (err: any) {
+    log(`Connector polling init skipped: ${err.message}`, "startup");
+  }
+
   app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) {
       return next(err);

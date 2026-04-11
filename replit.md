@@ -183,6 +183,21 @@ The application follows a monolithic full-stack architecture with a React fronte
   - **Frontend**: IMAP Mailbox Polling card in email-settings with connection form, test button, polling status, enable/disable toggle, error display, reset button
   - **Admin dashboard**: IMAP Polling Dashboard card in admin.tsx with per-tenant status, error display, reset controls
 
+## Mail Connectors System
+- **Architecture**: Provider-based mail connector abstraction layer that replaces raw IMAP config with a secure, multi-provider system
+- **Schema tables**: `mail_connectors` (id, orgId, provider, label, status, emailAddress, credentialsEncrypted, imapHost/Port/Tls/Folder, pollIntervalSeconds, lastPolledAt, lastError, consecutiveFailures, emailsProcessed, enabled), `connector_events` (id, connectorId, orgId, eventType, message, metadata)
+- **Providers**: Google (OAuth 2.0 + Gmail IMAP), Microsoft (OAuth 2.0 + Outlook IMAP), IMAP (generic), Forwarding (alias-only, no polling)
+- **Provider interface**: `ConnectorService` in `server/services/connectors/types.ts` — startOAuth, handleOAuthCallback, testConnection, fetchEmails, markProcessed, refreshCredentials
+- **Registry**: `server/services/connectors/registry.ts` — registerConnectorService/getConnectorService pattern
+- **Service files**: `server/services/connectors/google.ts`, `microsoft.ts`, `imap.ts`, `forwarding.ts`, `index.ts`
+- **Credential encryption**: All connector credentials stored as encrypted JSON via `encryptSecret`/`decryptSecret` (AES-256-GCM)
+- **OAuth flow**: Start via `/api/connectors/:id/oauth/start`, callback at `/api/connectors/oauth/callback`, session state for CSRF protection
+- **Connector Poller**: `server/services/connectorPoller.ts` — generic poll scheduler replacing direct IMAP-only polling, with exponential backoff, auto-disable, token refresh
+- **API routes**: `server/routes/connectors.ts` — CRUD, test, poll, events, OAuth start/callback, super admin dashboard/force-poll/disable/enable
+- **Plan gating**: Email-to-Ticket feature required (Enterprise/Unlimited only)
+- **Event logging**: `connector_events` table tracks auth, poll, config changes, errors
+- **inbound_email_log**: Now has `connector_id` FK to `mail_connectors` for tracking which connector processed each email
+
 ## Key Design Decisions
 - Roles: owner, admin, supervisor, staff, technician, readonly (DB enum also contains legacy `tech`/`viewer` values — unused, harmless, cannot be removed without type recreation)
 - org_plan: free, pro, pro_plus, enterprise, unlimited (DB enum also contains legacy `individual`/`small_business` values — unused)

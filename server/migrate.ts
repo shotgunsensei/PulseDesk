@@ -462,6 +462,78 @@ export async function ensureSchema() {
       CREATE INDEX IF NOT EXISTS idx_ticket_email_metadata_message_id ON ticket_email_metadata(message_id);
     `);
 
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE connector_provider AS ENUM ('google','microsoft','imap','forwarding');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE connector_status AS ENUM ('active','error','disabled','pending_auth');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE connector_event_type AS ENUM ('poll_success','poll_error','auth_success','auth_error','disabled','enabled','config_changed');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS mail_connectors (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id varchar NOT NULL REFERENCES orgs(id),
+        provider connector_provider NOT NULL,
+        label text NOT NULL DEFAULT '',
+        status connector_status NOT NULL DEFAULT 'pending_auth',
+        email_address text,
+        credentials_encrypted text,
+        imap_host text,
+        imap_port integer DEFAULT 993,
+        imap_tls boolean NOT NULL DEFAULT true,
+        imap_folder text DEFAULT 'INBOX',
+        poll_interval_seconds integer DEFAULT 120,
+        last_polled_at timestamp,
+        last_error text,
+        consecutive_failures integer NOT NULL DEFAULT 0,
+        emails_processed integer NOT NULL DEFAULT 0,
+        enabled boolean NOT NULL DEFAULT true,
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_mail_connectors_org ON mail_connectors(org_id);
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS connector_events (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        connector_id varchar NOT NULL REFERENCES mail_connectors(id),
+        org_id varchar NOT NULL REFERENCES orgs(id),
+        event_type connector_event_type NOT NULL,
+        message text DEFAULT '',
+        metadata jsonb,
+        created_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_connector_events_connector ON connector_events(connector_id);
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE inbound_email_log ADD COLUMN connector_id varchar REFERENCES mail_connectors(id);
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+
     const imapColumns = [
       { col: "imap_host", def: "text" },
       { col: "imap_port", def: "integer DEFAULT 993" },

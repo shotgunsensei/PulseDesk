@@ -19,6 +19,7 @@ import notificationsRouter from "./notifications";
 import billingRouter from "./billing";
 import onboardingRouter from "./onboarding";
 import emailRouter from "./email";
+import connectorsRouter from "./connectors";
 
 declare module "express-session" {
   interface SessionData {
@@ -29,6 +30,9 @@ declare module "express-session" {
     entraState?: string;
     entraNonce?: string;
     entraOrgId?: string;
+    connectorOAuthState?: string;
+    connectorOAuthId?: string;
+    connectorOAuthProvider?: string;
   }
 }
 
@@ -77,6 +81,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use(billingRouter);
   app.use(onboardingRouter);
   app.use(emailRouter);
+  app.use(connectorsRouter);
 
   return httpServer;
 }

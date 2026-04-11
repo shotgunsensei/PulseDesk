@@ -737,6 +737,7 @@ export const inboundEmailLog = pgTable("inbound_email_log", {
   statusReason: text("status_reason").default(""),
   ticketId: varchar("ticket_id").references(() => tickets.id),
   provider: text("provider").default("mock"),
+  connectorId: varchar("connector_id").references(() => mailConnectors.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -757,6 +758,78 @@ export const ticketEmailMetadata = pgTable("ticket_email_metadata", {
   contactId: varchar("contact_id").references(() => emailContacts.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const connectorProviderEnum = pgEnum("connector_provider", [
+  "google",
+  "microsoft",
+  "imap",
+  "forwarding",
+]);
+
+export const connectorStatusEnum = pgEnum("connector_status", [
+  "active",
+  "error",
+  "disabled",
+  "pending_auth",
+]);
+
+export const mailConnectors = pgTable("mail_connectors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id),
+  provider: connectorProviderEnum("provider").notNull(),
+  label: text("label").default("").notNull(),
+  status: connectorStatusEnum("status").default("pending_auth").notNull(),
+  emailAddress: text("email_address"),
+  credentialsEncrypted: text("credentials_encrypted"),
+  imapHost: text("imap_host"),
+  imapPort: integer("imap_port").default(993),
+  imapTls: boolean("imap_tls").default(true).notNull(),
+  imapFolder: text("imap_folder").default("INBOX"),
+  pollIntervalSeconds: integer("poll_interval_seconds").default(120),
+  lastPolledAt: timestamp("last_polled_at"),
+  lastError: text("last_error"),
+  consecutiveFailures: integer("consecutive_failures").default(0).notNull(),
+  emailsProcessed: integer("emails_processed").default(0).notNull(),
+  enabled: boolean("enabled").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const connectorEventTypeEnum = pgEnum("connector_event_type", [
+  "poll_success",
+  "poll_error",
+  "auth_success",
+  "auth_error",
+  "disabled",
+  "enabled",
+  "config_changed",
+]);
+
+export const connectorEvents = pgTable("connector_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  connectorId: varchar("connector_id")
+    .notNull()
+    .references(() => mailConnectors.id),
+  orgId: varchar("org_id")
+    .notNull()
+    .references(() => orgs.id),
+  eventType: connectorEventTypeEnum("event_type").notNull(),
+  message: text("message").default(""),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMailConnectorSchema = createInsertSchema(mailConnectors).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertMailConnector = z.infer<typeof insertMailConnectorSchema>;
+export type MailConnector = typeof mailConnectors.$inferSelect;
+export type ConnectorEvent = typeof connectorEvents.$inferSelect;
 
 export type EmailSettings = typeof emailSettings.$inferSelect;
 export type EmailContact = typeof emailContacts.$inferSelect;

@@ -1,0 +1,189 @@
+import type { MailConnector } from "@shared/schema";
+import type {
+  ConnectorService,
+  ConnectorCredentials,
+  FetchedEmail,
+  OAuthStartResult,
+  OAuthCallbackResult,
+} from "./types";
+import { fetchUnseenEmails, markMessagesSeen, testImapConnection, type ImapConfig } from "../imapClient";
+import crypto from "crypto";
+
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
+const SCOPES = [
+  "https://mail.google.com/",
+  "https://www.googleapis.com/auth/userinfo.email",
+];
+
+function getClientId(): string {
+  const id = process.env.GOOGLE_CLIENT_ID;
+  if (!id) throw new Error("GOOGLE_CLIENT_ID not configured");
+  return id;
+}
+
+function getClientSecret(): string {
+  const secret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!secret) throw new Error("GOOGLE_CLIENT_SECRET not configured");
+  return secret;
+}
+
+function buildImapConfig(connector: MailConnector, creds: ConnectorCredentials): ImapConfig {
+  return {
+    host: "imap.gmail.com",
+    port: 993,
+    user: creds.imapUser || connector.emailAddress || "",
+    password: creds.accessToken || "",
+    tls: true,
+    folder: connector.imapFolder || "INBOX",
+  };
+}
+
+export class GoogleConnectorService implements ConnectorService {
+  readonly provider = "google" as const;
+
+  async startOAuth(_connector: MailConnector, redirectUri: string): Promise<OAuthStartResult> {
+    const state = crypto.randomBytes(32).toString("hex");
+    const params = new URLSearchParams({
+      client_id: getClientId(),
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: SCOPES.join(" "),
+      access_type: "offline",
+      prompt: "consent",
+      state,
+    });
+    return { redirectUrl: `${GOOGLE_AUTH_URL}?${params.toString()}`, state };
+  }
+
+  async handleOAuthCallback(
+    _connector: MailConnector,
+    code: string,
+    redirectUri: string,
+  ): Promise<OAuthCallbackResult> {
+    try {
+      const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: getClientId(),
+          client_secret: getClientSecret(),
+          code,
+          redirect_uri: redirectUri,
+          grant_type: "authorization_code",
+        }),
+      });
+
+      if (!tokenRes.ok) {
+        const errBody = await tokenRes.text();
+        console.error("[google-connector] Token exchange failed:", errBody);
+        return { success: false, error: "Failed to exchange authorization code" };
+      }
+
+      const tokenData = await tokenRes.json() as any;
+      const accessToken = tokenData.access_token;
+      const refreshToken = tokenData.refresh_token;
+      const expiresIn = tokenData.expires_in || 3600;
+
+      if (!accessToken) {
+        return { success: false, error: "No access token received" };
+      }
+
+      const userRes = await fetch(GOOGLE_USERINFO_URL, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      let emailAddress = "";
+      if (userRes.ok) {
+        const userData = await userRes.json() as any;
+        emailAddress = userData.email || "";
+      }
+
+      return {
+        success: true,
+        emailAddress,
+        credentials: {
+          accessToken,
+          refreshToken,
+          tokenExpiry: Date.now() + expiresIn * 1000,
+          imapUser: emailAddress,
+        },
+      };
+    } catch (err: any) {
+      console.error("[google-connector] OAuth callback error:", err.message);
+      return { success: false, error: "OAuth processing failed" };
+    }
+  }
+
+  async testConnection(connector: MailConnector, credentials: ConnectorCredentials) {
+    const creds = await this.ensureFreshToken(connector, credentials);
+    const config = buildImapConfig(connector, creds);
+    return testImapConnection(config);
+  }
+
+  async fetchEmails(
+    connector: MailConnector,
+    credentials: ConnectorCredentials,
+    inboundAlias: string,
+    maxMessages = 20,
+  ): Promise<FetchedEmail[]> {
+    const creds = await this.ensureFreshToken(connector, credentials);
+    const config = buildImapConfig(connector, creds);
+    const results = await fetchUnseenEmails(config, inboundAlias, maxMessages);
+    return results.map(r => ({ uid: r.uid, email: { ...r.email, provider: "google" } }));
+  }
+
+  async markProcessed(
+    connector: MailConnector,
+    credentials: ConnectorCredentials,
+    uids: (number | string)[],
+  ): Promise<void> {
+    const creds = await this.ensureFreshToken(connector, credentials);
+    const config = buildImapConfig(connector, creds);
+    await markMessagesSeen(config, uids.map(u => Number(u)));
+  }
+
+  async refreshCredentials(
+    _connector: MailConnector,
+    credentials: ConnectorCredentials,
+  ): Promise<ConnectorCredentials | null> {
+    if (!credentials.refreshToken) return null;
+
+    try {
+      const res = await fetch(GOOGLE_TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: getClientId(),
+          client_secret: getClientSecret(),
+          refresh_token: credentials.refreshToken,
+          grant_type: "refresh_token",
+        }),
+      });
+
+      if (!res.ok) return null;
+
+      const data = await res.json() as any;
+      return {
+        ...credentials,
+        accessToken: data.access_token,
+        tokenExpiry: Date.now() + (data.expires_in || 3600) * 1000,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async ensureFreshToken(
+    connector: MailConnector,
+    credentials: ConnectorCredentials,
+  ): Promise<ConnectorCredentials> {
+    if (credentials.tokenExpiry && credentials.tokenExpiry > Date.now() + 60_000) {
+      return credentials;
+    }
+    const refreshed = await this.refreshCredentials(connector, credentials);
+    if (!refreshed) throw new Error("Failed to refresh Google access token");
+    return refreshed;
+  }
+}
