@@ -575,6 +575,9 @@ router.post("/api/email/imap/test", requireAuth, requireOrg, requireMinRole("adm
       if (!settings?.imapPasswordEncrypted) {
         return res.status(400).json({ error: "No password provided and no saved password found" });
       }
+      if (settings.imapHost !== imapHost || settings.imapUser !== imapUser) {
+        return res.status(400).json({ error: "Password is required when testing with different host or user than saved config" });
+      }
       try {
         password = decryptSecret(settings.imapPasswordEncrypted);
       } catch {
