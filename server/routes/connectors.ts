@@ -215,12 +215,14 @@ router.delete("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("ad
 
     stopPollerForConnector(existing.id);
 
+    await db.execute(sql`UPDATE inbound_email_log SET connector_id = NULL WHERE connector_id = ${existing.id}`);
     await db.delete(connectorEvents).where(sql`${connectorEvents.connectorId} = ${existing.id}`);
     await db.delete(mailConnectors).where(connectorById(existing.id));
 
     res.json({ deleted: true });
-  } catch (err: any) {
-    res.status(500).json({ error: safeError(err) });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: safeError({ message }) });
   }
 });
 
