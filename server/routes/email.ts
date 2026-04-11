@@ -81,7 +81,12 @@ router.get("/api/email/settings", requireAuth, requireOrg, requireMinRole("admin
     }
 
     const results = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
-    return res.json({ eligible: true, plan, settings: results[0] || null });
+    const settings = results[0] || null;
+    if (settings) {
+      const { imapPasswordEncrypted, ...sanitized } = settings;
+      return res.json({ eligible: true, plan, settings: { ...sanitized, imapPasswordSet: !!imapPasswordEncrypted } });
+    }
+    return res.json({ eligible: true, plan, settings: null });
   } catch (err: any) {
     res.status(500).json({ error: safeError(err) });
   }
@@ -383,7 +388,7 @@ const imapConfigSchema = z.object({
   imapHost: z.string().min(1).max(253),
   imapPort: z.number().int().min(1).max(65535).optional().default(993),
   imapUser: z.string().min(1).max(253),
-  imapPassword: z.string().min(1).max(500),
+  imapPassword: z.string().max(500).optional(),
   imapTls: z.boolean().optional().default(true),
   imapPollIntervalSeconds: z.number().int().min(60).max(3600).optional().default(120),
   imapFolder: z.string().min(1).max(253).optional().default("INBOX"),
@@ -443,20 +448,29 @@ router.post("/api/email/imap/configure", requireAuth, requireOrg, requireMinRole
     }
 
     const { imapHost, imapPort, imapUser, imapPassword, imapTls, imapPollIntervalSeconds, imapFolder } = parsed.data;
-    const encryptedPassword = encryptSecret(imapPassword);
 
-    const [updated] = await db.update(emailSettings).set({
+    const existingSettings = existing[0];
+    if (!imapPassword && !existingSettings.imapPasswordEncrypted) {
+      return res.status(400).json({ error: "IMAP password is required for initial configuration" });
+    }
+
+    const updateData: any = {
       imapHost,
       imapPort,
       imapUser,
-      imapPasswordEncrypted: encryptedPassword,
       imapTls,
       imapPollIntervalSeconds,
       imapFolder: imapFolder || "INBOX",
       imapConsecutiveFailures: 0,
       imapLastError: null,
       updatedAt: new Date(),
-    }).where(eq(emailSettings.orgId, orgId)).returning();
+    };
+
+    if (imapPassword) {
+      updateData.imapPasswordEncrypted = encryptSecret(imapPassword);
+    }
+
+    const [updated] = await db.update(emailSettings).set(updateData).where(eq(emailSettings.orgId, orgId)).returning();
 
     res.json({
       configured: true,
