@@ -162,9 +162,19 @@ function HealthDot({ connector }: { connector: Connector }) {
 }
 
 function needsReauth(connector: Connector): boolean {
-  return (connector.provider === "google" || connector.provider === "microsoft") &&
-    (connector.status === "pending_auth" || connector.status === "error") &&
-    !connector.hasCredentials;
+  if (connector.provider !== "google" && connector.provider !== "microsoft") return false;
+  if (connector.status === "pending_auth") return true;
+  if (!connector.hasCredentials) return true;
+  if (connector.status === "error" && connector.lastError) {
+    const err = connector.lastError.toLowerCase();
+    if (err.includes("token") || err.includes("auth") || err.includes("revok") ||
+        err.includes("expired") || err.includes("invalid_grant") || err.includes("unauthorized") ||
+        err.includes("refresh") || err.includes("consent") || err.includes("403") || err.includes("401")) {
+      return true;
+    }
+  }
+  if (connector.consecutiveFailures >= 3 && connector.status === "error") return true;
+  return false;
 }
 
 export default function EmailSettingsPage() {
@@ -592,7 +602,16 @@ export default function EmailSettingsPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {googleConnector && googleConnector.hasCredentials ? (
+                  {googleConnector && needsReauth(googleConnector) ? (
+                    <>
+                      <Button size="sm" className="gap-2 bg-amber-600 hover:bg-amber-700 text-white" onClick={() => handleConnectOAuth("google")} data-testid="button-reauth-google">
+                        <RefreshCw className="h-3 w-3" /> Re-authorize
+                      </Button>
+                      <Button variant="ghost" size="sm" className="text-xs h-8 text-rose-600 hover:text-rose-700 gap-1" onClick={() => { if (confirm("Disconnect Google? This will revoke access tokens.")) disconnectMutation.mutate(googleConnector.id); }} data-testid="button-disconnect-google">
+                        <Unplug className="h-3 w-3" /> Disconnect
+                      </Button>
+                    </>
+                  ) : googleConnector && googleConnector.hasCredentials ? (
                     <>
                       <Button variant="outline" size="sm" className="text-xs h-8 gap-1" onClick={() => testConnectorMutation.mutate(googleConnector.id)} disabled={testConnectorMutation.isPending} data-testid="button-test-google">
                         <Plug className="h-3 w-3" /> Test
@@ -607,7 +626,7 @@ export default function EmailSettingsPage() {
                     </>
                   ) : (
                     <Button size="sm" className="gap-2" onClick={() => handleConnectOAuth("google")} data-testid="button-connect-google">
-                      {googleConnector && needsReauth(googleConnector) ? <><RefreshCw className="h-3 w-3" /> Re-authorize</> : <><ExternalLink className="h-3 w-3" /> Connect</>}
+                      <ExternalLink className="h-3 w-3" /> Connect
                     </Button>
                   )}
                 </div>
@@ -653,7 +672,16 @@ export default function EmailSettingsPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {microsoftConnector && microsoftConnector.hasCredentials ? (
+                  {microsoftConnector && needsReauth(microsoftConnector) ? (
+                    <>
+                      <Button size="sm" className="gap-2 bg-amber-600 hover:bg-amber-700 text-white" onClick={() => handleConnectOAuth("microsoft")} data-testid="button-reauth-microsoft">
+                        <RefreshCw className="h-3 w-3" /> Re-authorize
+                      </Button>
+                      <Button variant="ghost" size="sm" className="text-xs h-8 text-rose-600 hover:text-rose-700 gap-1" onClick={() => { if (confirm("Disconnect Microsoft 365? This will revoke access tokens.")) disconnectMutation.mutate(microsoftConnector.id); }} data-testid="button-disconnect-microsoft">
+                        <Unplug className="h-3 w-3" /> Disconnect
+                      </Button>
+                    </>
+                  ) : microsoftConnector && microsoftConnector.hasCredentials ? (
                     <>
                       <Button variant="outline" size="sm" className="text-xs h-8 gap-1" onClick={() => testConnectorMutation.mutate(microsoftConnector.id)} disabled={testConnectorMutation.isPending} data-testid="button-test-microsoft">
                         <Plug className="h-3 w-3" /> Test
@@ -668,7 +696,7 @@ export default function EmailSettingsPage() {
                     </>
                   ) : (
                     <Button size="sm" className="gap-2" onClick={() => handleConnectOAuth("microsoft")} data-testid="button-connect-microsoft">
-                      {microsoftConnector && needsReauth(microsoftConnector) ? <><RefreshCw className="h-3 w-3" /> Re-authorize</> : <><ExternalLink className="h-3 w-3" /> Connect</>}
+                      <ExternalLink className="h-3 w-3" /> Connect
                     </Button>
                   )}
                 </div>
