@@ -462,6 +462,27 @@ export async function ensureSchema() {
       CREATE INDEX IF NOT EXISTS idx_ticket_email_metadata_message_id ON ticket_email_metadata(message_id);
     `);
 
+    const imapColumns = [
+      { col: "imap_host", def: "text" },
+      { col: "imap_port", def: "integer DEFAULT 993" },
+      { col: "imap_user", def: "text" },
+      { col: "imap_password_encrypted", def: "text" },
+      { col: "imap_tls", def: "boolean NOT NULL DEFAULT true" },
+      { col: "imap_enabled", def: "boolean NOT NULL DEFAULT false" },
+      { col: "imap_last_polled_at", def: "timestamp" },
+      { col: "imap_last_error", def: "text" },
+      { col: "imap_poll_interval_seconds", def: "integer DEFAULT 120" },
+      { col: "imap_consecutive_failures", def: "integer NOT NULL DEFAULT 0" },
+    ];
+    for (const { col, def } of imapColumns) {
+      await client.query(`
+        DO $$ BEGIN
+          ALTER TABLE email_settings ADD COLUMN ${col} ${def};
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END $$;
+      `);
+    }
+
     await client.query("COMMIT");
     console.log("Schema verification complete - all tables ensured.");
   } catch (err) {

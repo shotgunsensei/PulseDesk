@@ -16,6 +16,15 @@ import {
   generateAlias,
   type ParsedEmail,
 } from "../services/emailProcessor";
+import { encryptSecret, decryptSecret } from "../auth/crypto";
+import { testImapConnection } from "../services/imapClient";
+import {
+  startPollerForOrg,
+  stopPollerForOrg,
+  resetPollerForOrg,
+  getPollerStatus,
+  getPollerStatusForOrg,
+} from "../services/imapPoller";
 
 const router = Router();
 
@@ -39,7 +48,7 @@ function safeError(err: any): string {
   return err?.message || "Unknown error";
 }
 
-const ALLOWED_PROVIDERS = new Set(["mock", "sendgrid", "mailgun", "postmark"]);
+const ALLOWED_PROVIDERS = new Set(["mock", "sendgrid", "mailgun", "postmark", "imap"]);
 
 const updateSettingsSchema = z.object({
   enabled: z.boolean().optional(),
@@ -363,6 +372,274 @@ router.post("/api/admin/email/replay/:eventId", requireAuth, requireSuperAdmin, 
 
     const result = await processInboundEmail(email);
     res.json({ replayed: true, result });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+const imapConfigSchema = z.object({
+  imapHost: z.string().min(1).max(253),
+  imapPort: z.number().int().min(1).max(65535).optional().default(993),
+  imapUser: z.string().min(1).max(253),
+  imapPassword: z.string().min(1).max(500),
+  imapTls: z.boolean().optional().default(true),
+  imapPollIntervalSeconds: z.number().int().min(60).max(3600).optional().default(120),
+});
+
+const imapUpdateSchema = z.object({
+  imapEnabled: z.boolean().optional(),
+  imapHost: z.string().min(1).max(253).optional(),
+  imapPort: z.number().int().min(1).max(65535).optional(),
+  imapUser: z.string().min(1).max(253).optional(),
+  imapPassword: z.string().min(1).max(500).optional(),
+  imapTls: z.boolean().optional(),
+  imapPollIntervalSeconds: z.number().int().min(60).max(3600).optional(),
+});
+
+router.get("/api/email/imap/status", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const [settings] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
+    if (!settings) return res.json({ configured: false });
+
+    const pollerStatus = getPollerStatusForOrg(orgId);
+
+    res.json({
+      configured: !!(settings.imapHost && settings.imapUser && settings.imapPasswordEncrypted),
+      imapHost: settings.imapHost || null,
+      imapPort: settings.imapPort || 993,
+      imapUser: settings.imapUser || null,
+      imapTls: settings.imapTls,
+      imapEnabled: settings.imapEnabled,
+      imapPollIntervalSeconds: settings.imapPollIntervalSeconds || 120,
+      imapLastPolledAt: settings.imapLastPolledAt,
+      imapLastError: settings.imapLastError,
+      imapConsecutiveFailures: settings.imapConsecutiveFailures,
+      pollerRunning: pollerStatus?.running || false,
+      pollerDisabled: pollerStatus?.disabled || false,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.post("/api/email/imap/configure", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const parsed = imapConfigSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
+    }
+
+    const existing = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
+    if (existing.length === 0) {
+      return res.status(400).json({ error: "Email settings not initialized. Activate Email-to-Ticket first." });
+    }
+
+    const { imapHost, imapPort, imapUser, imapPassword, imapTls, imapPollIntervalSeconds } = parsed.data;
+    const encryptedPassword = encryptSecret(imapPassword);
+
+    const [updated] = await db.update(emailSettings).set({
+      imapHost,
+      imapPort,
+      imapUser,
+      imapPasswordEncrypted: encryptedPassword,
+      imapTls,
+      imapPollIntervalSeconds,
+      imapConsecutiveFailures: 0,
+      imapLastError: null,
+      updatedAt: new Date(),
+    }).where(eq(emailSettings.orgId, orgId)).returning();
+
+    res.json({
+      configured: true,
+      imapHost: updated.imapHost,
+      imapPort: updated.imapPort,
+      imapUser: updated.imapUser,
+      imapTls: updated.imapTls,
+      imapEnabled: updated.imapEnabled,
+      imapPollIntervalSeconds: updated.imapPollIntervalSeconds,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.patch("/api/email/imap", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const parsed = imapUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
+    }
+
+    const data = parsed.data;
+    const updateData: any = { updatedAt: new Date() };
+
+    if (data.imapHost !== undefined) updateData.imapHost = data.imapHost;
+    if (data.imapPort !== undefined) updateData.imapPort = data.imapPort;
+    if (data.imapUser !== undefined) updateData.imapUser = data.imapUser;
+    if (data.imapTls !== undefined) updateData.imapTls = data.imapTls;
+    if (data.imapPollIntervalSeconds !== undefined) updateData.imapPollIntervalSeconds = data.imapPollIntervalSeconds;
+
+    if (data.imapPassword !== undefined) {
+      updateData.imapPasswordEncrypted = encryptSecret(data.imapPassword);
+      updateData.imapConsecutiveFailures = 0;
+      updateData.imapLastError = null;
+    }
+
+    if (data.imapEnabled !== undefined) {
+      updateData.imapEnabled = data.imapEnabled;
+
+      if (data.imapEnabled) {
+        const [settings] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
+        if (!settings?.imapHost || !settings?.imapUser || !settings?.imapPasswordEncrypted) {
+          return res.status(400).json({ error: "Configure IMAP credentials before enabling polling" });
+        }
+      }
+    }
+
+    const [updated] = await db.update(emailSettings)
+      .set(updateData)
+      .where(eq(emailSettings.orgId, orgId))
+      .returning();
+
+    if (!updated) return res.status(404).json({ error: "Email settings not found" });
+
+    if (data.imapEnabled === true && updated.imapHost && updated.imapUser && updated.imapPasswordEncrypted) {
+      startPollerForOrg(orgId, updated);
+    } else if (data.imapEnabled === false) {
+      stopPollerForOrg(orgId);
+    }
+
+    res.json({
+      imapHost: updated.imapHost,
+      imapPort: updated.imapPort,
+      imapUser: updated.imapUser,
+      imapTls: updated.imapTls,
+      imapEnabled: updated.imapEnabled,
+      imapPollIntervalSeconds: updated.imapPollIntervalSeconds,
+      imapLastPolledAt: updated.imapLastPolledAt,
+      imapLastError: updated.imapLastError,
+      imapConsecutiveFailures: updated.imapConsecutiveFailures,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.post("/api/email/imap/test", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+
+    const bodyParsed = z.object({
+      imapHost: z.string().min(1),
+      imapPort: z.number().int().min(1).max(65535).optional().default(993),
+      imapUser: z.string().min(1),
+      imapPassword: z.string().min(1).optional(),
+      imapTls: z.boolean().optional().default(true),
+    }).safeParse(req.body);
+
+    if (!bodyParsed.success) {
+      return res.status(400).json({ error: "Validation failed", details: bodyParsed.error.flatten().fieldErrors });
+    }
+
+    const { imapHost, imapPort, imapUser, imapTls } = bodyParsed.data;
+    let password = bodyParsed.data.imapPassword;
+
+    if (!password) {
+      const [settings] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
+      if (!settings?.imapPasswordEncrypted) {
+        return res.status(400).json({ error: "No password provided and no saved password found" });
+      }
+      try {
+        password = decryptSecret(settings.imapPasswordEncrypted);
+      } catch {
+        return res.status(400).json({ error: "Failed to decrypt saved password" });
+      }
+    }
+
+    const result = await testImapConnection({
+      host: imapHost,
+      port: imapPort,
+      user: imapUser,
+      password,
+      tls: imapTls,
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.post("/api/email/imap/reset", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    await resetPollerForOrg(orgId);
+    res.json({ success: true, message: "Poller reset and restarted" });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.get("/api/admin/imap/status", requireAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
+  try {
+    const pollerStatuses = getPollerStatus();
+
+    const enriched = await Promise.all(
+      pollerStatuses.map(async (p) => {
+        const org = await storage.getOrg(p.orgId);
+        return {
+          ...p,
+          orgName: org?.name || "Unknown",
+          orgPlan: (org as any)?.plan || "free",
+        };
+      })
+    );
+
+    const allImapSettings = await db
+      .select({
+        orgId: emailSettings.orgId,
+        imapHost: emailSettings.imapHost,
+        imapUser: emailSettings.imapUser,
+        imapEnabled: emailSettings.imapEnabled,
+        imapLastPolledAt: emailSettings.imapLastPolledAt,
+        imapLastError: emailSettings.imapLastError,
+        imapConsecutiveFailures: emailSettings.imapConsecutiveFailures,
+      })
+      .from(emailSettings)
+      .where(eq(emailSettings.imapEnabled, true));
+
+    const activeOrgIds = new Set(pollerStatuses.map(p => p.orgId));
+    const dbOnly = [];
+    for (const s of allImapSettings) {
+      if (!activeOrgIds.has(s.orgId)) {
+        const org = await storage.getOrg(s.orgId);
+        dbOnly.push({
+          orgId: s.orgId,
+          running: false,
+          lastPollAt: s.imapLastPolledAt,
+          lastError: s.imapLastError,
+          consecutiveFailures: s.imapConsecutiveFailures,
+          disabled: true,
+          orgName: org?.name || "Unknown",
+          orgPlan: (org as any)?.plan || "free",
+        });
+      }
+    }
+
+    res.json({ pollers: enriched, dbOnlyEnabled: dbOnly });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.post("/api/admin/imap/reset/:orgId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const { orgId } = req.params;
+    await resetPollerForOrg(orgId);
+    res.json({ success: true, message: `Poller reset for org ${orgId}` });
   } catch (err: any) {
     res.status(500).json({ error: safeError(err) });
   }

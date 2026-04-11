@@ -28,6 +28,12 @@ import {
   MailPlus,
   ArrowRight,
   RefreshCw,
+  Server,
+  Plug,
+  Power,
+  Loader2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { PLAN_LIMITS } from "@shared/schema";
 import { canManageSettings } from "@/lib/permissions";
@@ -57,6 +63,21 @@ interface InboundEvent {
   createdAt: string;
 }
 
+interface ImapStatus {
+  configured: boolean;
+  imapHost: string | null;
+  imapPort: number;
+  imapUser: string | null;
+  imapTls: boolean;
+  imapEnabled: boolean;
+  imapPollIntervalSeconds: number;
+  imapLastPolledAt: string | null;
+  imapLastError: string | null;
+  imapConsecutiveFailures: number;
+  pollerRunning: boolean;
+  pollerDisabled: boolean;
+}
+
 interface Department {
   id: string;
   name: string;
@@ -82,6 +103,8 @@ export default function EmailSettingsPage() {
   const [copied, setCopied] = useState(false);
   const [domainsInput, setDomainsInput] = useState("");
   const [testForm, setTestForm] = useState({ fromEmail: "", fromName: "", subject: "", body: "" });
+  const [imapForm, setImapForm] = useState({ imapHost: "", imapPort: 993, imapUser: "", imapPassword: "", imapTls: true, imapPollIntervalSeconds: 120 });
+  const [showImapPassword, setShowImapPassword] = useState(false);
 
   const isAdmin = membership && canManageSettings(membership.role);
 
@@ -106,6 +129,12 @@ export default function EmailSettingsPage() {
   const { data: events } = useQuery<InboundEvent[]>({
     queryKey: ["/api/email/events"],
     enabled: !!settingsResponse?.eligible && !!settingsResponse?.settings,
+  });
+
+  const { data: imapStatus } = useQuery<ImapStatus>({
+    queryKey: ["/api/email/imap/status"],
+    enabled: !!settingsResponse?.eligible && !!settingsResponse?.settings,
+    refetchInterval: 30000,
   });
 
   const initMutation = useMutation({
@@ -136,6 +165,49 @@ export default function EmailSettingsPage() {
       toast({ title: `Test result: ${data.status}`, description: data.reason || data.statusReason });
     },
     onError: (err: any) => toast({ title: "Test failed", description: err.message, variant: "destructive" }),
+  });
+
+  const imapConfigMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", "/api/email/imap/configure", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email/imap/status"] });
+      toast({ title: "IMAP configuration saved" });
+      setImapForm(f => ({ ...f, imapPassword: "" }));
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const imapToggleMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("PATCH", "/api/email/imap", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email/imap/status"] });
+      toast({ title: "IMAP polling updated" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const imapTestMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/email/imap/test", data);
+      return await res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.success) {
+        toast({ title: "Connection successful", description: `Mailbox: ${data.mailboxInfo?.exists || 0} messages, ${data.mailboxInfo?.unseen || 0} unseen` });
+      } else {
+        toast({ title: "Connection failed", description: data.error, variant: "destructive" });
+      }
+    },
+    onError: (err: any) => toast({ title: "Test failed", description: err.message, variant: "destructive" }),
+  });
+
+  const imapResetMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/email/imap/reset"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email/imap/status"] });
+      toast({ title: "Poller reset", description: "IMAP poller has been reset and restarted" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   if (isLoading) return <PulseLoader />;
@@ -464,6 +536,193 @@ export default function EmailSettingsPage() {
                 <Send className="h-4 w-4" />
                 {testMutation.isPending ? "Sending..." : "Send Test Email"}
               </Button>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-imap-config">
+            <CardHeader>
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Server className="h-4 w-4" />
+                IMAP Mailbox Polling
+              </CardTitle>
+              <CardDescription>Connect your own mailbox to automatically poll for new emails instead of using webhooks</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {imapStatus?.configured && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                    <div className="flex items-center gap-3">
+                      <div className={`h-2.5 w-2.5 rounded-full ${imapStatus.imapEnabled && !imapStatus.pollerDisabled ? "bg-emerald-500 animate-pulse" : imapStatus.pollerDisabled ? "bg-rose-500" : "bg-slate-400"}`} />
+                      <div>
+                        <p className="text-sm font-medium">
+                          {imapStatus.imapEnabled && !imapStatus.pollerDisabled ? "Polling Active" : imapStatus.pollerDisabled ? "Auto-Disabled" : "Polling Paused"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {imapStatus.imapUser}@{imapStatus.imapHost}:{imapStatus.imapPort}
+                          {imapStatus.imapTls ? " (TLS)" : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {imapStatus.pollerDisabled && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => imapResetMutation.mutate()}
+                          disabled={imapResetMutation.isPending}
+                          data-testid="button-imap-reset"
+                          className="gap-1 text-xs"
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          Reset
+                        </Button>
+                      )}
+                      <Switch
+                        data-testid="switch-imap-enabled"
+                        checked={imapStatus.imapEnabled}
+                        onCheckedChange={(checked) => imapToggleMutation.mutate({ imapEnabled: checked })}
+                        disabled={imapToggleMutation.isPending}
+                      />
+                    </div>
+                  </div>
+
+                  {imapStatus.imapLastError && (
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-rose-50 dark:bg-rose-950/20">
+                      <AlertTriangle className="h-4 w-4 text-rose-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-xs font-medium text-rose-700 dark:text-rose-400">Last Error ({imapStatus.imapConsecutiveFailures} failures)</p>
+                        <p className="text-xs text-rose-600 dark:text-rose-400">{imapStatus.imapLastError}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="rounded border p-2">
+                      <span className="text-muted-foreground">Last Polled</span>
+                      <p className="font-medium">{imapStatus.imapLastPolledAt ? new Date(imapStatus.imapLastPolledAt).toLocaleString() : "Never"}</p>
+                    </div>
+                    <div className="rounded border p-2">
+                      <span className="text-muted-foreground">Poll Interval</span>
+                      <p className="font-medium">{imapStatus.imapPollIntervalSeconds || 120}s</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="border rounded-lg p-4 space-y-3">
+                <p className="text-xs font-medium text-muted-foreground">{imapStatus?.configured ? "Update IMAP Connection" : "Configure IMAP Connection"}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>IMAP Host *</Label>
+                    <Input
+                      data-testid="input-imap-host"
+                      value={imapForm.imapHost}
+                      onChange={(e) => setImapForm({ ...imapForm, imapHost: e.target.value })}
+                      placeholder="imap.gmail.com"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label>Port</Label>
+                    <Input
+                      data-testid="input-imap-port"
+                      type="number"
+                      value={imapForm.imapPort}
+                      onChange={(e) => setImapForm({ ...imapForm, imapPort: parseInt(e.target.value) || 993 })}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label>Username / Email *</Label>
+                  <Input
+                    data-testid="input-imap-user"
+                    value={imapForm.imapUser}
+                    onChange={(e) => setImapForm({ ...imapForm, imapUser: e.target.value })}
+                    placeholder="support@yourdomain.com"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>Password *</Label>
+                  <div className="relative mt-1">
+                    <Input
+                      data-testid="input-imap-password"
+                      type={showImapPassword ? "text" : "password"}
+                      value={imapForm.imapPassword}
+                      onChange={(e) => setImapForm({ ...imapForm, imapPassword: e.target.value })}
+                      placeholder={imapStatus?.configured ? "••••••••  (leave blank to keep existing)" : "App password or IMAP password"}
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowImapPassword(!showImapPassword)}
+                    >
+                      {showImapPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      data-testid="switch-imap-tls"
+                      checked={imapForm.imapTls}
+                      onCheckedChange={(checked) => setImapForm({ ...imapForm, imapTls: checked })}
+                    />
+                    <Label>Use TLS</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label>Poll every</Label>
+                    <Select
+                      value={String(imapForm.imapPollIntervalSeconds)}
+                      onValueChange={(val) => setImapForm({ ...imapForm, imapPollIntervalSeconds: parseInt(val) })}
+                    >
+                      <SelectTrigger className="w-28" data-testid="select-imap-interval">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="60">60s</SelectItem>
+                        <SelectItem value="120">2 min</SelectItem>
+                        <SelectItem value="300">5 min</SelectItem>
+                        <SelectItem value="600">10 min</SelectItem>
+                        <SelectItem value="900">15 min</SelectItem>
+                        <SelectItem value="1800">30 min</SelectItem>
+                        <SelectItem value="3600">60 min</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    data-testid="button-imap-test"
+                    variant="outline"
+                    onClick={() => imapTestMutation.mutate({
+                      imapHost: imapForm.imapHost || imapStatus?.imapHost,
+                      imapPort: imapForm.imapPort || imapStatus?.imapPort,
+                      imapUser: imapForm.imapUser || imapStatus?.imapUser,
+                      imapPassword: imapForm.imapPassword || undefined,
+                      imapTls: imapForm.imapTls,
+                    })}
+                    disabled={imapTestMutation.isPending || !(imapForm.imapHost || imapStatus?.imapHost)}
+                    className="gap-1"
+                  >
+                    {imapTestMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
+                    Test Connection
+                  </Button>
+                  <Button
+                    data-testid="button-imap-save"
+                    onClick={() => imapConfigMutation.mutate(imapForm)}
+                    disabled={imapConfigMutation.isPending || !imapForm.imapHost || !imapForm.imapUser || (!imapForm.imapPassword && !imapStatus?.configured)}
+                    className="gap-1"
+                  >
+                    {imapConfigMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                    {imapStatus?.configured ? "Update Configuration" : "Save Configuration"}
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
 

@@ -103,8 +103,10 @@ The application follows a monolithic full-stack architecture with a React fronte
 - `server/storage.ts` - Storage layer with all CRUD methods including onboarding
 - `server/seed.ts` - Demo data seeding (Metro Health Network)
 - `server/middleware.ts` - Auth middleware (requireAuth, requireOrg, requireSuperAdmin, requireRole, requireMinRole, requireFeature). Owner role bypasses requireRole checks. requireFeature checks PLAN_LIMITS for plan-gated features.
-- `server/routes/email.ts` - Email-to-Ticket routes (settings CRUD, inbound webhook, test, events, contacts, super admin)
+- `server/routes/email.ts` - Email-to-Ticket routes (settings CRUD, inbound webhook, test, events, contacts, IMAP config/test/status/reset, super admin CRUD + IMAP dashboard)
 - `server/services/emailProcessor.ts` - Inbound email processing service (provider adapters, threading, contact upsert, alias resolution)
+- `server/services/imapClient.ts` - IMAP client (connect, fetch unseen, parse to ParsedEmail, mark seen, test connection) using imapflow + mailparser
+- `server/services/imapPoller.ts` - Per-tenant IMAP polling orchestrator (independent loops, plan gating, exponential backoff, auto-disable after 5 failures)
 - `server/migrate.ts` - Schema migration with enum fixes (membership_role + org_plan), stale role migration, column default updates, session table + onboarding_items table
 
 ### Frontend
@@ -166,10 +168,20 @@ The application follows a monolithic full-stack architecture with a React fronte
 - **Provider adapter**: `InboundEmailProvider` interface with `MockEmailProvider` default; extensible via `registerProvider()`
 - **Unknown sender**: Configurable per org — `create_ticket` (default) or `reject`
 - **Body processing**: Strips email signatures, `>` quoted lines, `On ... wrote:` headers
-- **Routes**: `server/routes/email.ts` — GET/PATCH settings, POST initialize, POST test-inbound, GET events/contacts, POST inbound webhook, super admin CRUD
-- **Frontend**: `client/src/pages/email-settings.tsx` — locked card for lower tiers, activation flow, settings controls, test tool, event log
+- **Routes**: `server/routes/email.ts` — GET/PATCH settings, POST initialize, POST test-inbound, GET events/contacts, POST inbound webhook, IMAP config/test/status/reset, super admin CRUD
+- **Frontend**: `client/src/pages/email-settings.tsx` — locked card for lower tiers, activation flow, settings controls, test tool, IMAP mailbox config, event log
 - **Sidebar**: Mail icon in System group, admin-only visibility
 - **Rate limiting**: In-memory rate limiter on inbound webhook (30 req/min per IP)
+- **IMAP Polling**: Per-tenant mailbox polling via `imapflow` + `mailparser` packages
+  - **Service files**: `server/services/imapClient.ts` (connection, fetch unseen, parse), `server/services/imapPoller.ts` (orchestrator with independent per-tenant loops)
+  - **Schema columns**: `imap_host`, `imap_port`, `imap_user`, `imap_password_encrypted`, `imap_tls`, `imap_enabled`, `imap_last_polled_at`, `imap_last_error`, `imap_poll_interval_seconds`, `imap_consecutive_failures` on `email_settings` table
+  - **Credential encryption**: IMAP passwords encrypted with AES-256-GCM via `encryptSecret`/`decryptSecret` in `server/auth/crypto.ts`
+  - **Backoff**: Exponential backoff on failures (30s base, max 10min), auto-disable after 5 consecutive failures
+  - **Auto-start**: Pollers start on server boot for all eligible tenants (Enterprise/Unlimited plan, IMAP enabled + configured)
+  - **API**: GET `/api/email/imap/status`, POST `/api/email/imap/configure`, PATCH `/api/email/imap`, POST `/api/email/imap/test`, POST `/api/email/imap/reset`
+  - **Super admin**: GET `/api/admin/imap/status` (dashboard), POST `/api/admin/imap/reset/:orgId`
+  - **Frontend**: IMAP Mailbox Polling card in email-settings with connection form, test button, polling status, enable/disable toggle, error display, reset button
+  - **Admin dashboard**: IMAP Polling Dashboard card in admin.tsx with per-tenant status, error display, reset controls
 
 ## Key Design Decisions
 - Roles: owner, admin, supervisor, staff, technician, readonly (DB enum also contains legacy `tech`/`viewer` values — unused, harmless, cannot be removed without type recreation)

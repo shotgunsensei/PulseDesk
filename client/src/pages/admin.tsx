@@ -18,6 +18,9 @@ import {
   ChevronDown,
   ChevronRight,
   Star,
+  Server,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
@@ -123,6 +126,10 @@ export default function AdminPage() {
 
   const { data: orgs, isLoading: orgsLoading } = useQuery<AdminOrg[]>({ queryKey: ["/api/admin/orgs"] });
   const { data: adminUsers, isLoading: usersLoading } = useQuery<AdminUser[]>({ queryKey: ["/api/admin/users"] });
+  const { data: imapDashboard } = useQuery<{
+    pollers: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; orgPlan: string }>;
+    dbOnlyEnabled: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; orgPlan: string }>;
+  }>({ queryKey: ["/api/admin/imap/status"], refetchInterval: 15000 });
 
   const deleteOrgMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/admin/orgs/${id}`),
@@ -156,6 +163,17 @@ export default function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/orgs"] });
       toast({ title: "Role updated", description: `User role changed to ${data.role}` });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const adminImapResetMutation = useMutation({
+    mutationFn: async (orgId: string) => {
+      await apiRequest("POST", `/api/admin/imap/reset/${orgId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/imap/status"] });
+      toast({ title: "Poller reset" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -404,6 +422,72 @@ export default function AdminPage() {
                 })}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-admin-imap">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Server className="h-4 w-4" />
+              IMAP Polling Dashboard
+            </CardTitle>
+            <CardDescription>Monitor and manage per-tenant IMAP mailbox polling</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {(() => {
+              const allPollers = [
+                ...(imapDashboard?.pollers || []),
+                ...(imapDashboard?.dbOnlyEnabled || []),
+              ];
+
+              if (allPollers.length === 0) {
+                return <p className="text-sm text-muted-foreground text-center py-4">No IMAP pollers configured</p>;
+              }
+
+              return (
+                <div className="space-y-2">
+                  {allPollers.map((p) => (
+                    <div key={p.orgId} className="flex items-center gap-3 rounded-lg border p-3" data-testid={`imap-poller-${p.orgId}`}>
+                      <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${p.running ? "bg-emerald-500 animate-pulse" : p.disabled ? "bg-rose-500" : "bg-slate-400"}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{p.orgName}</span>
+                          <Badge className={`text-[10px] ${PLAN_BADGE_STYLES[p.orgPlan] || PLAN_BADGE_STYLES.free}`} variant="secondary">
+                            {p.orgPlan}
+                          </Badge>
+                          <Badge variant="outline" className="text-[10px]">
+                            {p.running ? "Running" : p.disabled ? "Disabled" : "Stopped"}
+                          </Badge>
+                        </div>
+                        {p.lastError && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <AlertTriangle className="h-3 w-3 text-rose-500 shrink-0" />
+                            <span className="text-[11px] text-rose-600 truncate">{p.lastError}</span>
+                            <span className="text-[11px] text-muted-foreground shrink-0">({p.consecutiveFailures} failures)</span>
+                          </div>
+                        )}
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Last poll: {p.lastPollAt ? new Date(p.lastPollAt).toLocaleString() : "Never"}
+                        </p>
+                      </div>
+                      {(p.disabled || p.consecutiveFailures > 0) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7 gap-1"
+                          onClick={() => adminImapResetMutation.mutate(p.orgId)}
+                          disabled={adminImapResetMutation.isPending}
+                          data-testid={`button-admin-imap-reset-${p.orgId}`}
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          Reset
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
       </div>
