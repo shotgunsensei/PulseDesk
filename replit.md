@@ -99,7 +99,7 @@ The application follows a monolithic full-stack architecture with a React fronte
 - `server/routes/facilityRequests.ts` - Facility request CRUD
 - `server/routes/vendors.ts` - Vendor CRUD
 - `server/routes/analytics.ts` - Analytics data aggregation
-- `server/routes/admin.ts` - Super admin endpoints
+- `server/routes/admin.ts` - Super admin endpoints (org listing/deletion, plan management, user listing with memberships, role changes across tenants, super admin grant/revoke)
 - `server/storage.ts` - Storage layer with all CRUD methods including onboarding
 - `server/seed.ts` - Demo data seeding (Metro Health Network)
 - `server/middleware.ts` - Auth middleware (requireAuth, requireOrg, requireSuperAdmin, requireRole, requireMinRole, requireFeature). Owner role bypasses requireRole checks. requireFeature checks PLAN_LIMITS for plan-gated features.
