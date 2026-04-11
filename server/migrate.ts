@@ -472,7 +472,9 @@ export async function ensureSchema() {
       { col: "imap_last_polled_at", def: "timestamp" },
       { col: "imap_last_error", def: "text" },
       { col: "imap_poll_interval_seconds", def: "integer DEFAULT 120" },
+      { col: "imap_folder", def: "text DEFAULT 'INBOX'" },
       { col: "imap_consecutive_failures", def: "integer NOT NULL DEFAULT 0" },
+      { col: "imap_emails_processed", def: "integer NOT NULL DEFAULT 0" },
     ];
     for (const { col, def } of imapColumns) {
       await client.query(`

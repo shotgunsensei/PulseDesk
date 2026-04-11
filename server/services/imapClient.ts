@@ -8,6 +8,7 @@ export interface ImapConfig {
   user: string;
   password: string;
   tls: boolean;
+  folder?: string;
 }
 
 export interface FetchedImapEmail {
@@ -15,22 +16,27 @@ export interface FetchedImapEmail {
   email: ParsedEmail;
 }
 
-export async function testImapConnection(config: ImapConfig): Promise<{ success: boolean; error?: string; mailboxInfo?: { exists: number; unseen: number } }> {
-  const client = new ImapFlow({
+function createClient(config: ImapConfig, socketTimeout = 15000) {
+  return new ImapFlow({
     host: config.host,
     port: config.port,
     secure: config.tls,
     auth: { user: config.user, pass: config.password },
     logger: false,
     greetTimeout: 10000,
-    socketTimeout: 15000,
+    socketTimeout,
   });
+}
+
+export async function testImapConnection(config: ImapConfig): Promise<{ success: boolean; error?: string; mailboxInfo?: { exists: number; unseen: number } }> {
+  const folder = config.folder || "INBOX";
+  const client = createClient(config);
 
   try {
     await client.connect();
-    const lock = await client.getMailboxLock("INBOX");
+    const lock = await client.getMailboxLock(folder);
     try {
-      const status = await client.status("INBOX", { messages: true, unseen: true });
+      const status = await client.status(folder, { messages: true, unseen: true });
       return {
         success: true,
         mailboxInfo: {
@@ -49,21 +55,13 @@ export async function testImapConnection(config: ImapConfig): Promise<{ success:
 }
 
 export async function fetchUnseenEmails(config: ImapConfig, inboundAlias: string, maxMessages: number = 20): Promise<FetchedImapEmail[]> {
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port,
-    secure: config.tls,
-    auth: { user: config.user, pass: config.password },
-    logger: false,
-    greetTimeout: 10000,
-    socketTimeout: 30000,
-  });
-
+  const folder = config.folder || "INBOX";
+  const client = createClient(config, 30000);
   const results: FetchedImapEmail[] = [];
 
   try {
     await client.connect();
-    const lock = await client.getMailboxLock("INBOX");
+    const lock = await client.getMailboxLock(folder);
     try {
       const searchResult = await client.search({ seen: false }, { uid: true });
       if (!searchResult || searchResult.length === 0) return results;
@@ -124,19 +122,12 @@ export async function fetchUnseenEmails(config: ImapConfig, inboundAlias: string
 export async function markMessagesSeen(config: ImapConfig, uids: number[]): Promise<void> {
   if (uids.length === 0) return;
 
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port,
-    secure: config.tls,
-    auth: { user: config.user, pass: config.password },
-    logger: false,
-    greetTimeout: 10000,
-    socketTimeout: 15000,
-  });
+  const folder = config.folder || "INBOX";
+  const client = createClient(config);
 
   try {
     await client.connect();
-    const lock = await client.getMailboxLock("INBOX");
+    const lock = await client.getMailboxLock(folder);
     try {
       for (const uid of uids) {
         await client.messageFlagsAdd(uid, ["\\Seen"], { uid: true });

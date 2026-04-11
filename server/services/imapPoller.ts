@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { emailSettings, PLAN_LIMITS } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { storage } from "../storage";
 import { decryptSecret } from "../auth/crypto";
 import { fetchUnseenEmails, markMessagesSeen, type ImapConfig } from "./imapClient";
@@ -176,8 +176,7 @@ async function executePoll(orgId: string, expectedVersion: number) {
     }
 
     if (!settings.enabled) {
-      poller.running = false;
-      schedulePoll(orgId, expectedVersion, settings.imapPollIntervalSeconds);
+      stopPollerForOrg(orgId);
       return;
     }
 
@@ -212,6 +211,7 @@ async function executePoll(orgId: string, expectedVersion: number) {
       user: settings.imapUser,
       password,
       tls: settings.imapTls,
+      folder: settings.imapFolder || "INBOX",
     };
 
     const fetched = await fetchUnseenEmails(config, settings.inboundAlias);
@@ -239,7 +239,7 @@ async function executePoll(orgId: string, expectedVersion: number) {
     poller.lastPollAt = new Date();
     poller.lastError = null;
     poller.consecutiveFailures = 0;
-    await updatePollerState(orgId, poller);
+    await updatePollerState(orgId, poller, processed);
 
     if (processed > 0) {
       console.log(`[imap-poller] Org ${orgId}: processed ${processed}/${fetched.length} emails`);
@@ -260,7 +260,7 @@ async function executePoll(orgId: string, expectedVersion: number) {
   }
 }
 
-async function updatePollerState(orgId: string, poller: TenantPoller) {
+async function updatePollerState(orgId: string, poller: TenantPoller, processedCount?: number) {
   try {
     const updateData: any = {
       imapLastPolledAt: poller.lastPollAt,
@@ -268,6 +268,10 @@ async function updatePollerState(orgId: string, poller: TenantPoller) {
       imapConsecutiveFailures: poller.consecutiveFailures,
       updatedAt: new Date(),
     };
+
+    if (processedCount && processedCount > 0) {
+      updateData.imapEmailsProcessed = sql`imap_emails_processed + ${processedCount}`;
+    }
 
     await db.update(emailSettings)
       .set(updateData)
@@ -293,6 +297,76 @@ function checkAutoDisable(orgId: string, poller: TenantPoller) {
       .where(eq(emailSettings.orgId, orgId))
       .catch(err => console.error(`[imap-poller] Failed to auto-disable in DB:`, err.message));
   }
+}
+
+export async function forcePollForOrg(orgId: string): Promise<{ success: boolean; error?: string }> {
+  const [settings] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
+  if (!settings || !settings.imapHost || !settings.imapUser || !settings.imapPasswordEncrypted) {
+    return { success: false, error: "IMAP not configured for this organization" };
+  }
+
+  let password: string;
+  try {
+    password = decryptSecret(settings.imapPasswordEncrypted);
+  } catch {
+    return { success: false, error: "Failed to decrypt IMAP password" };
+  }
+
+  const config: ImapConfig = {
+    host: settings.imapHost,
+    port: settings.imapPort || 993,
+    user: settings.imapUser,
+    password,
+    tls: settings.imapTls,
+    folder: settings.imapFolder || "INBOX",
+  };
+
+  try {
+    const { fetchUnseenEmails: fetchFn, markMessagesSeen: markFn } = await import("./imapClient");
+    const fetched = await fetchFn(config, settings.inboundAlias);
+
+    const successfulUids: number[] = [];
+    let processed = 0;
+    for (const { uid, email } of fetched) {
+      try {
+        await processInboundEmail(email);
+        successfulUids.push(uid);
+        processed++;
+      } catch {}
+    }
+
+    if (successfulUids.length > 0) {
+      try { await markFn(config, successfulUids); } catch {}
+    }
+
+    if (processed > 0) {
+      await db.update(emailSettings).set({
+        imapLastPolledAt: new Date(),
+        imapLastError: null,
+        imapEmailsProcessed: sql`imap_emails_processed + ${processed}`,
+        updatedAt: new Date(),
+      }).where(eq(emailSettings.orgId, orgId));
+    } else {
+      await db.update(emailSettings).set({
+        imapLastPolledAt: new Date(),
+        imapLastError: null,
+        updatedAt: new Date(),
+      }).where(eq(emailSettings.orgId, orgId));
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Force poll failed" };
+  }
+}
+
+export async function disablePollerForOrg(orgId: string): Promise<void> {
+  stopPollerForOrg(orgId);
+  await db.update(emailSettings).set({
+    imapEnabled: false,
+    imapLastError: "Disabled by super admin",
+    updatedAt: new Date(),
+  }).where(eq(emailSettings.orgId, orgId));
 }
 
 export function stopAllPollers() {

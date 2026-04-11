@@ -71,9 +71,11 @@ interface ImapStatus {
   imapTls: boolean;
   imapEnabled: boolean;
   imapPollIntervalSeconds: number;
+  imapFolder: string;
   imapLastPolledAt: string | null;
   imapLastError: string | null;
   imapConsecutiveFailures: number;
+  imapEmailsProcessed: number;
   pollerRunning: boolean;
   pollerDisabled: boolean;
 }
@@ -103,7 +105,7 @@ export default function EmailSettingsPage() {
   const [copied, setCopied] = useState(false);
   const [domainsInput, setDomainsInput] = useState("");
   const [testForm, setTestForm] = useState({ fromEmail: "", fromName: "", subject: "", body: "" });
-  const [imapForm, setImapForm] = useState({ imapHost: "", imapPort: 993, imapUser: "", imapPassword: "", imapTls: true, imapPollIntervalSeconds: 120 });
+  const [imapForm, setImapForm] = useState({ imapHost: "", imapPort: 993, imapUser: "", imapPassword: "", imapTls: true, imapPollIntervalSeconds: 120, imapFolder: "INBOX" });
   const [showImapPassword, setShowImapPassword] = useState(false);
 
   const isAdmin = membership && canManageSettings(membership.role);
@@ -605,6 +607,14 @@ export default function EmailSettingsPage() {
                       <span className="text-muted-foreground">Poll Interval</span>
                       <p className="font-medium">{imapStatus.imapPollIntervalSeconds || 120}s</p>
                     </div>
+                    <div className="rounded border p-2">
+                      <span className="text-muted-foreground">Folder</span>
+                      <p className="font-medium">{imapStatus.imapFolder || "INBOX"}</p>
+                    </div>
+                    <div className="rounded border p-2">
+                      <span className="text-muted-foreground">Emails Processed</span>
+                      <p className="font-medium">{imapStatus.imapEmailsProcessed || 0}</p>
+                    </div>
                   </div>
                 </div>
               )}
@@ -693,6 +703,16 @@ export default function EmailSettingsPage() {
                         <SelectItem value="3600">60 min</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div>
+                    <Label>Mailbox Folder</Label>
+                    <Input
+                      data-testid="input-imap-folder"
+                      value={imapForm.imapFolder}
+                      onChange={(e) => setImapForm({ ...imapForm, imapFolder: e.target.value })}
+                      placeholder="INBOX"
+                      className="mt-1"
+                    />
                   </div>
                 </div>
                 <div className="flex gap-2">

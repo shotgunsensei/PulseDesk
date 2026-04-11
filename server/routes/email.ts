@@ -24,6 +24,8 @@ import {
   resetPollerForOrg,
   getPollerStatus,
   getPollerStatusForOrg,
+  forcePollForOrg,
+  disablePollerForOrg,
 } from "../services/imapPoller";
 
 const router = Router();
@@ -48,7 +50,7 @@ function safeError(err: any): string {
   return err?.message || "Unknown error";
 }
 
-const ALLOWED_PROVIDERS = new Set(["mock", "sendgrid", "mailgun", "postmark", "imap"]);
+const ALLOWED_PROVIDERS = new Set(["mock", "sendgrid", "mailgun", "postmark"]);
 
 const updateSettingsSchema = z.object({
   enabled: z.boolean().optional(),
@@ -384,6 +386,7 @@ const imapConfigSchema = z.object({
   imapPassword: z.string().min(1).max(500),
   imapTls: z.boolean().optional().default(true),
   imapPollIntervalSeconds: z.number().int().min(60).max(3600).optional().default(120),
+  imapFolder: z.string().min(1).max(253).optional().default("INBOX"),
 });
 
 const imapUpdateSchema = z.object({
@@ -394,6 +397,7 @@ const imapUpdateSchema = z.object({
   imapPassword: z.string().min(1).max(500).optional(),
   imapTls: z.boolean().optional(),
   imapPollIntervalSeconds: z.number().int().min(60).max(3600).optional(),
+  imapFolder: z.string().min(1).max(253).optional(),
 });
 
 router.get("/api/email/imap/status", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
@@ -412,9 +416,11 @@ router.get("/api/email/imap/status", requireAuth, requireOrg, requireMinRole("ad
       imapTls: settings.imapTls,
       imapEnabled: settings.imapEnabled,
       imapPollIntervalSeconds: settings.imapPollIntervalSeconds || 120,
+      imapFolder: settings.imapFolder || "INBOX",
       imapLastPolledAt: settings.imapLastPolledAt,
       imapLastError: settings.imapLastError,
       imapConsecutiveFailures: settings.imapConsecutiveFailures,
+      imapEmailsProcessed: settings.imapEmailsProcessed || 0,
       pollerRunning: pollerStatus?.running || false,
       pollerDisabled: pollerStatus?.disabled || false,
     });
@@ -436,7 +442,7 @@ router.post("/api/email/imap/configure", requireAuth, requireOrg, requireMinRole
       return res.status(400).json({ error: "Email settings not initialized. Activate Email-to-Ticket first." });
     }
 
-    const { imapHost, imapPort, imapUser, imapPassword, imapTls, imapPollIntervalSeconds } = parsed.data;
+    const { imapHost, imapPort, imapUser, imapPassword, imapTls, imapPollIntervalSeconds, imapFolder } = parsed.data;
     const encryptedPassword = encryptSecret(imapPassword);
 
     const [updated] = await db.update(emailSettings).set({
@@ -446,6 +452,7 @@ router.post("/api/email/imap/configure", requireAuth, requireOrg, requireMinRole
       imapPasswordEncrypted: encryptedPassword,
       imapTls,
       imapPollIntervalSeconds,
+      imapFolder: imapFolder || "INBOX",
       imapConsecutiveFailures: 0,
       imapLastError: null,
       updatedAt: new Date(),
@@ -459,6 +466,7 @@ router.post("/api/email/imap/configure", requireAuth, requireOrg, requireMinRole
       imapTls: updated.imapTls,
       imapEnabled: updated.imapEnabled,
       imapPollIntervalSeconds: updated.imapPollIntervalSeconds,
+      imapFolder: updated.imapFolder,
     });
   } catch (err: any) {
     res.status(500).json({ error: safeError(err) });
@@ -481,6 +489,7 @@ router.patch("/api/email/imap", requireAuth, requireOrg, requireMinRole("admin")
     if (data.imapUser !== undefined) updateData.imapUser = data.imapUser;
     if (data.imapTls !== undefined) updateData.imapTls = data.imapTls;
     if (data.imapPollIntervalSeconds !== undefined) updateData.imapPollIntervalSeconds = data.imapPollIntervalSeconds;
+    if (data.imapFolder !== undefined) updateData.imapFolder = data.imapFolder;
 
     if (data.imapPassword !== undefined) {
       updateData.imapPasswordEncrypted = encryptSecret(data.imapPassword);
@@ -587,17 +596,6 @@ router.get("/api/admin/imap/status", requireAuth, requireSuperAdmin, async (_req
   try {
     const pollerStatuses = getPollerStatus();
 
-    const enriched = await Promise.all(
-      pollerStatuses.map(async (p) => {
-        const org = await storage.getOrg(p.orgId);
-        return {
-          ...p,
-          orgName: org?.name || "Unknown",
-          orgPlan: (org as any)?.plan || "free",
-        };
-      })
-    );
-
     const allImapSettings = await db
       .select({
         orgId: emailSettings.orgId,
@@ -607,9 +605,25 @@ router.get("/api/admin/imap/status", requireAuth, requireSuperAdmin, async (_req
         imapLastPolledAt: emailSettings.imapLastPolledAt,
         imapLastError: emailSettings.imapLastError,
         imapConsecutiveFailures: emailSettings.imapConsecutiveFailures,
+        imapEmailsProcessed: emailSettings.imapEmailsProcessed,
       })
       .from(emailSettings)
       .where(eq(emailSettings.imapEnabled, true));
+
+    const settingsMap = new Map(allImapSettings.map(s => [s.orgId, s]));
+
+    const enriched = await Promise.all(
+      pollerStatuses.map(async (p) => {
+        const org = await storage.getOrg(p.orgId);
+        const dbSettings = settingsMap.get(p.orgId);
+        return {
+          ...p,
+          imapEmailsProcessed: dbSettings?.imapEmailsProcessed || 0,
+          orgName: org?.name || "Unknown",
+          orgPlan: (org as any)?.plan || "free",
+        };
+      })
+    );
 
     const activeOrgIds = new Set(pollerStatuses.map(p => p.orgId));
     const dbOnly = [];
@@ -622,6 +636,7 @@ router.get("/api/admin/imap/status", requireAuth, requireSuperAdmin, async (_req
           lastPollAt: s.imapLastPolledAt,
           lastError: s.imapLastError,
           consecutiveFailures: s.imapConsecutiveFailures,
+          imapEmailsProcessed: s.imapEmailsProcessed || 0,
           disabled: true,
           orgName: org?.name || "Unknown",
           orgPlan: (org as any)?.plan || "free",
@@ -640,6 +655,29 @@ router.post("/api/admin/imap/reset/:orgId", requireAuth, requireSuperAdmin, asyn
     const { orgId } = req.params;
     await resetPollerForOrg(orgId);
     res.json({ success: true, message: `Poller reset for org ${orgId}` });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.post("/api/admin/imap/force-poll/:orgId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const { orgId } = req.params;
+    const result = await forcePollForOrg(orgId);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+    res.json({ success: true, message: `Force poll completed for org ${orgId}` });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.post("/api/admin/imap/disable/:orgId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const { orgId } = req.params;
+    await disablePollerForOrg(orgId);
+    res.json({ success: true, message: `IMAP disabled for org ${orgId}` });
   } catch (err: any) {
     res.status(500).json({ error: safeError(err) });
   }

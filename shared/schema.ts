@@ -697,7 +697,9 @@ export const emailSettings = pgTable("email_settings", {
   imapLastPolledAt: timestamp("imap_last_polled_at"),
   imapLastError: text("imap_last_error"),
   imapPollIntervalSeconds: integer("imap_poll_interval_seconds").default(120),
+  imapFolder: text("imap_folder").default("INBOX"),
   imapConsecutiveFailures: integer("imap_consecutive_failures").default(0).notNull(),
+  imapEmailsProcessed: integer("imap_emails_processed").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

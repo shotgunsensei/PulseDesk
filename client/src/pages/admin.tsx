@@ -21,6 +21,8 @@ import {
   Server,
   RefreshCw,
   AlertTriangle,
+  Play,
+  XCircle,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
@@ -127,8 +129,8 @@ export default function AdminPage() {
   const { data: orgs, isLoading: orgsLoading } = useQuery<AdminOrg[]>({ queryKey: ["/api/admin/orgs"] });
   const { data: adminUsers, isLoading: usersLoading } = useQuery<AdminUser[]>({ queryKey: ["/api/admin/users"] });
   const { data: imapDashboard } = useQuery<{
-    pollers: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; orgPlan: string }>;
-    dbOnlyEnabled: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; orgPlan: string }>;
+    pollers: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; orgPlan: string; imapEmailsProcessed?: number }>;
+    dbOnlyEnabled: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; orgPlan: string; imapEmailsProcessed?: number }>;
   }>({ queryKey: ["/api/admin/imap/status"], refetchInterval: 15000 });
 
   const deleteOrgMutation = useMutation({
@@ -174,6 +176,28 @@ export default function AdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/imap/status"] });
       toast({ title: "Poller reset" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const adminImapForcePollMutation = useMutation({
+    mutationFn: async (orgId: string) => {
+      await apiRequest("POST", `/api/admin/imap/force-poll/${orgId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/imap/status"] });
+      toast({ title: "Force poll completed" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const adminImapDisableMutation = useMutation({
+    mutationFn: async (orgId: string) => {
+      await apiRequest("POST", `/api/admin/imap/disable/${orgId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/imap/status"] });
+      toast({ title: "IMAP disabled for organization" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -468,21 +492,48 @@ export default function AdminPage() {
                         )}
                         <p className="text-[11px] text-muted-foreground mt-0.5">
                           Last poll: {p.lastPollAt ? new Date(p.lastPollAt).toLocaleString() : "Never"}
+                          {' · '}{p.imapEmailsProcessed || 0} emails processed
                         </p>
                       </div>
-                      {(p.disabled || p.consecutiveFailures > 0) && (
+                      <div className="flex items-center gap-1 shrink-0">
                         <Button
                           variant="outline"
                           size="sm"
                           className="text-xs h-7 gap-1"
-                          onClick={() => adminImapResetMutation.mutate(p.orgId)}
-                          disabled={adminImapResetMutation.isPending}
-                          data-testid={`button-admin-imap-reset-${p.orgId}`}
+                          onClick={() => adminImapForcePollMutation.mutate(p.orgId)}
+                          disabled={adminImapForcePollMutation.isPending}
+                          data-testid={`button-admin-imap-force-poll-${p.orgId}`}
                         >
-                          <RefreshCw className="h-3 w-3" />
-                          Reset
+                          <Play className="h-3 w-3" />
+                          Poll Now
                         </Button>
-                      )}
+                        {(p.disabled || p.consecutiveFailures > 0) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs h-7 gap-1"
+                            onClick={() => adminImapResetMutation.mutate(p.orgId)}
+                            disabled={adminImapResetMutation.isPending}
+                            data-testid={`button-admin-imap-reset-${p.orgId}`}
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                            Reset
+                          </Button>
+                        )}
+                        {!p.disabled && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs h-7 gap-1 text-rose-600 hover:text-rose-700"
+                            onClick={() => adminImapDisableMutation.mutate(p.orgId)}
+                            disabled={adminImapDisableMutation.isPending}
+                            data-testid={`button-admin-imap-disable-${p.orgId}`}
+                          >
+                            <XCircle className="h-3 w-3" />
+                            Disable
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
