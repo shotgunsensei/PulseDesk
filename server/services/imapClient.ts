@@ -23,7 +23,7 @@ function createClient(config: ImapConfig, socketTimeout = 15000) {
     secure: config.tls,
     auth: { user: config.user, pass: config.password },
     logger: false,
-    greetTimeout: 10000,
+    greetingTimeout: 10000,
     socketTimeout,
   });
 }
