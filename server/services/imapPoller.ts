@@ -327,16 +327,22 @@ export async function forcePollForOrg(orgId: string): Promise<{ success: boolean
 
     const successfulUids: number[] = [];
     let processed = 0;
+    const errors: string[] = [];
     for (const { uid, email } of fetched) {
       try {
         await processInboundEmail(email);
         successfulUids.push(uid);
         processed++;
-      } catch {}
+      } catch (procErr: any) {
+        errors.push(`UID ${uid}: ${procErr.message || "unknown error"}`);
+        console.error(`[imap-poller] Force-poll error processing UID ${uid} for org ${orgId}:`, procErr.message);
+      }
     }
 
     if (successfulUids.length > 0) {
-      try { await markFn(config, successfulUids); } catch {}
+      try { await markFn(config, successfulUids); } catch (markErr: any) {
+        console.error(`[imap-poller] Force-poll error marking seen for org ${orgId}:`, markErr.message);
+      }
     }
 
     if (processed > 0) {

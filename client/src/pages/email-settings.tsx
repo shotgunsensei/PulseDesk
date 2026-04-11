@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -138,6 +138,20 @@ export default function EmailSettingsPage() {
     enabled: !!settingsResponse?.eligible && !!settingsResponse?.settings,
     refetchInterval: 30000,
   });
+
+  useEffect(() => {
+    if (imapStatus?.configured) {
+      setImapForm(prev => ({
+        ...prev,
+        imapHost: imapStatus.imapHost || prev.imapHost,
+        imapPort: imapStatus.imapPort || prev.imapPort,
+        imapUser: imapStatus.imapUser || prev.imapUser,
+        imapTls: imapStatus.imapTls,
+        imapPollIntervalSeconds: imapStatus.imapPollIntervalSeconds || prev.imapPollIntervalSeconds,
+        imapFolder: imapStatus.imapFolder || prev.imapFolder,
+      }));
+    }
+  }, [imapStatus?.configured]);
 
   const initMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/email/settings/initialize"),
