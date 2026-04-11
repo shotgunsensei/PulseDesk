@@ -596,8 +596,8 @@ function BillingSettings() {
   };
 
   const getPlanDescription = (plan: string) => {
-    if (plan === "unlimited") return "All features, unlimited users";
-    if (plan === "enterprise") return "All features, up to 200 users";
+    if (plan === "unlimited") return "All features, Email-to-Ticket, unlimited users";
+    if (plan === "enterprise") return "All features, Email-to-Ticket, up to 200 users";
     if (plan === "pro_plus") return "365/Entra login, up to 100 users";
     if (plan === "pro") return "365/Entra login, up to 50 users";
     return "Local login only, up to 5 users";
@@ -704,6 +704,16 @@ function BillingSettings() {
               <div>
                 <p className="text-xs font-medium text-amber-800 dark:text-amber-200">Microsoft 365/Entra login locked</p>
                 <p className="text-[11px] text-amber-600 dark:text-amber-400">Upgrade to Pro or higher to enable SSO with Microsoft 365 / Entra ID.</p>
+              </div>
+            </div>
+          )}
+
+          {!planConfig.emailToTicket && (
+            <div className="flex items-start gap-2 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 p-3">
+              <AlertTriangle className="h-4 w-4 text-violet-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-violet-800 dark:text-violet-200">Email-to-Ticket automation locked</p>
+                <p className="text-[11px] text-violet-600 dark:text-violet-400">Upgrade to Enterprise or higher to convert inbound emails into tickets automatically.</p>
               </div>
             </div>
           )}

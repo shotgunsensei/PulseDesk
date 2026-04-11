@@ -26,6 +26,7 @@ import {
   Info,
   CheckCircle2,
   PartyPopper,
+  Mail,
 } from "lucide-react";
 
 interface BillingStatus {
@@ -78,6 +79,7 @@ const PLAN_FEATURES: Record<string, string[]> = {
     "Up to 200 team members",
     "Unlimited tickets",
     "Microsoft 365 / Entra SSO",
+    "Email-to-Ticket automation",
     "Dedicated support",
     "Advanced analytics",
     "Custom integrations",
@@ -87,6 +89,7 @@ const PLAN_FEATURES: Record<string, string[]> = {
     "Unlimited team members",
     "Unlimited tickets",
     "Microsoft 365 / Entra SSO",
+    "Email-to-Ticket automation",
     "White-glove support",
     "All features included",
     "Custom integrations",
@@ -374,6 +377,18 @@ export default function BillingPage() {
                 </div>
               )}
 
+              {!planConfig.emailToTicket && (
+                <div className="flex items-start gap-3 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 p-4" data-testid="email-to-ticket-locked-banner">
+                  <Mail className="h-5 w-5 text-violet-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-violet-800 dark:text-violet-200">Email-to-Ticket automation locked</p>
+                    <p className="text-xs text-violet-600 dark:text-violet-400 mt-0.5">
+                      Automatically convert inbound emails into tickets with intelligent threading. Available on Enterprise and Unlimited plans.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {billing?.stripeSyncStatus === "unavailable" && (
                 <div className="flex items-start gap-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-3">
                   <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
@@ -418,6 +433,10 @@ export default function BillingPage() {
                       <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                       <span>Priority support</span>
                     </li>
+                    <li className="flex items-start gap-2 text-sm text-muted-foreground">
+                      <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <span>Email-to-Ticket automation (Enterprise+)</span>
+                    </li>
                   </ul>
                 </div>
               )}
@@ -430,7 +449,7 @@ export default function BillingPage() {
             <Sparkles className="h-8 w-8 text-primary mx-auto" />
             <h3 className="text-lg font-semibold">Ready to grow your facility operations?</h3>
             <p className="text-sm text-muted-foreground max-w-lg mx-auto">
-              Upgrade to unlock Microsoft 365 SSO, more team members, and advanced features. Plans start at just $60/month.
+              Upgrade to unlock Microsoft 365 SSO, more team members, Email-to-Ticket automation, and advanced features. Plans start at just $60/month.
             </p>
             <div className="flex items-center justify-center gap-1 pt-1">
               <ArrowRight className="h-4 w-4 text-primary animate-pulse" />
