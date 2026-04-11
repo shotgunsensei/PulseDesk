@@ -1,4 +1,5 @@
 import { pool } from "./db";
+import { encryptSecret, decryptSecret } from "./auth/crypto";
 
 async function migrateEnums() {
   const client = await pool.connect();
@@ -512,6 +513,14 @@ export async function ensureSchema() {
     `);
 
     await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_mail_connectors_provider ON mail_connectors(provider);
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_mail_connectors_status ON mail_connectors(status);
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS connector_events (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         connector_id varchar NOT NULL REFERENCES mail_connectors(id),
@@ -580,17 +589,36 @@ export async function ensureSchema() {
         `SELECT 1 FROM mail_connectors WHERE org_id = $1 AND provider = 'imap' AND label = 'Legacy IMAP'`,
         [row.org_id]
       );
-      if (existing.rows.length > 0) continue;
+      if (existing.rows.length > 0) {
+        await client.query(
+          `UPDATE email_settings SET imap_migrated_to_connector = true WHERE org_id = $1`,
+          [row.org_id]
+        );
+        continue;
+      }
+
+      let connectorCredentials: string;
+      try {
+        const legacyPassword = decryptSecret(row.imap_password_encrypted);
+        connectorCredentials = encryptSecret(JSON.stringify({
+          imapUser: row.imap_user,
+          imapPassword: legacyPassword,
+        }));
+      } catch (err: any) {
+        console.error(`[migration] Failed to re-encrypt IMAP credentials for org ${row.org_id}: ${err.message}`);
+        continue;
+      }
 
       await client.query(`
         INSERT INTO mail_connectors (org_id, provider, label, status, email_address, credentials_encrypted,
           imap_host, imap_port, imap_tls, imap_folder, poll_interval_seconds, last_polled_at, last_error,
           consecutive_failures, emails_processed, enabled)
-        VALUES ($1, 'imap', 'Legacy IMAP', $2, NULL, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        VALUES ($1, 'imap', 'Legacy IMAP', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       `, [
         row.org_id,
         row.imap_enabled ? 'active' : 'disabled',
-        row.imap_password_encrypted,
+        row.imap_user,
+        connectorCredentials,
         row.imap_host,
         row.imap_port || 993,
         row.imap_tls !== false,

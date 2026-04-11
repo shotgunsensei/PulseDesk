@@ -221,6 +221,37 @@ router.delete("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("ad
   }
 });
 
+router.post("/api/connectors/:id/disconnect", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const [connector] = await db.select().from(mailConnectors)
+      .where(connectorByIdAndOrg(req.params.id, orgId));
+    if (!connector) return res.status(404).json({ error: "Connector not found" });
+
+    stopPollerForConnector(connector.id);
+
+    await db.update(mailConnectors).set({
+      credentialsEncrypted: null,
+      status: "pending_auth",
+      enabled: false,
+      lastError: null,
+      consecutiveFailures: 0,
+      updatedAt: new Date(),
+    }).where(connectorById(connector.id));
+
+    await db.insert(connectorEvents).values({
+      connectorId: connector.id,
+      orgId,
+      eventType: "disabled" as any,
+      message: "Connector disconnected and credentials revoked",
+    });
+
+    res.json({ disconnected: true });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
 router.post("/api/connectors/:id/test", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
   try {
     const orgId = req.session.orgId!;
