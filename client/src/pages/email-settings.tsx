@@ -640,7 +640,7 @@ export default function EmailSettingsPage() {
                     </p>
                     <p className="text-xs text-rose-600 dark:text-rose-400">{googleConnector.lastError}</p>
                     {needsReauth(googleConnector) && (
-                      <Button size="sm" variant="outline" className="mt-2 text-xs h-7 gap-1 border-rose-300 text-rose-700 hover:bg-rose-50" onClick={() => startOAuth(googleConnector.id)} data-testid="button-reauth-google">
+                      <Button size="sm" variant="outline" className="mt-2 text-xs h-7 gap-1 border-rose-300 text-rose-700 hover:bg-rose-50" onClick={() => startOAuth(googleConnector.id)} data-testid="button-reauth-google-inline">
                         <RefreshCw className="h-3 w-3" /> Re-authorize Now
                       </Button>
                     )}
@@ -710,7 +710,7 @@ export default function EmailSettingsPage() {
                     </p>
                     <p className="text-xs text-rose-600 dark:text-rose-400">{microsoftConnector.lastError}</p>
                     {needsReauth(microsoftConnector) && (
-                      <Button size="sm" variant="outline" className="mt-2 text-xs h-7 gap-1 border-rose-300 text-rose-700 hover:bg-rose-50" onClick={() => startOAuth(microsoftConnector.id)} data-testid="button-reauth-microsoft">
+                      <Button size="sm" variant="outline" className="mt-2 text-xs h-7 gap-1 border-rose-300 text-rose-700 hover:bg-rose-50" onClick={() => startOAuth(microsoftConnector.id)} data-testid="button-reauth-microsoft-inline">
                         <RefreshCw className="h-3 w-3" /> Re-authorize Now
                       </Button>
                     )}

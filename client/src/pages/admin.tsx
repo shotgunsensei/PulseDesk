@@ -697,8 +697,8 @@ export default function AdminPage() {
                             )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
-                            {c.provider !== "forwarding" && c.status === "active" && (
-                              <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => adminConnectorForcePollMutation.mutate(c.id)} disabled={adminConnectorForcePollMutation.isPending} data-testid={`button-admin-connector-poll-${c.id}`}>
+                            {c.provider !== "forwarding" && (
+                              <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => adminConnectorForcePollMutation.mutate(c.id)} disabled={adminConnectorForcePollMutation.isPending || c.status === "pending_auth"} data-testid={`button-admin-connector-poll-${c.id}`}>
                                 <Play className="h-3 w-3" /> Poll
                               </Button>
                             )}
