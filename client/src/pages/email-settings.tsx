@@ -180,6 +180,11 @@ export default function EmailSettingsPage() {
   const isAdmin = membership && canManageSettings(membership.role);
 
   useEffect(() => {
+    document.title = "Connected Inboxes | PulseDesk";
+    return () => { document.title = "PulseDesk"; };
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("connectorSuccess") === "true") {
       toast({ title: "Connected successfully", description: "Your email account has been linked" });
@@ -419,8 +424,18 @@ export default function EmailSettingsPage() {
     if (existing) {
       if (existing.status === "pending_auth" || existing.status === "error") {
         await startOAuth(existing.id);
-      } else {
+      } else if (existing.status === "disabled" || !existing.enabled) {
+        try {
+          await apiRequest("PATCH", `/api/connectors/${existing.id}`, { enabled: true });
+          queryClient.invalidateQueries({ queryKey: ["/api/connectors"] });
+          toast({ title: "Connector re-enabled", description: `${PROVIDER_INFO[provider].name} has been re-enabled` });
+        } catch (err: any) {
+          toast({ title: "Error", description: err.message, variant: "destructive" });
+        }
+      } else if (existing.status === "active") {
         toast({ title: "Already connected", description: `${PROVIDER_INFO[provider].name} is already connected` });
+      } else {
+        await startOAuth(existing.id);
       }
       return;
     }
@@ -577,7 +592,7 @@ export default function EmailSettingsPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {googleConnector?.status === "active" ? (
+                  {googleConnector && googleConnector.hasCredentials ? (
                     <>
                       <Button variant="outline" size="sm" className="text-xs h-8 gap-1" onClick={() => testConnectorMutation.mutate(googleConnector.id)} disabled={testConnectorMutation.isPending} data-testid="button-test-google">
                         <Plug className="h-3 w-3" /> Test
@@ -638,7 +653,7 @@ export default function EmailSettingsPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {microsoftConnector?.status === "active" ? (
+                  {microsoftConnector && microsoftConnector.hasCredentials ? (
                     <>
                       <Button variant="outline" size="sm" className="text-xs h-8 gap-1" onClick={() => testConnectorMutation.mutate(microsoftConnector.id)} disabled={testConnectorMutation.isPending} data-testid="button-test-microsoft">
                         <Plug className="h-3 w-3" /> Test

@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PulseLoader } from "@/components/pulse-line";
 import {
@@ -179,6 +180,7 @@ export default function AdminPage() {
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [connectorFilter, setConnectorFilter] = useState<string>("all");
   const [connectorStatusFilter, setConnectorStatusFilter] = useState<string>("all");
+  const [connectorOrgSearch, setConnectorOrgSearch] = useState<string>("");
   const [expandedConnectorEvents, setExpandedConnectorEvents] = useState<string | null>(null);
 
   if (!user?.isSuperAdmin) {
@@ -316,6 +318,17 @@ export default function AdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/connectors"] });
       toast({ title: "Connector enabled" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const regenerateAliasMutation = useMutation({
+    mutationFn: async (orgId: string) => {
+      const res = await apiRequest("POST", `/api/admin/email/regenerate-alias/${orgId}`);
+      return await res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Alias regenerated", description: `New alias: ${data.inboundAlias}@pulsedesk.support` });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -576,7 +589,14 @@ export default function AdminPage() {
             <CardDescription>Monitor and manage all mail connectors across tenants</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-3 mb-4 flex-wrap">
+              <Input
+                value={connectorOrgSearch}
+                onChange={(e) => setConnectorOrgSearch(e.target.value)}
+                placeholder="Search by org name..."
+                className="w-48 h-8 text-xs"
+                data-testid="input-connector-org-search"
+              />
               <Select value={connectorFilter} onValueChange={setConnectorFilter}>
                 <SelectTrigger className="w-36 h-8 text-xs" data-testid="select-connector-provider-filter">
                   <SelectValue placeholder="All Providers" />
@@ -608,6 +628,10 @@ export default function AdminPage() {
 
             {(() => {
               let filtered = adminConnectors || [];
+              if (connectorOrgSearch.trim()) {
+                const search = connectorOrgSearch.trim().toLowerCase();
+                filtered = filtered.filter(c => c.orgName.toLowerCase().includes(search) || (c.emailAddress && c.emailAddress.toLowerCase().includes(search)));
+              }
               if (connectorFilter !== "all") {
                 filtered = filtered.filter(c => c.provider === connectorFilter);
               }
@@ -676,6 +700,11 @@ export default function AdminPage() {
                             {c.provider !== "forwarding" && c.status === "active" && (
                               <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => adminConnectorForcePollMutation.mutate(c.id)} disabled={adminConnectorForcePollMutation.isPending} data-testid={`button-admin-connector-poll-${c.id}`}>
                                 <Play className="h-3 w-3" /> Poll
+                              </Button>
+                            )}
+                            {c.provider === "forwarding" && (
+                              <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => { if (confirm("Regenerate forwarding alias? The old address will stop working.")) regenerateAliasMutation.mutate(c.orgId); }} disabled={regenerateAliasMutation.isPending} data-testid={`button-admin-connector-regen-alias-${c.id}`}>
+                                <RefreshCw className="h-3 w-3" /> Regen Alias
                               </Button>
                             )}
                             <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => setExpandedConnectorEvents(isEventsExpanded ? null : c.id)} data-testid={`button-admin-connector-events-${c.id}`}>
