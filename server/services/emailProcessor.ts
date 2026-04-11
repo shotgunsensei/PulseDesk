@@ -327,7 +327,7 @@ async function logInboundEmail(
     bodyPlain: email.bodyPlain.substring(0, 10000),
     bodyHtml: sanitizeHtml(email.bodyHtml || "").substring(0, 50000),
     inReplyTo: email.inReplyTo || null,
-    referencesHeader: email.references || null,
+    references: email.references || null,
     headers: email.headers || {},
     attachmentCount: email.attachments?.length || 0,
     spfResult: email.spf || null,

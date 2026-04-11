@@ -70,10 +70,10 @@ export async function fetchUnseenEmails(config: ImapConfig, inboundAlias: string
 
       for (const uid of uidsToFetch) {
         try {
-          const message = await client.fetchOne(uid, { source: true }, { uid: true });
+          const message = await client.fetchOne(uid, { source: true }, { uid: true }) as any;
           if (!message?.source) continue;
 
-          const parsed = await simpleParser(message.source);
+          const parsed = await simpleParser(message.source as Buffer);
 
           const fromAddr = Array.isArray(parsed.from?.value)
             ? parsed.from.value[0]

@@ -32,6 +32,8 @@ const allowlist = [
   "xlsx",
   "zod",
   "zod-validation-error",
+  "imapflow",
+  "mailparser",
 ];
 
 async function buildAll() {
