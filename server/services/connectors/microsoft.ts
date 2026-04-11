@@ -42,6 +42,7 @@ function buildImapConfig(connector: MailConnector, creds: ConnectorCredentials):
     password: creds.accessToken || "",
     tls: true,
     folder: connector.imapFolder || "INBOX",
+    useOAuth: true,
   };
 }
 

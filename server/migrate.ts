@@ -557,6 +557,60 @@ export async function ensureSchema() {
       `);
     }
 
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE email_settings ADD COLUMN imap_migrated_to_connector boolean NOT NULL DEFAULT false;
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+
+    const legacyImap = await client.query(`
+      SELECT es.org_id, es.imap_host, es.imap_port, es.imap_user, es.imap_password_encrypted,
+             es.imap_tls, es.imap_enabled, es.imap_folder, es.imap_poll_interval_seconds,
+             es.imap_last_polled_at, es.imap_last_error, es.imap_consecutive_failures, es.imap_emails_processed
+      FROM email_settings es
+      WHERE es.imap_host IS NOT NULL
+        AND es.imap_user IS NOT NULL
+        AND es.imap_password_encrypted IS NOT NULL
+        AND es.imap_migrated_to_connector = false
+    `);
+
+    for (const row of legacyImap.rows) {
+      const existing = await client.query(
+        `SELECT 1 FROM mail_connectors WHERE org_id = $1 AND provider = 'imap' AND label = 'Legacy IMAP'`,
+        [row.org_id]
+      );
+      if (existing.rows.length > 0) continue;
+
+      await client.query(`
+        INSERT INTO mail_connectors (org_id, provider, label, status, email_address, credentials_encrypted,
+          imap_host, imap_port, imap_tls, imap_folder, poll_interval_seconds, last_polled_at, last_error,
+          consecutive_failures, emails_processed, enabled)
+        VALUES ($1, 'imap', 'Legacy IMAP', $2, NULL, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `, [
+        row.org_id,
+        row.imap_enabled ? 'active' : 'disabled',
+        row.imap_password_encrypted,
+        row.imap_host,
+        row.imap_port || 993,
+        row.imap_tls !== false,
+        row.imap_folder || 'INBOX',
+        row.imap_poll_interval_seconds || 120,
+        row.imap_last_polled_at || null,
+        row.imap_last_error || null,
+        row.imap_consecutive_failures || 0,
+        row.imap_emails_processed || 0,
+        row.imap_enabled || false,
+      ]);
+
+      await client.query(
+        `UPDATE email_settings SET imap_migrated_to_connector = true WHERE org_id = $1`,
+        [row.org_id]
+      );
+
+      console.log(`[migration] Migrated legacy IMAP config for org ${row.org_id} to mail_connectors`);
+    }
+
     await client.query("COMMIT");
     console.log("Schema verification complete - all tables ensured.");
   } catch (err) {

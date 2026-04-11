@@ -24,6 +24,11 @@ interface TenantPoller {
 
 const pollers = new Map<string, TenantPoller>();
 let initialized = false;
+let migratedOrgIds: Set<string> = new Set();
+
+export function setMigratedOrgFilter(orgIds: Set<string>) {
+  migratedOrgIds = orgIds;
+}
 
 export function getPollerStatus(): Array<{
   orgId: string;
@@ -66,6 +71,11 @@ export async function startImapPolling() {
 
     for (const settings of allSettings) {
       if (!settings.imapEnabled || !settings.imapHost || !settings.imapUser || !settings.imapPasswordEncrypted) {
+        continue;
+      }
+
+      if (migratedOrgIds.has(settings.orgId)) {
+        console.log(`[imap-poller] Skipping org ${settings.orgId} (migrated to connector system)`);
         continue;
       }
 

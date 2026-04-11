@@ -138,7 +138,18 @@ app.use((req, res, next) => {
   log("Routes registered, accepting traffic", "startup");
 
   try {
-    const { startImapPolling } = await import("./services/imapPoller");
+    const { startImapPolling, setMigratedOrgFilter } = await import("./services/imapPoller");
+    try {
+      const { pool: dbPool } = await import("./db");
+      const migrated = await dbPool.query(
+        `SELECT DISTINCT org_id FROM email_settings WHERE imap_migrated_to_connector = true`
+      );
+      const migratedOrgIds = new Set(migrated.rows.map((r: any) => r.org_id));
+      if (migratedOrgIds.size > 0) {
+        setMigratedOrgFilter(migratedOrgIds);
+        log(`Legacy IMAP poller will skip ${migratedOrgIds.size} migrated org(s)`, "startup");
+      }
+    } catch {}
     await startImapPolling();
     log("IMAP polling service started", "startup");
   } catch (err: any) {

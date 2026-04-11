@@ -214,13 +214,19 @@ async function executePoll(connectorId: string, expectedVersion: number) {
     const service = getConnectorService(connector.provider as ConnectorProvider);
 
     if (service.refreshCredentials) {
-      const refreshed = await service.refreshCredentials(connector, credentials);
-      if (refreshed && refreshed.accessToken !== credentials.accessToken) {
-        credentials = refreshed;
-        await db.update(mailConnectors).set({
-          credentialsEncrypted: encryptSecret(JSON.stringify(credentials)),
-          updatedAt: new Date(),
-        }).where(connectorWhere(connectorId));
+      try {
+        const refreshed = await service.refreshCredentials(connector, credentials);
+        if (refreshed && refreshed.accessToken !== credentials.accessToken) {
+          credentials = refreshed;
+          await db.update(mailConnectors).set({
+            credentialsEncrypted: encryptSecret(JSON.stringify(credentials)),
+            updatedAt: new Date(),
+          }).where(connectorWhere(connectorId));
+          logConnectorEvent(connectorId, connector.orgId, "auth_success", "Token refreshed successfully");
+        }
+      } catch (refreshErr: any) {
+        logConnectorEvent(connectorId, connector.orgId, "auth_error", `Token refresh failed: ${refreshErr.message}`);
+        throw refreshErr;
       }
     }
 
@@ -233,7 +239,7 @@ async function executePoll(connectorId: string, expectedVersion: number) {
     let processed = 0;
     for (const { uid, email } of fetched) {
       try {
-        await processInboundEmail(email);
+        await processInboundEmail(email, connectorId);
         successfulUids.push(uid);
         processed++;
       } catch (procErr: any) {
@@ -261,11 +267,13 @@ async function executePoll(connectorId: string, expectedVersion: number) {
     if (processed > 0) {
       console.log(`[connector-poller] Connector ${connectorId}: processed ${processed}/${fetched.length} emails`);
     }
+    logConnectorEvent(connectorId, state.orgId, "poll_success", `Polled successfully, ${processed} emails processed`, { fetched: fetched.length, processed });
   } catch (err: any) {
     console.error(`[connector-poller] Poll error for connector ${connectorId}:`, err.message);
     state.lastError = err.message || "Poll failed";
     state.consecutiveFailures++;
     await updateConnectorState(connectorId, state);
+    logConnectorEvent(connectorId, state.orgId, "poll_error", err.message || "Poll failed", { consecutiveFailures: state.consecutiveFailures });
     checkAutoDisable(connectorId, state);
   } finally {
     state.running = false;
@@ -364,7 +372,7 @@ export async function forcePollConnector(connectorId: string): Promise<{ success
     let processed = 0;
     for (const { uid, email } of fetched) {
       try {
-        await processInboundEmail(email);
+        await processInboundEmail(email, connectorId);
         successfulUids.push(uid);
         processed++;
       } catch (procErr: any) {

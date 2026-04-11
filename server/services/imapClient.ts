@@ -9,6 +9,7 @@ export interface ImapConfig {
   password: string;
   tls: boolean;
   folder?: string;
+  useOAuth?: boolean;
 }
 
 export interface FetchedImapEmail {
@@ -17,11 +18,15 @@ export interface FetchedImapEmail {
 }
 
 function createClient(config: ImapConfig, socketTimeout = 15000) {
+  const auth: any = config.useOAuth
+    ? { user: config.user, accessToken: config.password }
+    : { user: config.user, pass: config.password };
+
   return new ImapFlow({
     host: config.host,
     port: config.port,
     secure: config.tls,
-    auth: { user: config.user, pass: config.password },
+    auth,
     logger: false,
     greetingTimeout: 10000,
     socketTimeout,

@@ -131,31 +131,31 @@ function extractTicketToken(subject: string): string | null {
   return match ? `PD-${match[1]}` : null;
 }
 
-export async function processInboundEmail(email: ParsedEmail): Promise<ProcessingResult> {
+export async function processInboundEmail(email: ParsedEmail, connectorId?: string): Promise<ProcessingResult> {
   const aliasResult = await resolveAlias(email.to);
 
   if (!aliasResult) {
-    const logId = await logInboundEmail(null, email, "rejected", "Unknown alias: " + email.to);
+    const logId = await logInboundEmail(null, email, "rejected", "Unknown alias: " + email.to, undefined, connectorId);
     return { status: "rejected", reason: "Unknown alias", logId };
   }
 
   const { orgId, settings } = aliasResult;
 
   if (!settings.enabled) {
-    const logId = await logInboundEmail(orgId, email, "rejected", "Email-to-ticket disabled for this organization");
+    const logId = await logInboundEmail(orgId, email, "rejected", "Email-to-ticket disabled for this organization", undefined, connectorId);
     return { status: "rejected", reason: "Feature disabled", logId };
   }
 
   const org = await storage.getOrg(orgId);
   if (!org) {
-    const logId = await logInboundEmail(orgId, email, "rejected", "Organization not found");
+    const logId = await logInboundEmail(orgId, email, "rejected", "Organization not found", undefined, connectorId);
     return { status: "rejected", reason: "Organization not found", logId };
   }
 
   const plan = (org as any).plan || "free";
   const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
   if (!limits.emailToTicket) {
-    const logId = await logInboundEmail(orgId, email, "rejected", "Plan does not include email-to-ticket");
+    const logId = await logInboundEmail(orgId, email, "rejected", "Plan does not include email-to-ticket", undefined, connectorId);
     return { status: "rejected", reason: "Plan not eligible", logId };
   }
 
@@ -163,7 +163,7 @@ export async function processInboundEmail(email: ParsedEmail): Promise<Processin
     const senderDomain = email.from.email.split("@")[1]?.toLowerCase();
     const allowed = settings.allowedSenderDomains.map((d: string) => d.toLowerCase());
     if (!allowed.includes(senderDomain)) {
-      const logId = await logInboundEmail(orgId, email, "rejected", `Sender domain '${senderDomain}' not in allowlist`);
+      const logId = await logInboundEmail(orgId, email, "rejected", `Sender domain '${senderDomain}' not in allowlist`, undefined, connectorId);
       return { status: "rejected", reason: "Sender domain not allowed", logId };
     }
   }
@@ -192,7 +192,7 @@ export async function processInboundEmail(email: ParsedEmail): Promise<Processin
         originalSubject: email.subject,
       });
 
-      const logId = await logInboundEmail(orgId, email, "threaded", `Appended to ticket ${existingTicket.ticketNumber}`, existingTicket.id);
+      const logId = await logInboundEmail(orgId, email, "threaded", `Appended to ticket ${existingTicket.ticketNumber}`, existingTicket.id, connectorId);
       return { status: "threaded", reason: `Reply appended to ${existingTicket.ticketNumber}`, ticketId: existingTicket.id, ticketNumber: existingTicket.ticketNumber, logId };
     }
 
@@ -202,7 +202,7 @@ export async function processInboundEmail(email: ParsedEmail): Promise<Processin
         .from(emailContacts)
         .where(and(eq(emailContacts.orgId, orgId), eq(emailContacts.email, email.from.email.toLowerCase())));
       if (existingContact.length === 0) {
-        const logId = await logInboundEmail(orgId, email, "rejected", "Unknown sender and unknownSenderAction=reject");
+        const logId = await logInboundEmail(orgId, email, "rejected", "Unknown sender and unknownSenderAction=reject", undefined, connectorId);
         return { status: "rejected", reason: "Unknown sender", logId };
       }
     }
@@ -261,10 +261,10 @@ export async function processInboundEmail(email: ParsedEmail): Promise<Processin
       contactId,
     });
 
-    const logId = await logInboundEmail(orgId, email, "created", `Created ticket ${ticketNumber}`, newTicket.id);
+    const logId = await logInboundEmail(orgId, email, "created", `Created ticket ${ticketNumber}`, newTicket.id, connectorId);
     return { status: "created", reason: `Ticket ${ticketNumber} created`, ticketId: newTicket.id, ticketNumber, logId };
   } catch (err: any) {
-    const logId = await logInboundEmail(orgId, email, "failed", err.message || "Processing error");
+    const logId = await logInboundEmail(orgId, email, "failed", err.message || "Processing error", undefined, connectorId);
     return { status: "failed", reason: err.message || "Processing error", logId };
   }
 }
@@ -315,7 +315,8 @@ async function logInboundEmail(
   email: ParsedEmail,
   status: "accepted" | "rejected" | "failed" | "threaded" | "created",
   reason: string,
-  ticketId?: string
+  ticketId?: string,
+  connectorId?: string
 ): Promise<string> {
   const [log] = await db.insert(inboundEmailLog).values({
     orgId,
@@ -337,6 +338,7 @@ async function logInboundEmail(
     statusReason: reason,
     ticketId: ticketId || null,
     provider: email.provider || "mock",
+    connectorId: connectorId || null,
   }).returning();
   return log.id;
 }
