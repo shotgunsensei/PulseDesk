@@ -382,7 +382,7 @@ router.get("/api/connectors/oauth/callback", async (req: Request, res: Response)
     const { code, state, error } = req.query as Record<string, string>;
 
     if (error) {
-      return res.redirect(`/settings/email?connectorError=${encodeURIComponent(error)}`);
+      return res.redirect(`/email-settings?connectorError=${encodeURIComponent(error)}`);
     }
 
     const callbackSession = req.session as Record<string, unknown>;
@@ -391,11 +391,11 @@ router.get("/api/connectors/oauth/callback", async (req: Request, res: Response)
     const provider = callbackSession.connectorOAuthProvider as string | undefined;
 
     if (!savedState || !connectorId || !provider) {
-      return res.redirect("/settings/email?connectorError=Invalid+session");
+      return res.redirect("/email-settings?connectorError=Invalid+session");
     }
 
     if (state !== savedState) {
-      return res.redirect("/settings/email?connectorError=State+mismatch");
+      return res.redirect("/email-settings?connectorError=State+mismatch");
     }
 
     delete callbackSession.connectorOAuthState;
@@ -404,12 +404,12 @@ router.get("/api/connectors/oauth/callback", async (req: Request, res: Response)
 
     const [connector] = await db.select().from(mailConnectors).where(connectorById(connectorId));
     if (!connector) {
-      return res.redirect("/settings/email?connectorError=Connector+not+found");
+      return res.redirect("/email-settings?connectorError=Connector+not+found");
     }
 
     const service = getConnectorService(provider as ConnectorProvider);
     if (!service.handleOAuthCallback) {
-      return res.redirect("/settings/email?connectorError=OAuth+not+supported");
+      return res.redirect("/email-settings?connectorError=OAuth+not+supported");
     }
 
     const redirectUri = `${getBaseUrl(req)}/api/connectors/oauth/callback`;
@@ -417,7 +417,7 @@ router.get("/api/connectors/oauth/callback", async (req: Request, res: Response)
     const result = await service.handleOAuthCallback(connector, code, redirectUri);
 
     if (!result.success) {
-      return res.redirect(`/settings/email?connectorError=${encodeURIComponent(result.error || "Auth failed")}`);
+      return res.redirect(`/email-settings?connectorError=${encodeURIComponent(result.error || "Auth failed")}`);
     }
 
     const updateData: any = {
@@ -441,10 +441,10 @@ router.get("/api/connectors/oauth/callback", async (req: Request, res: Response)
       startPollerForConnector(updated);
     }
 
-    return res.redirect("/settings/email?connectorSuccess=true");
+    return res.redirect("/email-settings?connectorSuccess=true");
   } catch (err: any) {
     console.error("[connectors] OAuth callback error:", err.message);
-    return res.redirect(`/settings/email?connectorError=${encodeURIComponent("Auth processing failed")}`);
+    return res.redirect(`/email-settings?connectorError=${encodeURIComponent("Auth processing failed")}`);
   }
 });
 

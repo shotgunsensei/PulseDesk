@@ -23,7 +23,23 @@ import {
   AlertTriangle,
   Play,
   XCircle,
+  CheckCircle2,
+  Inbox,
+  Clock,
+  Power,
 } from "lucide-react";
+import { SiGoogle } from "react-icons/si";
+
+function MicrosoftIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 21 21" fill="currentColor">
+      <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+      <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+      <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+    </svg>
+  );
+}
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { PLAN_LIMITS } from "@shared/schema";
@@ -104,12 +120,66 @@ function getPlanIcon(plan: string) {
   return <Shield className="h-4 w-4 text-slate-500" />;
 }
 
+interface AdminConnector {
+  id: string;
+  orgId: string;
+  provider: string;
+  label: string;
+  status: string;
+  emailAddress: string | null;
+  imapHost: string | null;
+  lastPolledAt: string | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+  emailsProcessed: number;
+  enabled: boolean;
+  hasCredentials: boolean;
+  orgName: string;
+  orgPlan: string;
+  pollerRunning: boolean;
+  pollerDisabled: boolean;
+  createdAt: string;
+}
+
+interface ConnectorEventItem {
+  id: string;
+  connectorId: string;
+  orgId: string;
+  eventType: string;
+  message: string;
+  createdAt: string;
+}
+
+const PROVIDER_ICON: Record<string, any> = {
+  google: SiGoogle,
+  microsoft: MicrosoftIcon,
+  imap: Server,
+  forwarding: Inbox,
+};
+
+const PROVIDER_LABEL: Record<string, string> = {
+  google: "Google",
+  microsoft: "Microsoft",
+  imap: "IMAP",
+  forwarding: "Forwarding",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  active: "bg-emerald-500",
+  pending_auth: "bg-amber-500",
+  error: "bg-rose-500",
+  disabled: "bg-rose-500",
+};
+
 export default function AdminPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [expandedOrg, setExpandedOrg] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [connectorFilter, setConnectorFilter] = useState<string>("all");
+  const [connectorStatusFilter, setConnectorStatusFilter] = useState<string>("all");
+  const [expandedConnectorEvents, setExpandedConnectorEvents] = useState<string | null>(null);
 
   if (!user?.isSuperAdmin) {
     return (
@@ -128,6 +198,21 @@ export default function AdminPage() {
 
   const { data: orgs, isLoading: orgsLoading } = useQuery<AdminOrg[]>({ queryKey: ["/api/admin/orgs"] });
   const { data: adminUsers, isLoading: usersLoading } = useQuery<AdminUser[]>({ queryKey: ["/api/admin/users"] });
+  const { data: adminConnectors } = useQuery<AdminConnector[]>({
+    queryKey: ["/api/admin/connectors"],
+    refetchInterval: 15000,
+  });
+
+  const { data: connectorEventsData } = useQuery<ConnectorEventItem[]>({
+    queryKey: ["/api/admin/connectors", expandedConnectorEvents, "events"],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/connectors/${expandedConnectorEvents}/events?limit=30`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch events");
+      return res.json();
+    },
+    enabled: !!expandedConnectorEvents,
+  });
+
   const { data: imapDashboard } = useQuery<{
     pollers: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; orgPlan: string; imapEmailsProcessed?: number }>;
     dbOnlyEnabled: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; orgPlan: string; imapEmailsProcessed?: number }>;
@@ -198,6 +283,39 @@ export default function AdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/imap/status"] });
       toast({ title: "IMAP disabled for organization" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const adminConnectorForcePollMutation = useMutation({
+    mutationFn: async (connectorId: string) => {
+      await apiRequest("POST", `/api/admin/connectors/${connectorId}/force-poll`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/connectors"] });
+      toast({ title: "Force poll completed" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const adminConnectorDisableMutation = useMutation({
+    mutationFn: async (connectorId: string) => {
+      await apiRequest("POST", `/api/admin/connectors/${connectorId}/disable`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/connectors"] });
+      toast({ title: "Connector disabled" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const adminConnectorEnableMutation = useMutation({
+    mutationFn: async (connectorId: string) => {
+      await apiRequest("POST", `/api/admin/connectors/${connectorId}/enable`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/connectors"] });
+      toast({ title: "Connector enabled" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -449,93 +567,208 @@ export default function AdminPage() {
           </CardContent>
         </Card>
 
-        <Card data-testid="card-admin-imap">
+        <Card data-testid="card-admin-connectors">
           <CardHeader>
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Server className="h-4 w-4" />
-              IMAP Polling Dashboard
+              <Inbox className="h-4 w-4" />
+              Mail Connector Dashboard
             </CardTitle>
-            <CardDescription>Monitor and manage per-tenant IMAP mailbox polling</CardDescription>
+            <CardDescription>Monitor and manage all mail connectors across tenants</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="flex items-center gap-3 mb-4">
+              <Select value={connectorFilter} onValueChange={setConnectorFilter}>
+                <SelectTrigger className="w-36 h-8 text-xs" data-testid="select-connector-provider-filter">
+                  <SelectValue placeholder="All Providers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Providers</SelectItem>
+                  <SelectItem value="google">Google</SelectItem>
+                  <SelectItem value="microsoft">Microsoft</SelectItem>
+                  <SelectItem value="imap">IMAP</SelectItem>
+                  <SelectItem value="forwarding">Forwarding</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={connectorStatusFilter} onValueChange={setConnectorStatusFilter}>
+                <SelectTrigger className="w-32 h-8 text-xs" data-testid="select-connector-status-filter">
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="error">Error</SelectItem>
+                  <SelectItem value="pending_auth">Pending Auth</SelectItem>
+                  <SelectItem value="disabled">Disabled</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground ml-auto">
+                {adminConnectors?.length || 0} total connectors
+              </span>
+            </div>
+
+            {(() => {
+              let filtered = adminConnectors || [];
+              if (connectorFilter !== "all") {
+                filtered = filtered.filter(c => c.provider === connectorFilter);
+              }
+              if (connectorStatusFilter !== "all") {
+                if (connectorStatusFilter === "error") {
+                  filtered = filtered.filter(c => c.status === "error" || c.consecutiveFailures > 0);
+                } else if (connectorStatusFilter === "disabled") {
+                  filtered = filtered.filter(c => !c.enabled || c.status === "disabled");
+                } else {
+                  filtered = filtered.filter(c => c.status === connectorStatusFilter);
+                }
+              }
+
+              if (filtered.length === 0) {
+                return <p className="text-sm text-muted-foreground text-center py-4">No connectors found</p>;
+              }
+
+              return (
+                <div className="space-y-2">
+                  {filtered.map((c) => {
+                    const ProviderIcon = PROVIDER_ICON[c.provider] || Server;
+                    const isEventsExpanded = expandedConnectorEvents === c.id;
+                    return (
+                      <div key={c.id} className="rounded-lg border" data-testid={`admin-connector-${c.id}`}>
+                        <div className="flex items-center gap-3 p-3">
+                          <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                            c.enabled && c.status === "active" && c.consecutiveFailures === 0 ? "bg-emerald-500 animate-pulse" :
+                            c.consecutiveFailures > 0 ? "bg-amber-500" :
+                            c.status === "error" || c.status === "disabled" || !c.enabled ? "bg-rose-500" :
+                            c.status === "pending_auth" ? "bg-amber-500" :
+                            "bg-slate-400"
+                          }`} />
+                          <ProviderIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium">{c.orgName}</span>
+                              <Badge className={`text-[10px] ${PLAN_BADGE_STYLES[c.orgPlan] || PLAN_BADGE_STYLES.free}`} variant="secondary">
+                                {c.orgPlan}
+                              </Badge>
+                              <Badge variant="outline" className="text-[10px]">
+                                {PROVIDER_LABEL[c.provider] || c.provider}
+                              </Badge>
+                              <Badge variant="outline" className={`text-[10px] ${
+                                c.status === "active" && c.enabled ? "border-emerald-300 text-emerald-600" :
+                                c.status === "error" ? "border-rose-300 text-rose-600" :
+                                c.status === "pending_auth" ? "border-amber-300 text-amber-600" :
+                                ""
+                              }`}>
+                                {!c.enabled ? "Disabled" : c.status === "active" ? "Active" : c.status === "pending_auth" ? "Pending Auth" : c.status}
+                              </Badge>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              {c.emailAddress || c.imapHost || "No address"}
+                              {' · '}Last sync: {c.lastPolledAt ? new Date(c.lastPolledAt).toLocaleString() : "Never"}
+                              {' · '}{c.emailsProcessed} emails
+                              {c.consecutiveFailures > 0 && ` · ${c.consecutiveFailures} failures`}
+                            </p>
+                            {c.lastError && (
+                              <div className="flex items-center gap-1 mt-1">
+                                <AlertTriangle className="h-3 w-3 text-rose-500 shrink-0" />
+                                <span className="text-[11px] text-rose-600 truncate">{c.lastError}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {c.provider !== "forwarding" && c.status === "active" && (
+                              <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => adminConnectorForcePollMutation.mutate(c.id)} disabled={adminConnectorForcePollMutation.isPending} data-testid={`button-admin-connector-poll-${c.id}`}>
+                                <Play className="h-3 w-3" /> Poll
+                              </Button>
+                            )}
+                            <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => setExpandedConnectorEvents(isEventsExpanded ? null : c.id)} data-testid={`button-admin-connector-events-${c.id}`}>
+                              <Clock className="h-3 w-3" /> Events
+                            </Button>
+                            {c.enabled ? (
+                              <Button variant="outline" size="sm" className="text-xs h-7 gap-1 text-rose-600 hover:text-rose-700" onClick={() => adminConnectorDisableMutation.mutate(c.id)} disabled={adminConnectorDisableMutation.isPending} data-testid={`button-admin-connector-disable-${c.id}`}>
+                                <XCircle className="h-3 w-3" /> Disable
+                              </Button>
+                            ) : (
+                              <Button variant="outline" size="sm" className="text-xs h-7 gap-1 text-emerald-600 hover:text-emerald-700" onClick={() => adminConnectorEnableMutation.mutate(c.id)} disabled={adminConnectorEnableMutation.isPending} data-testid={`button-admin-connector-enable-${c.id}`}>
+                                <Power className="h-3 w-3" /> Enable
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        {isEventsExpanded && (
+                          <div className="border-t px-3 py-3 bg-muted/10 space-y-1.5 max-h-60 overflow-auto">
+                            {!connectorEventsData || connectorEventsData.length === 0 ? (
+                              <p className="text-xs text-muted-foreground text-center py-2">No events</p>
+                            ) : (
+                              connectorEventsData.map((evt) => (
+                                <div key={evt.id} className="flex items-start gap-2 text-[11px]" data-testid={`admin-event-${evt.id}`}>
+                                  <Badge variant="outline" className="text-[9px] shrink-0 mt-0.5">
+                                    {evt.eventType}
+                                  </Badge>
+                                  <span className="flex-1 text-muted-foreground">{evt.message}</span>
+                                  <span className="text-muted-foreground/60 shrink-0">{new Date(evt.createdAt).toLocaleString()}</span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
             {(() => {
               const allPollers = [
                 ...(imapDashboard?.pollers || []),
                 ...(imapDashboard?.dbOnlyEnabled || []),
               ];
-
-              if (allPollers.length === 0) {
-                return <p className="text-sm text-muted-foreground text-center py-4">No IMAP pollers configured</p>;
-              }
+              if (allPollers.length === 0) return null;
 
               return (
-                <div className="space-y-2">
-                  {allPollers.map((p) => (
-                    <div key={p.orgId} className="flex items-center gap-3 rounded-lg border p-3" data-testid={`imap-poller-${p.orgId}`}>
-                      <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${p.running ? "bg-emerald-500 animate-pulse" : p.disabled ? "bg-rose-500" : "bg-slate-400"}`} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">{p.orgName}</span>
-                          <Badge className={`text-[10px] ${PLAN_BADGE_STYLES[p.orgPlan] || PLAN_BADGE_STYLES.free}`} variant="secondary">
-                            {p.orgPlan}
-                          </Badge>
-                          <Badge variant="outline" className="text-[10px]">
-                            {p.running ? "Running" : p.disabled ? "Disabled" : "Stopped"}
-                          </Badge>
-                        </div>
-                        {p.lastError && (
-                          <div className="flex items-center gap-1 mt-1">
-                            <AlertTriangle className="h-3 w-3 text-rose-500 shrink-0" />
-                            <span className="text-[11px] text-rose-600 truncate">{p.lastError}</span>
-                            <span className="text-[11px] text-muted-foreground shrink-0">({p.consecutiveFailures} failures)</span>
+                <div className="mt-6">
+                  <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                    <Server className="h-3 w-3" /> Legacy IMAP Pollers
+                  </p>
+                  <div className="space-y-2">
+                    {allPollers.map((p) => (
+                      <div key={p.orgId} className="flex items-center gap-3 rounded-lg border border-amber-200 dark:border-amber-800 p-3" data-testid={`imap-poller-${p.orgId}`}>
+                        <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${p.running ? "bg-emerald-500 animate-pulse" : p.disabled ? "bg-rose-500" : "bg-slate-400"}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{p.orgName}</span>
+                            <Badge className={`text-[10px] ${PLAN_BADGE_STYLES[p.orgPlan] || PLAN_BADGE_STYLES.free}`} variant="secondary">{p.orgPlan}</Badge>
+                            <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600">Legacy</Badge>
+                            <Badge variant="outline" className="text-[10px]">{p.running ? "Running" : p.disabled ? "Disabled" : "Stopped"}</Badge>
                           </div>
-                        )}
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
-                          Last poll: {p.lastPollAt ? new Date(p.lastPollAt).toLocaleString() : "Never"}
-                          {' · '}{p.imapEmailsProcessed || 0} emails processed
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-xs h-7 gap-1"
-                          onClick={() => adminImapForcePollMutation.mutate(p.orgId)}
-                          disabled={adminImapForcePollMutation.isPending}
-                          data-testid={`button-admin-imap-force-poll-${p.orgId}`}
-                        >
-                          <Play className="h-3 w-3" />
-                          Poll Now
-                        </Button>
-                        {(p.disabled || p.consecutiveFailures > 0) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs h-7 gap-1"
-                            onClick={() => adminImapResetMutation.mutate(p.orgId)}
-                            disabled={adminImapResetMutation.isPending}
-                            data-testid={`button-admin-imap-reset-${p.orgId}`}
-                          >
-                            <RefreshCw className="h-3 w-3" />
-                            Reset
+                          {p.lastError && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <AlertTriangle className="h-3 w-3 text-rose-500 shrink-0" />
+                              <span className="text-[11px] text-rose-600 truncate">{p.lastError}</span>
+                              <span className="text-[11px] text-muted-foreground shrink-0">({p.consecutiveFailures} failures)</span>
+                            </div>
+                          )}
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Last poll: {p.lastPollAt ? new Date(p.lastPollAt).toLocaleString() : "Never"}
+                            {' · '}{p.imapEmailsProcessed || 0} emails
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => adminImapForcePollMutation.mutate(p.orgId)} disabled={adminImapForcePollMutation.isPending} data-testid={`button-admin-imap-force-poll-${p.orgId}`}>
+                            <Play className="h-3 w-3" /> Poll
                           </Button>
-                        )}
-                        {!p.disabled && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs h-7 gap-1 text-rose-600 hover:text-rose-700"
-                            onClick={() => adminImapDisableMutation.mutate(p.orgId)}
-                            disabled={adminImapDisableMutation.isPending}
-                            data-testid={`button-admin-imap-disable-${p.orgId}`}
-                          >
-                            <XCircle className="h-3 w-3" />
-                            Disable
-                          </Button>
-                        )}
+                          {(p.disabled || p.consecutiveFailures > 0) && (
+                            <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => adminImapResetMutation.mutate(p.orgId)} disabled={adminImapResetMutation.isPending} data-testid={`button-admin-imap-reset-${p.orgId}`}>
+                              <RefreshCw className="h-3 w-3" /> Reset
+                            </Button>
+                          )}
+                          {!p.disabled && (
+                            <Button variant="outline" size="sm" className="text-xs h-7 gap-1 text-rose-600 hover:text-rose-700" onClick={() => adminImapDisableMutation.mutate(p.orgId)} disabled={adminImapDisableMutation.isPending} data-testid={`button-admin-imap-disable-${p.orgId}`}>
+                              <XCircle className="h-3 w-3" /> Disable
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               );
             })()}
