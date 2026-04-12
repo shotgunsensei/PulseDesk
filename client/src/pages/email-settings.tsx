@@ -785,18 +785,52 @@ export default function EmailSettingsPage() {
                 )}
               </div>
               {(forwardingConnector || inboundAddress) && (
-                <div className="mt-3 space-y-3">
-                  <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                    <code className="flex-1 text-sm font-mono" data-testid="text-inbound-address">{inboundAddress}</code>
-                    <Button variant="ghost" size="sm" onClick={() => handleCopy(inboundAddress!)} data-testid="button-copy-address">
-                      {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
-                    </Button>
+                <div className="mt-3 space-y-4">
+                  <div>
+                    <p className="text-xs font-medium text-foreground mb-1.5">Your Inbound Alias</p>
+                    <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                      <code className="flex-1 text-sm font-mono" data-testid="text-inbound-address">{inboundAddress}</code>
+                      <Button variant="ghost" size="sm" onClick={() => handleCopy(inboundAddress!)} data-testid="button-copy-address">
+                        {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">This is the address identifier used to route emails to your organization</p>
                   </div>
-                  <div className="text-xs text-muted-foreground space-y-1 px-1">
+                  <div>
+                    <p className="text-xs font-medium text-foreground mb-1.5">Webhook URL (for SendGrid / Mailgun)</p>
+                    <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                      <code className="flex-1 text-xs font-mono break-all" data-testid="text-webhook-url">{`${window.location.origin}/api/email/inbound/sendgrid`}</code>
+                      <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/api/email/inbound/sendgrid`); toast({ title: "Copied!" }); }} data-testid="button-copy-webhook">
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground space-y-2 px-1 border-t pt-3">
                     <p className="font-medium text-foreground">Setup Instructions:</p>
-                    <p><strong>Gmail:</strong> Settings → Forwarding → Add {inboundAddress}</p>
-                    <p><strong>Outlook:</strong> Rules → Create rule → Forward to {inboundAddress}</p>
-                    <p><strong>Other:</strong> Configure your email provider to forward support emails to the address above</p>
+                    <div className="space-y-2">
+                      <div>
+                        <p className="font-medium text-foreground/80">Option A: SendGrid Inbound Parse</p>
+                        <ol className="list-decimal list-inside space-y-0.5 ml-1">
+                          <li>In SendGrid, go to Settings → Inbound Parse</li>
+                          <li>Add your domain and point its MX record to <code className="text-[10px] bg-muted px-1 rounded">mx.sendgrid.net</code></li>
+                          <li>Set the Destination URL to the webhook URL above</li>
+                          <li>Check "POST the raw, full MIME message" or leave unchecked for parsed mode</li>
+                          <li>Emails sent to <code className="text-[10px] bg-muted px-1 rounded">{inboundAddress?.split("@")[0]}@yourdomain.com</code> will create tickets</li>
+                        </ol>
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground/80">Option B: Mailgun Inbound Routing</p>
+                        <ol className="list-decimal list-inside space-y-0.5 ml-1">
+                          <li>In Mailgun, go to Receiving → Create Route</li>
+                          <li>Set match expression to <code className="text-[10px] bg-muted px-1 rounded">match_recipient("{inboundAddress?.split("@")[0]}@yourdomain.com")</code></li>
+                          <li>Set action to forward to: <code className="text-[10px] bg-muted px-1 rounded">{window.location.origin}/api/email/inbound/mailgun</code></li>
+                        </ol>
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground/80">Option C: Test Manually</p>
+                        <p>Use the "Test Inbound Email" card below to simulate an incoming email and verify ticket creation works</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

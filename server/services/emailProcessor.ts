@@ -82,10 +82,21 @@ export class SendGridEmailProvider implements InboundEmailProvider {
       fromEmail = nameMatch[2].trim();
     }
 
+    let toAddress = "";
+    if (body.to) {
+      const toMatch = body.to.match(/<(.+?)>/);
+      toAddress = toMatch ? toMatch[1] : body.to.split(",")[0].trim();
+    } else if (body.envelope) {
+      try {
+        const env = typeof body.envelope === "string" ? JSON.parse(body.envelope) : body.envelope;
+        toAddress = env.to?.[0] || "";
+      } catch {}
+    }
+
     return {
       messageId: body.headers ? this.extractHeader(body.headers, "Message-ID") : undefined,
       from: { email: fromEmail, name: fromName },
-      to: body.to || body.envelope ? JSON.parse(body.envelope || "{}").to?.[0] || "" : "",
+      to: toAddress,
       subject: body.subject || "(no subject)",
       bodyPlain: body.text || "",
       bodyHtml: body.html || "",
@@ -99,8 +110,21 @@ export class SendGridEmailProvider implements InboundEmailProvider {
     };
   }
 
-  verifySignature(): boolean {
-    return true;
+  verifySignature(body: any, headers: Record<string, string>): boolean {
+    const verificationKey = process.env.SENDGRID_WEBHOOK_VERIFICATION_KEY;
+    if (!verificationKey) return true;
+    try {
+      const crypto = require("crypto");
+      const publicKey = crypto.createPublicKey(verificationKey);
+      const signature = headers["x-twilio-email-event-webhook-signature"];
+      const timestamp = headers["x-twilio-email-event-webhook-timestamp"];
+      if (!signature || !timestamp) return true;
+      const payload = timestamp + JSON.stringify(body);
+      const decodedSignature = Buffer.from(signature, "base64");
+      return crypto.verify("sha256", Buffer.from(payload), publicKey, decodedSignature);
+    } catch {
+      return true;
+    }
   }
 
   private extractHeader(headersStr: string, name: string): string | undefined {
@@ -162,8 +186,17 @@ export class MailgunEmailProvider implements InboundEmailProvider {
     };
   }
 
-  verifySignature(): boolean {
-    return true;
+  verifySignature(body: any, headers: Record<string, string>): boolean {
+    const apiKey = process.env.MAILGUN_API_KEY;
+    if (!apiKey) return true;
+    try {
+      const crypto = require("crypto");
+      const sigData = body.timestamp + body.token;
+      const expectedSig = crypto.createHmac("sha256", apiKey).update(sigData).digest("hex");
+      return body.signature === expectedSig;
+    } catch {
+      return true;
+    }
   }
 
   private parseMessageHeaders(headers: any): Record<string, string> {
