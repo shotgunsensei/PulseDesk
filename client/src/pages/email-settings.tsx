@@ -40,6 +40,9 @@ import {
   Inbox,
   Unplug,
   ExternalLink,
+  Settings,
+  Save,
+  Trash2,
 } from "lucide-react";
 import { SiGoogle } from "react-icons/si";
 import { PLAN_LIMITS } from "@shared/schema";
@@ -187,6 +190,12 @@ export default function EmailSettingsPage() {
   const [imapForm, setImapForm] = useState({ imapHost: "", imapPort: 993, imapUser: "", imapPassword: "", imapTls: true, imapPollIntervalSeconds: 120, imapFolder: "INBOX" });
   const [showImapPassword, setShowImapPassword] = useState(false);
   const [showImapSection, setShowImapSection] = useState(false);
+  const [googleAppForm, setGoogleAppForm] = useState({ clientId: "", clientSecret: "" });
+  const [microsoftAppForm, setMicrosoftAppForm] = useState({ clientId: "", clientSecret: "" });
+  const [showGoogleAppCreds, setShowGoogleAppCreds] = useState(false);
+  const [showMicrosoftAppCreds, setShowMicrosoftAppCreds] = useState(false);
+  const [showGoogleSecret, setShowGoogleSecret] = useState(false);
+  const [showMicrosoftSecret, setShowMicrosoftSecret] = useState(false);
 
   const isAdmin = membership && canManageSettings(membership.role);
 
@@ -238,9 +247,49 @@ export default function EmailSettingsPage() {
     enabled: !!settingsResponse?.eligible && !!settingsResponse?.settings,
   });
 
-  const { data: oauthConfigStatus } = useQuery<{ google: boolean; microsoft: boolean }>({
+  const { data: oauthConfigStatus, refetch: refetchConfigStatus } = useQuery<{ google: boolean; microsoft: boolean; googleClientIdSet: boolean; microsoftClientIdSet: boolean }>({
     queryKey: ["/api/connectors/oauth/config-status"],
     enabled: !!settingsResponse?.eligible,
+  });
+
+  const { data: oauthAppConfig } = useQuery<{ googleClientIdSet: boolean; googleClientId: string | null; microsoftClientIdSet: boolean; microsoftClientId: string | null }>({
+    queryKey: ["/api/email/oauth-app-config"],
+    enabled: !!settingsResponse?.eligible && !!settingsResponse?.settings,
+  });
+
+  useEffect(() => {
+    if (oauthAppConfig?.googleClientId) setGoogleAppForm(f => ({ ...f, clientId: oauthAppConfig.googleClientId! }));
+    if (oauthAppConfig?.microsoftClientId) setMicrosoftAppForm(f => ({ ...f, clientId: oauthAppConfig.microsoftClientId! }));
+  }, [oauthAppConfig]);
+
+  const saveOAuthAppCredsMutation = useMutation({
+    mutationFn: async (data: { provider: "google" | "microsoft"; clientId: string; clientSecret: string }) => {
+      const res = await apiRequest("PATCH", "/api/email/oauth-app-config", data);
+      return await res.json();
+    },
+    onSuccess: (_data, vars) => {
+      toast({ title: `${vars.provider === "google" ? "Google" : "Microsoft"} credentials saved` });
+      queryClient.invalidateQueries({ queryKey: ["/api/email/oauth-app-config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/connectors/oauth/config-status"] });
+      if (vars.provider === "google") { setShowGoogleAppCreds(false); setGoogleAppForm(f => ({ ...f, clientSecret: "" })); }
+      else { setShowMicrosoftAppCreds(false); setMicrosoftAppForm(f => ({ ...f, clientSecret: "" })); }
+    },
+    onError: (err: any) => toast({ title: "Failed to save credentials", description: err.message, variant: "destructive" }),
+  });
+
+  const clearOAuthAppCredsMutation = useMutation({
+    mutationFn: async (provider: "google" | "microsoft") => {
+      const res = await apiRequest("DELETE", `/api/email/oauth-app-config/${provider}`);
+      return await res.json();
+    },
+    onSuccess: (_data, provider) => {
+      toast({ title: `${provider === "google" ? "Google" : "Microsoft"} credentials cleared` });
+      queryClient.invalidateQueries({ queryKey: ["/api/email/oauth-app-config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/connectors/oauth/config-status"] });
+      if (provider === "google") setGoogleAppForm({ clientId: "", clientSecret: "" });
+      else setMicrosoftAppForm({ clientId: "", clientSecret: "" });
+    },
+    onError: (err: any) => toast({ title: "Failed to clear credentials", description: err.message, variant: "destructive" }),
   });
 
   const [testEmailForm, setTestEmailForm] = useState({ fromEmail: "", fromName: "", subject: "", body: "" });
@@ -687,6 +736,82 @@ export default function EmailSettingsPage() {
                   </div>
                 </div>
               )}
+
+              <div className="mt-3 border-t pt-3">
+                <button
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setShowGoogleAppCreds(v => !v)}
+                  data-testid="button-toggle-google-app-creds"
+                >
+                  <Settings className="h-3 w-3" />
+                  <span>OAuth App Credentials</span>
+                  {oauthAppConfig?.googleClientIdSet
+                    ? <span className="ml-1 text-[10px] font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded-full">Configured</span>
+                    : <span className="ml-1 text-[10px] font-medium text-amber-600 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded-full">Not set</span>
+                  }
+                  <ChevronDown className={`h-3 w-3 ml-auto transition-transform ${showGoogleAppCreds ? "rotate-180" : ""}`} />
+                </button>
+                {showGoogleAppCreds && (
+                  <div className="mt-3 space-y-3" data-testid="section-google-app-creds">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Enter your Google Cloud OAuth 2.0 credentials. These are stored encrypted per-organization and override any server-wide configuration.{" "}
+                      <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Get credentials →</a>
+                    </p>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-[11px] font-medium text-foreground mb-1 block">Client ID</label>
+                        <input
+                          type="text"
+                          className="w-full text-xs font-mono border rounded-md px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                          placeholder="xxxx.apps.googleusercontent.com"
+                          value={googleAppForm.clientId}
+                          onChange={e => setGoogleAppForm(f => ({ ...f, clientId: e.target.value }))}
+                          data-testid="input-google-client-id"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-medium text-foreground mb-1 block">Client Secret</label>
+                        <div className="relative">
+                          <input
+                            type={showGoogleSecret ? "text" : "password"}
+                            className="w-full text-xs font-mono border rounded-md px-3 py-2 pr-10 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                            placeholder={oauthAppConfig?.googleClientIdSet ? "Leave blank to keep existing secret" : "GOCSPX-…"}
+                            value={googleAppForm.clientSecret}
+                            onChange={e => setGoogleAppForm(f => ({ ...f, clientSecret: e.target.value }))}
+                            data-testid="input-google-client-secret"
+                          />
+                          <button type="button" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowGoogleSecret(v => !v)} data-testid="button-toggle-google-secret">
+                            {showGoogleSecret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          disabled={!googleAppForm.clientId || (!googleAppForm.clientSecret && !oauthAppConfig?.googleClientIdSet) || saveOAuthAppCredsMutation.isPending}
+                          onClick={() => saveOAuthAppCredsMutation.mutate({ provider: "google", clientId: googleAppForm.clientId, clientSecret: googleAppForm.clientSecret || "KEEP" })}
+                          data-testid="button-save-google-app-creds"
+                        >
+                          <Save className="h-3 w-3" /> Save
+                        </Button>
+                        {oauthAppConfig?.googleClientIdSet && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs gap-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                            disabled={clearOAuthAppCredsMutation.isPending}
+                            onClick={() => { if (confirm("Remove Google OAuth app credentials?")) clearOAuthAppCredsMutation.mutate("google"); }}
+                            data-testid="button-clear-google-app-creds"
+                          >
+                            <Trash2 className="h-3 w-3" /> Remove
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 
@@ -762,6 +887,82 @@ export default function EmailSettingsPage() {
                   </div>
                 </div>
               )}
+
+              <div className="mt-3 border-t pt-3">
+                <button
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setShowMicrosoftAppCreds(v => !v)}
+                  data-testid="button-toggle-microsoft-app-creds"
+                >
+                  <Settings className="h-3 w-3" />
+                  <span>OAuth App Credentials</span>
+                  {oauthAppConfig?.microsoftClientIdSet
+                    ? <span className="ml-1 text-[10px] font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded-full">Configured</span>
+                    : <span className="ml-1 text-[10px] font-medium text-amber-600 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded-full">Not set</span>
+                  }
+                  <ChevronDown className={`h-3 w-3 ml-auto transition-transform ${showMicrosoftAppCreds ? "rotate-180" : ""}`} />
+                </button>
+                {showMicrosoftAppCreds && (
+                  <div className="mt-3 space-y-3" data-testid="section-microsoft-app-creds">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Enter your Microsoft Azure App Registration credentials. These are stored encrypted per-organization and override any server-wide configuration.{" "}
+                      <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Azure Portal →</a>
+                    </p>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-[11px] font-medium text-foreground mb-1 block">Client ID (Application ID)</label>
+                        <input
+                          type="text"
+                          className="w-full text-xs font-mono border rounded-md px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                          value={microsoftAppForm.clientId}
+                          onChange={e => setMicrosoftAppForm(f => ({ ...f, clientId: e.target.value }))}
+                          data-testid="input-microsoft-client-id"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-medium text-foreground mb-1 block">Client Secret</label>
+                        <div className="relative">
+                          <input
+                            type={showMicrosoftSecret ? "text" : "password"}
+                            className="w-full text-xs font-mono border rounded-md px-3 py-2 pr-10 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                            placeholder={oauthAppConfig?.microsoftClientIdSet ? "Leave blank to keep existing secret" : "Enter client secret value"}
+                            value={microsoftAppForm.clientSecret}
+                            onChange={e => setMicrosoftAppForm(f => ({ ...f, clientSecret: e.target.value }))}
+                            data-testid="input-microsoft-client-secret"
+                          />
+                          <button type="button" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowMicrosoftSecret(v => !v)} data-testid="button-toggle-microsoft-secret">
+                            {showMicrosoftSecret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          disabled={!microsoftAppForm.clientId || (!microsoftAppForm.clientSecret && !oauthAppConfig?.microsoftClientIdSet) || saveOAuthAppCredsMutation.isPending}
+                          onClick={() => saveOAuthAppCredsMutation.mutate({ provider: "microsoft", clientId: microsoftAppForm.clientId, clientSecret: microsoftAppForm.clientSecret || "KEEP" })}
+                          data-testid="button-save-microsoft-app-creds"
+                        >
+                          <Save className="h-3 w-3" /> Save
+                        </Button>
+                        {oauthAppConfig?.microsoftClientIdSet && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs gap-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                            disabled={clearOAuthAppCredsMutation.isPending}
+                            onClick={() => { if (confirm("Remove Microsoft OAuth app credentials?")) clearOAuthAppCredsMutation.mutate("microsoft"); }}
+                            data-testid="button-clear-microsoft-app-creds"
+                          >
+                            <Trash2 className="h-3 w-3" /> Remove
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 

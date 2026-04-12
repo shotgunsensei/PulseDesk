@@ -700,6 +700,10 @@ export const emailSettings = pgTable("email_settings", {
   imapFolder: text("imap_folder").default("INBOX"),
   imapConsecutiveFailures: integer("imap_consecutive_failures").default(0).notNull(),
   imapEmailsProcessed: integer("imap_emails_processed").default(0).notNull(),
+  googleClientId: text("google_client_id"),
+  googleClientSecretEncrypted: text("google_client_secret_encrypted"),
+  microsoftClientId: text("microsoft_client_id"),
+  microsoftClientSecretEncrypted: text("microsoft_client_secret_encrypted"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

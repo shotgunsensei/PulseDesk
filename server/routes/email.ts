@@ -126,6 +126,85 @@ router.post("/api/email/settings/initialize", requireAuth, requireOrg, requireMi
   }
 });
 
+const oauthAppConfigSchema = z.object({
+  provider: z.enum(["google", "microsoft"]),
+  clientId: z.string().min(1).max(500),
+  clientSecret: z.string().min(1).max(500),
+});
+
+router.get("/api/email/oauth-app-config", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const [settings] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
+    if (!settings) return res.json({ googleClientIdSet: false, microsoftClientIdSet: false });
+    res.json({
+      googleClientIdSet: !!(settings as any).googleClientId,
+      googleClientId: (settings as any).googleClientId || null,
+      microsoftClientIdSet: !!(settings as any).microsoftClientId,
+      microsoftClientId: (settings as any).microsoftClientId || null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.patch("/api/email/oauth-app-config", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const parsed = oauthAppConfigSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
+    }
+
+    const [existing] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
+    if (!existing) return res.status(400).json({ error: "Email settings not initialized. Set up Connected Inboxes first." });
+
+    const { provider, clientId, clientSecret } = parsed.data;
+    const keepExistingSecret = clientSecret === "KEEP";
+    const updateData: any = { updatedAt: new Date() };
+
+    if (provider === "google") {
+      updateData.googleClientId = clientId;
+      if (!keepExistingSecret) updateData.googleClientSecretEncrypted = encryptSecret(clientSecret);
+    } else if (provider === "microsoft") {
+      updateData.microsoftClientId = clientId;
+      if (!keepExistingSecret) updateData.microsoftClientSecretEncrypted = encryptSecret(clientSecret);
+    }
+
+    await db.update(emailSettings).set(updateData).where(eq(emailSettings.orgId, orgId));
+    res.json({ ok: true, provider, clientIdSet: true });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
+router.delete("/api/email/oauth-app-config/:provider", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const { provider } = req.params;
+    if (provider !== "google" && provider !== "microsoft") {
+      return res.status(400).json({ error: "Invalid provider" });
+    }
+
+    const [existing] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
+    if (!existing) return res.status(404).json({ error: "Email settings not found" });
+
+    const updateData: any = { updatedAt: new Date() };
+    if (provider === "google") {
+      updateData.googleClientId = null;
+      updateData.googleClientSecretEncrypted = null;
+    } else {
+      updateData.microsoftClientId = null;
+      updateData.microsoftClientSecretEncrypted = null;
+    }
+
+    await db.update(emailSettings).set(updateData).where(eq(emailSettings.orgId, orgId));
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
 router.patch("/api/email/settings", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
   try {
     const orgId = req.session.orgId!;

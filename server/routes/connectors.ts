@@ -7,6 +7,8 @@ import { desc, eq, sql } from "drizzle-orm";
 import { encryptSecret, decryptSecret } from "../auth/crypto";
 import { getConnectorService } from "../services/connectors/registry";
 import type { ConnectorCredentials, ConnectorProvider } from "../services/connectors/types";
+import { isGoogleConfigured } from "../services/connectors/google";
+import { isMicrosoftConfigured } from "../services/connectors/microsoft";
 import { storage } from "../storage";
 
 type ConnectorEventType = "poll_success" | "poll_error" | "auth_success" | "auth_error" | "disabled" | "enabled" | "config_changed";
@@ -346,11 +348,40 @@ router.get("/api/connectors/:id/events", requireAuth, requireOrg, requireMinRole
   }
 });
 
-router.get("/api/connectors/oauth/config-status", requireAuth, requireOrg, requireMinRole("admin"), async (_req: Request, res: Response) => {
-  res.json({
-    google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
-    microsoft: !!(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET),
-  });
+async function getOrgEmailSettings(orgId: string) {
+  const [settings] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
+  return settings || null;
+}
+
+function extractGoogleAppCreds(settings: any): { clientId: string; clientSecret: string } | null {
+  if (!settings?.googleClientId || !settings?.googleClientSecretEncrypted) return null;
+  try {
+    return { clientId: settings.googleClientId, clientSecret: decryptSecret(settings.googleClientSecretEncrypted) };
+  } catch { return null; }
+}
+
+function extractMicrosoftAppCreds(settings: any): { clientId: string; clientSecret: string } | null {
+  if (!settings?.microsoftClientId || !settings?.microsoftClientSecretEncrypted) return null;
+  try {
+    return { clientId: settings.microsoftClientId, clientSecret: decryptSecret(settings.microsoftClientSecretEncrypted) };
+  } catch { return null; }
+}
+
+router.get("/api/connectors/oauth/config-status", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+  try {
+    const orgId = req.session.orgId!;
+    const settings = await getOrgEmailSettings(orgId);
+    const googleAppCreds = extractGoogleAppCreds(settings);
+    const microsoftAppCreds = extractMicrosoftAppCreds(settings);
+    res.json({
+      google: isGoogleConfigured(googleAppCreds),
+      microsoft: isMicrosoftConfigured(microsoftAppCreds),
+      googleClientIdSet: !!(settings?.googleClientId),
+      microsoftClientIdSet: !!(settings?.microsoftClientId),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
 });
 
 router.get("/api/connectors/:id/oauth/start", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
@@ -369,18 +400,23 @@ router.get("/api/connectors/:id/oauth/start", requireAuth, requireOrg, requireMi
       return res.status(400).json({ error: "OAuth not available for this provider" });
     }
 
+    const orgSettings = await getOrgEmailSettings(orgId);
+
+    let appCreds: { clientId: string; clientSecret: string } | null = null;
     if (connector.provider === "google") {
-      if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      appCreds = extractGoogleAppCreds(orgSettings);
+      if (!isGoogleConfigured(appCreds)) {
         return res.status(400).json({
-          error: "Google OAuth is not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.",
+          error: "Google OAuth is not configured. Add your Google Client ID and Secret in the Connected Inboxes settings, or contact your administrator.",
           code: "OAUTH_NOT_CONFIGURED",
         });
       }
     }
     if (connector.provider === "microsoft") {
-      if (!process.env.MICROSOFT_CLIENT_ID || !process.env.MICROSOFT_CLIENT_SECRET) {
+      appCreds = extractMicrosoftAppCreds(orgSettings);
+      if (!isMicrosoftConfigured(appCreds)) {
         return res.status(400).json({
-          error: "Microsoft OAuth is not configured. Please set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET environment variables.",
+          error: "Microsoft OAuth is not configured. Add your Microsoft Client ID and Secret in the Connected Inboxes settings, or contact your administrator.",
           code: "OAUTH_NOT_CONFIGURED",
         });
       }
@@ -388,7 +424,7 @@ router.get("/api/connectors/:id/oauth/start", requireAuth, requireOrg, requireMi
 
     const redirectUri = `${getBaseUrl(req)}/api/connectors/oauth/callback`;
 
-    const result = await service.startOAuth(connector, redirectUri);
+    const result = await (service.startOAuth as any)(connector, redirectUri, appCreds);
 
     const sess = req.session as Record<string, unknown>;
     sess.connectorOAuthState = result.state;
@@ -439,7 +475,12 @@ router.get("/api/connectors/oauth/callback", async (req: Request, res: Response)
 
     const redirectUri = `${getBaseUrl(req)}/api/connectors/oauth/callback`;
 
-    const result = await service.handleOAuthCallback(connector, code, redirectUri);
+    const callbackOrgSettings = await getOrgEmailSettings(connector.orgId);
+    let callbackAppCreds: { clientId: string; clientSecret: string } | null = null;
+    if (provider === "google") callbackAppCreds = extractGoogleAppCreds(callbackOrgSettings);
+    if (provider === "microsoft") callbackAppCreds = extractMicrosoftAppCreds(callbackOrgSettings);
+
+    const result = await (service.handleOAuthCallback as any)(connector, code, redirectUri, callbackAppCreds);
 
     if (!result.success) {
       return res.redirect(`/email-settings?connectorError=${encodeURIComponent(result.error || "Auth failed")}`);

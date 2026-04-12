@@ -23,16 +23,36 @@ const SCOPES = [
   "offline_access",
 ];
 
-function getClientId(): string {
+export interface OAuthAppCredentials {
+  clientId: string;
+  clientSecret: string;
+}
+
+function getEnvClientId(): string {
   const id = process.env.MICROSOFT_CLIENT_ID;
   if (!id) throw new Error("MICROSOFT_CLIENT_ID not configured");
   return id;
 }
 
-function getClientSecret(): string {
+function getEnvClientSecret(): string {
   const secret = process.env.MICROSOFT_CLIENT_SECRET;
   if (!secret) throw new Error("MICROSOFT_CLIENT_SECRET not configured");
   return secret;
+}
+
+function resolveClientId(appCreds?: OAuthAppCredentials | null): string {
+  if (appCreds?.clientId) return appCreds.clientId;
+  return getEnvClientId();
+}
+
+function resolveClientSecret(appCreds?: OAuthAppCredentials | null): string {
+  if (appCreds?.clientSecret) return appCreds.clientSecret;
+  return getEnvClientSecret();
+}
+
+export function isMicrosoftConfigured(appCreds?: OAuthAppCredentials | null): boolean {
+  if (appCreds?.clientId && appCreds?.clientSecret) return true;
+  return !!(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET);
 }
 
 function buildImapConfig(connector: MailConnector, creds: ConnectorCredentials): ImapConfig {
@@ -61,10 +81,10 @@ interface MsGraphUser {
 export class MicrosoftConnectorService implements ConnectorService {
   readonly provider = "microsoft" as const;
 
-  async startOAuth(_connector: MailConnector, redirectUri: string): Promise<OAuthStartResult> {
+  async startOAuth(_connector: MailConnector, redirectUri: string, appCreds?: OAuthAppCredentials | null): Promise<OAuthStartResult> {
     const state = crypto.randomBytes(32).toString("hex");
     const params = new URLSearchParams({
-      client_id: getClientId(),
+      client_id: resolveClientId(appCreds),
       redirect_uri: redirectUri,
       response_type: "code",
       scope: SCOPES.join(" "),
@@ -82,14 +102,15 @@ export class MicrosoftConnectorService implements ConnectorService {
     _connector: MailConnector,
     code: string,
     redirectUri: string,
+    appCreds?: OAuthAppCredentials | null,
   ): Promise<OAuthCallbackResult> {
     try {
       const tokenRes = await fetch(`${MS_AUTH_BASE}/${TENANT}${MS_TOKEN_PATH}`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
-          client_id: getClientId(),
-          client_secret: getClientSecret(),
+          client_id: resolveClientId(appCreds),
+          client_secret: resolveClientSecret(appCreds),
           code,
           redirect_uri: redirectUri,
           grant_type: "authorization_code",
@@ -171,6 +192,7 @@ export class MicrosoftConnectorService implements ConnectorService {
   async refreshCredentials(
     _connector: MailConnector,
     credentials: ConnectorCredentials,
+    appCreds?: OAuthAppCredentials | null,
   ): Promise<ConnectorCredentials | null> {
     if (!credentials.refreshToken) return null;
 
@@ -179,8 +201,8 @@ export class MicrosoftConnectorService implements ConnectorService {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
-          client_id: getClientId(),
-          client_secret: getClientSecret(),
+          client_id: resolveClientId(appCreds),
+          client_secret: resolveClientSecret(appCreds),
           refresh_token: credentials.refreshToken,
           grant_type: "refresh_token",
           scope: SCOPES.join(" "),
