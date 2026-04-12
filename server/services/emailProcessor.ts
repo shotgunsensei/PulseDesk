@@ -118,12 +118,12 @@ export class SendGridEmailProvider implements InboundEmailProvider {
       const publicKey = crypto.createPublicKey(verificationKey);
       const signature = headers["x-twilio-email-event-webhook-signature"];
       const timestamp = headers["x-twilio-email-event-webhook-timestamp"];
-      if (!signature || !timestamp) return true;
+      if (!signature || !timestamp) return false;
       const payload = timestamp + JSON.stringify(body);
       const decodedSignature = Buffer.from(signature, "base64");
       return crypto.verify("sha256", Buffer.from(payload), publicKey, decodedSignature);
     } catch {
-      return true;
+      return false;
     }
   }
 
@@ -189,13 +189,14 @@ export class MailgunEmailProvider implements InboundEmailProvider {
   verifySignature(body: any, headers: Record<string, string>): boolean {
     const apiKey = process.env.MAILGUN_API_KEY;
     if (!apiKey) return true;
+    if (!body.timestamp || !body.token || !body.signature) return false;
     try {
       const crypto = require("crypto");
       const sigData = body.timestamp + body.token;
       const expectedSig = crypto.createHmac("sha256", apiKey).update(sigData).digest("hex");
       return body.signature === expectedSig;
     } catch {
-      return true;
+      return false;
     }
   }
 
