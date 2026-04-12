@@ -161,8 +161,8 @@ export class MicrosoftConnectorService implements ConnectorService {
     }
   }
 
-  async testConnection(connector: MailConnector, credentials: ConnectorCredentials) {
-    const creds = await this.ensureFreshToken(connector, credentials);
+  async testConnection(connector: MailConnector, credentials: ConnectorCredentials, appCreds?: OAuthAppCredentials | null) {
+    const creds = await this.ensureFreshToken(connector, credentials, appCreds);
     const config = buildImapConfig(connector, creds);
     return testImapConnection(config);
   }
@@ -260,11 +260,12 @@ export class MicrosoftConnectorService implements ConnectorService {
   private async ensureFreshToken(
     connector: MailConnector,
     credentials: ConnectorCredentials,
+    appCreds?: OAuthAppCredentials | null,
   ): Promise<ConnectorCredentials> {
     if (credentials.tokenExpiry && credentials.tokenExpiry > Date.now() + 60_000) {
       return credentials;
     }
-    const refreshed = await this.refreshCredentials(connector, credentials);
+    const refreshed = await this.refreshCredentials(connector, credentials, appCreds);
     if (!refreshed) throw new Error("Failed to refresh Microsoft access token");
     return refreshed;
   }

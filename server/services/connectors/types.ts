@@ -16,6 +16,11 @@ export interface ConnectorCredentials {
   imapPassword?: string;
 }
 
+export interface OAuthAppCredentials {
+  clientId: string;
+  clientSecret: string;
+}
+
 export interface OAuthStartResult {
   redirectUrl: string;
   state: string;
@@ -40,15 +45,24 @@ export interface ConnectorHealthStatus {
 export interface ConnectorService {
   readonly provider: ConnectorProvider;
 
-  startOAuth?(connector: MailConnector, redirectUri: string): Promise<OAuthStartResult>;
+  startOAuth?(
+    connector: MailConnector,
+    redirectUri: string,
+    appCreds?: OAuthAppCredentials | null,
+  ): Promise<OAuthStartResult>;
 
   handleOAuthCallback?(
     connector: MailConnector,
     code: string,
     redirectUri: string,
+    appCreds?: OAuthAppCredentials | null,
   ): Promise<OAuthCallbackResult>;
 
-  testConnection(connector: MailConnector, credentials: ConnectorCredentials): Promise<{
+  testConnection(
+    connector: MailConnector,
+    credentials: ConnectorCredentials,
+    appCreds?: OAuthAppCredentials | null,
+  ): Promise<{
     success: boolean;
     error?: string;
     mailboxInfo?: { exists: number; unseen: number };
@@ -70,6 +84,7 @@ export interface ConnectorService {
   refreshCredentials?(
     connector: MailConnector,
     credentials: ConnectorCredentials,
+    appCreds?: OAuthAppCredentials | null,
   ): Promise<ConnectorCredentials | null>;
 
   disconnect?(

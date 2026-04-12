@@ -291,7 +291,11 @@ router.post("/api/connectors/:id/test", requireAuth, requireOrg, requireMinRole(
 
     const credentials = decryptCredentials(connector.credentialsEncrypted);
     const service = getConnectorService(connector.provider as ConnectorProvider);
-    const result = await service.testConnection(connector, credentials);
+    const testOrgSettings = await getOrgEmailSettings(orgId);
+    let testAppCreds: { clientId: string; clientSecret: string } | null = null;
+    if (connector.provider === "google") testAppCreds = extractGoogleAppCreds(testOrgSettings);
+    else if (connector.provider === "microsoft") testAppCreds = extractMicrosoftAppCreds(testOrgSettings);
+    const result = await service.testConnection(connector, credentials, testAppCreds);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: safeError(err) });
@@ -424,7 +428,7 @@ router.get("/api/connectors/:id/oauth/start", requireAuth, requireOrg, requireMi
 
     const redirectUri = `${getBaseUrl(req)}/api/connectors/oauth/callback`;
 
-    const result = await (service.startOAuth as any)(connector, redirectUri, appCreds);
+    const result = await service.startOAuth!(connector, redirectUri, appCreds);
 
     const sess = req.session as Record<string, unknown>;
     sess.connectorOAuthState = result.state;
@@ -480,7 +484,7 @@ router.get("/api/connectors/oauth/callback", async (req: Request, res: Response)
     if (provider === "google") callbackAppCreds = extractGoogleAppCreds(callbackOrgSettings);
     if (provider === "microsoft") callbackAppCreds = extractMicrosoftAppCreds(callbackOrgSettings);
 
-    const result = await (service.handleOAuthCallback as any)(connector, code, redirectUri, callbackAppCreds);
+    const result = await service.handleOAuthCallback!(connector, code, redirectUri, callbackAppCreds);
 
     if (!result.success) {
       return res.redirect(`/email-settings?connectorError=${encodeURIComponent(result.error || "Auth failed")}`);

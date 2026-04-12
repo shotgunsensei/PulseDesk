@@ -8,7 +8,17 @@ function connectorWhere(id: string) {
 import { storage } from "../storage";
 import { decryptSecret, encryptSecret } from "../auth/crypto";
 import { getConnectorService } from "./connectors/registry";
-import type { ConnectorCredentials, ConnectorProvider } from "./connectors/types";
+import type { ConnectorCredentials, ConnectorProvider, OAuthAppCredentials } from "./connectors/types";
+
+function extractGoogleAppCreds(settings: any): OAuthAppCredentials | null {
+  if (!settings?.googleClientId || !settings?.googleClientSecretEncrypted) return null;
+  try { return { clientId: settings.googleClientId, clientSecret: decryptSecret(settings.googleClientSecretEncrypted) }; } catch { return null; }
+}
+
+function extractMicrosoftAppCreds(settings: any): OAuthAppCredentials | null {
+  if (!settings?.microsoftClientId || !settings?.microsoftClientSecretEncrypted) return null;
+  try { return { clientId: settings.microsoftClientId, clientSecret: decryptSecret(settings.microsoftClientSecretEncrypted) }; } catch { return null; }
+}
 import { processInboundEmail } from "./emailProcessor";
 
 const MAX_CONSECUTIVE_FAILURES = 5;
@@ -213,9 +223,15 @@ async function executePoll(connectorId: string, expectedVersion: number) {
 
     const service = getConnectorService(connector.provider as ConnectorProvider);
 
+    const [settings] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, connector.orgId));
+
     if (service.refreshCredentials) {
+      let pollAppCreds: OAuthAppCredentials | null = null;
+      if (connector.provider === "google") pollAppCreds = extractGoogleAppCreds(settings);
+      else if (connector.provider === "microsoft") pollAppCreds = extractMicrosoftAppCreds(settings);
+
       try {
-        const refreshed = await service.refreshCredentials(connector, credentials);
+        const refreshed = await service.refreshCredentials(connector, credentials, pollAppCreds);
         if (refreshed && refreshed.accessToken !== credentials.accessToken) {
           credentials = refreshed;
           await db.update(mailConnectors).set({
@@ -229,8 +245,6 @@ async function executePoll(connectorId: string, expectedVersion: number) {
         throw refreshErr;
       }
     }
-
-    const [settings] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, connector.orgId));
     const inboundAlias = settings?.inboundAlias || connector.orgId;
 
     const fetched = await service.fetchEmails(connector, credentials, inboundAlias);
