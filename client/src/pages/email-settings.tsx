@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -237,6 +238,35 @@ export default function EmailSettingsPage() {
     enabled: !!settingsResponse?.eligible && !!settingsResponse?.settings,
   });
 
+  const { data: oauthConfigStatus } = useQuery<{ google: boolean; microsoft: boolean }>({
+    queryKey: ["/api/connectors/oauth/config-status"],
+    enabled: !!settingsResponse?.eligible,
+  });
+
+  const [testEmailForm, setTestEmailForm] = useState({ fromEmail: "", fromName: "", subject: "", body: "" });
+  const [testEmailOpen, setTestEmailOpen] = useState(false);
+
+  const testEmailMutation = useMutation({
+    mutationFn: async (data: typeof testEmailForm) => {
+      const res = await apiRequest("POST", "/api/email/test-inbound", data);
+      return await res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.status === "created") {
+        toast({ title: "Ticket created!", description: `${data.reason} from test email` });
+        setTestEmailForm({ fromEmail: "", fromName: "", subject: "", body: "" });
+        setTestEmailOpen(false);
+      } else if (data.status === "threaded") {
+        toast({ title: "Reply threaded", description: data.reason });
+      } else {
+        toast({ title: "Email processed", description: `Status: ${data.status} — ${data.reason}`, variant: data.status === "rejected" ? "destructive" : "default" });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/email/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+    },
+    onError: (err: any) => toast({ title: "Test failed", description: err.message, variant: "destructive" }),
+  });
+
   const { data: imapStatus } = useQuery<{
     configured: boolean;
     imapHost: string | null;
@@ -425,7 +455,12 @@ export default function EmailSettingsPage() {
         window.location.href = data.redirectUrl;
       }
     } catch (err: any) {
-      toast({ title: "OAuth failed", description: err.message, variant: "destructive" });
+      let description = err.message || "Unknown error";
+      try {
+        const parsed = JSON.parse(description.replace(/^\d+:\s*/, ""));
+        if (parsed.error) description = parsed.error;
+      } catch {}
+      toast({ title: "OAuth failed", description, variant: "destructive" });
     }
   };
 
@@ -625,9 +660,14 @@ export default function EmailSettingsPage() {
                       </Button>
                     </>
                   ) : (
-                    <Button size="sm" className="gap-2" onClick={() => handleConnectOAuth("google")} data-testid="button-connect-google">
-                      <ExternalLink className="h-3 w-3" /> Connect
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {oauthConfigStatus && !oauthConfigStatus.google && (
+                        <span className="text-[10px] text-amber-600 font-medium">Not configured</span>
+                      )}
+                      <Button size="sm" className="gap-2" onClick={() => handleConnectOAuth("google")} data-testid="button-connect-google">
+                        <ExternalLink className="h-3 w-3" /> Connect
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -695,9 +735,14 @@ export default function EmailSettingsPage() {
                       </Button>
                     </>
                   ) : (
-                    <Button size="sm" className="gap-2" onClick={() => handleConnectOAuth("microsoft")} data-testid="button-connect-microsoft">
-                      <ExternalLink className="h-3 w-3" /> Connect
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {oauthConfigStatus && !oauthConfigStatus.microsoft && (
+                        <span className="text-[10px] text-amber-600 font-medium">Not configured</span>
+                      )}
+                      <Button size="sm" className="gap-2" onClick={() => handleConnectOAuth("microsoft")} data-testid="button-connect-microsoft">
+                        <ExternalLink className="h-3 w-3" /> Connect
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -753,6 +798,82 @@ export default function EmailSettingsPage() {
                     <p><strong>Outlook:</strong> Rules → Create rule → Forward to {inboundAddress}</p>
                     <p><strong>Other:</strong> Configure your email provider to forward support emails to the address above</p>
                   </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-test-email">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center shrink-0">
+                    <Send className="h-5 w-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold">Test Inbound Email</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">Simulate an incoming email to verify ticket creation works</p>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => setTestEmailOpen(!testEmailOpen)} data-testid="button-toggle-test-email">
+                  <Send className="h-3 w-3" /> {testEmailOpen ? "Close" : "Send Test"}
+                </Button>
+              </div>
+              {testEmailOpen && (
+                <div className="mt-4 space-y-3 border-t pt-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium mb-1 block">From Email *</label>
+                      <Input
+                        value={testEmailForm.fromEmail}
+                        onChange={(e) => setTestEmailForm(f => ({ ...f, fromEmail: e.target.value }))}
+                        placeholder="sender@example.com"
+                        type="email"
+                        className="h-8 text-xs"
+                        data-testid="input-test-from-email"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium mb-1 block">From Name</label>
+                      <Input
+                        value={testEmailForm.fromName}
+                        onChange={(e) => setTestEmailForm(f => ({ ...f, fromName: e.target.value }))}
+                        placeholder="John Doe"
+                        className="h-8 text-xs"
+                        data-testid="input-test-from-name"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">Subject *</label>
+                    <Input
+                      value={testEmailForm.subject}
+                      onChange={(e) => setTestEmailForm(f => ({ ...f, subject: e.target.value }))}
+                      placeholder="Test support request"
+                      className="h-8 text-xs"
+                      data-testid="input-test-subject"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">Body</label>
+                    <Textarea
+                      value={testEmailForm.body}
+                      onChange={(e) => setTestEmailForm(f => ({ ...f, body: e.target.value }))}
+                      placeholder="This is a test email to verify ticket creation..."
+                      rows={3}
+                      className="text-xs"
+                      data-testid="input-test-body"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => testEmailMutation.mutate(testEmailForm)}
+                    disabled={testEmailMutation.isPending || !testEmailForm.fromEmail || !testEmailForm.subject}
+                    data-testid="button-send-test-email"
+                  >
+                    <Send className="h-3 w-3" /> {testEmailMutation.isPending ? "Sending..." : "Send Test Email"}
+                  </Button>
                 </div>
               )}
             </CardContent>

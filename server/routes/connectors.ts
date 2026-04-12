@@ -346,6 +346,13 @@ router.get("/api/connectors/:id/events", requireAuth, requireOrg, requireMinRole
   }
 });
 
+router.get("/api/connectors/oauth/config-status", requireAuth, requireOrg, requireMinRole("admin"), async (_req: Request, res: Response) => {
+  res.json({
+    google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+    microsoft: !!(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET),
+  });
+});
+
 router.get("/api/connectors/:id/oauth/start", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
   try {
     const orgId = req.session.orgId!;
@@ -362,6 +369,23 @@ router.get("/api/connectors/:id/oauth/start", requireAuth, requireOrg, requireMi
       return res.status(400).json({ error: "OAuth not available for this provider" });
     }
 
+    if (connector.provider === "google") {
+      if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+        return res.status(400).json({
+          error: "Google OAuth is not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.",
+          code: "OAUTH_NOT_CONFIGURED",
+        });
+      }
+    }
+    if (connector.provider === "microsoft") {
+      if (!process.env.MICROSOFT_CLIENT_ID || !process.env.MICROSOFT_CLIENT_SECRET) {
+        return res.status(400).json({
+          error: "Microsoft OAuth is not configured. Please set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET environment variables.",
+          code: "OAUTH_NOT_CONFIGURED",
+        });
+      }
+    }
+
     const redirectUri = `${getBaseUrl(req)}/api/connectors/oauth/callback`;
 
     const result = await service.startOAuth(connector, redirectUri);
@@ -373,6 +397,7 @@ router.get("/api/connectors/:id/oauth/start", requireAuth, requireOrg, requireMi
 
     res.json({ redirectUrl: result.redirectUrl });
   } catch (err: any) {
+    console.error(`[connectors] OAuth start error for ${req.params.id}:`, err.message);
     res.status(500).json({ error: safeError(err) });
   }
 });

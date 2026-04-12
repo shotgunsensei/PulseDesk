@@ -69,8 +69,121 @@ export class MockEmailProvider implements InboundEmailProvider {
   }
 }
 
+export class SendGridEmailProvider implements InboundEmailProvider {
+  name = "sendgrid";
+
+  parseWebhook(body: any): ParsedEmail {
+    const fromField = body.from || "";
+    let fromEmail = fromField;
+    let fromName = "";
+    const nameMatch = fromField.match(/^(.+?)\s*<(.+?)>$/);
+    if (nameMatch) {
+      fromName = nameMatch[1].trim().replace(/^["']|["']$/g, "");
+      fromEmail = nameMatch[2].trim();
+    }
+
+    return {
+      messageId: body.headers ? this.extractHeader(body.headers, "Message-ID") : undefined,
+      from: { email: fromEmail, name: fromName },
+      to: body.to || body.envelope ? JSON.parse(body.envelope || "{}").to?.[0] || "" : "",
+      subject: body.subject || "(no subject)",
+      bodyPlain: body.text || "",
+      bodyHtml: body.html || "",
+      inReplyTo: body.headers ? this.extractHeader(body.headers, "In-Reply-To") : undefined,
+      references: body.headers ? this.extractHeader(body.headers, "References") : undefined,
+      headers: body.headers ? this.parseHeaders(body.headers) : {},
+      attachments: body.attachment_info ? this.parseAttachments(body.attachment_info) : [],
+      spf: body.SPF || undefined,
+      dkim: body.dkim || undefined,
+      provider: "sendgrid",
+    };
+  }
+
+  verifySignature(): boolean {
+    return true;
+  }
+
+  private extractHeader(headersStr: string, name: string): string | undefined {
+    const regex = new RegExp(`^${name}:\\s*(.+)$`, "im");
+    const match = headersStr.match(regex);
+    return match ? match[1].trim() : undefined;
+  }
+
+  private parseHeaders(headersStr: string): Record<string, string> {
+    const result: Record<string, string> = {};
+    const lines = headersStr.split("\n");
+    for (const line of lines) {
+      const colonIdx = line.indexOf(":");
+      if (colonIdx > 0) {
+        result[line.substring(0, colonIdx).trim()] = line.substring(colonIdx + 1).trim();
+      }
+    }
+    return result;
+  }
+
+  private parseAttachments(info: any): { filename: string; size: number; contentType: string }[] {
+    if (typeof info === "string") {
+      try { info = JSON.parse(info); } catch { return []; }
+    }
+    if (!info || typeof info !== "object") return [];
+    return Object.values(info).map((a: any) => ({
+      filename: a.filename || a.name || "attachment",
+      size: a.size || a["content-length"] || 0,
+      contentType: a.type || a["content-type"] || "application/octet-stream",
+    }));
+  }
+}
+
+export class MailgunEmailProvider implements InboundEmailProvider {
+  name = "mailgun";
+
+  parseWebhook(body: any): ParsedEmail {
+    const fromField = body.from || body.sender || "";
+    let fromEmail = fromField;
+    let fromName = "";
+    const nameMatch = fromField.match(/^(.+?)\s*<(.+?)>$/);
+    if (nameMatch) {
+      fromName = nameMatch[1].trim().replace(/^["']|["']$/g, "");
+      fromEmail = nameMatch[2].trim();
+    }
+
+    return {
+      messageId: body["Message-Id"] || body["message-id"] || undefined,
+      from: { email: fromEmail, name: fromName },
+      to: body.recipient || body.To || body.to || "",
+      subject: body.subject || body.Subject || "(no subject)",
+      bodyPlain: body["body-plain"] || body["stripped-text"] || "",
+      bodyHtml: body["body-html"] || body["stripped-html"] || "",
+      inReplyTo: body["In-Reply-To"] || undefined,
+      references: body.References || undefined,
+      headers: body["message-headers"] ? this.parseMessageHeaders(body["message-headers"]) : {},
+      attachments: [],
+      provider: "mailgun",
+    };
+  }
+
+  verifySignature(): boolean {
+    return true;
+  }
+
+  private parseMessageHeaders(headers: any): Record<string, string> {
+    const result: Record<string, string> = {};
+    if (typeof headers === "string") {
+      try { headers = JSON.parse(headers); } catch { return result; }
+    }
+    if (Array.isArray(headers)) {
+      for (const [key, val] of headers) {
+        result[key] = val;
+      }
+    }
+    return result;
+  }
+}
+
 const providers: Record<string, InboundEmailProvider> = {
   mock: new MockEmailProvider(),
+  sendgrid: new SendGridEmailProvider(),
+  mailgun: new MailgunEmailProvider(),
 };
 
 export function getProvider(name: string): InboundEmailProvider {
