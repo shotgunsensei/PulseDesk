@@ -129,7 +129,7 @@ router.post("/api/email/settings/initialize", requireAuth, requireOrg, requireMi
 const oauthAppConfigSchema = z.object({
   provider: z.enum(["google", "microsoft"]),
   clientId: z.string().min(1).max(500),
-  clientSecret: z.string().min(1).max(500),
+  clientSecret: z.string().max(500).optional(),
 });
 
 router.get("/api/email/oauth-app-config", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
@@ -160,15 +160,22 @@ router.patch("/api/email/oauth-app-config", requireAuth, requireOrg, requireMinR
     if (!existing) return res.status(400).json({ error: "Email settings not initialized. Set up Connected Inboxes first." });
 
     const { provider, clientId, clientSecret } = parsed.data;
-    const keepExistingSecret = clientSecret === "KEEP";
     const updateData: any = { updatedAt: new Date() };
 
     if (provider === "google") {
+      const hasExistingSecret = !!(existing as any).googleClientSecretEncrypted;
+      if (!clientSecret && !hasExistingSecret) {
+        return res.status(400).json({ error: "Client secret is required when no secret is currently stored." });
+      }
       updateData.googleClientId = clientId;
-      if (!keepExistingSecret) updateData.googleClientSecretEncrypted = encryptSecret(clientSecret);
+      if (clientSecret) updateData.googleClientSecretEncrypted = encryptSecret(clientSecret);
     } else if (provider === "microsoft") {
+      const hasExistingSecret = !!(existing as any).microsoftClientSecretEncrypted;
+      if (!clientSecret && !hasExistingSecret) {
+        return res.status(400).json({ error: "Client secret is required when no secret is currently stored." });
+      }
       updateData.microsoftClientId = clientId;
-      if (!keepExistingSecret) updateData.microsoftClientSecretEncrypted = encryptSecret(clientSecret);
+      if (clientSecret) updateData.microsoftClientSecretEncrypted = encryptSecret(clientSecret);
     }
 
     await db.update(emailSettings).set(updateData).where(eq(emailSettings.orgId, orgId));

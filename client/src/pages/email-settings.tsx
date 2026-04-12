@@ -263,7 +263,7 @@ export default function EmailSettingsPage() {
   }, [oauthAppConfig]);
 
   const saveOAuthAppCredsMutation = useMutation({
-    mutationFn: async (data: { provider: "google" | "microsoft"; clientId: string; clientSecret: string }) => {
+    mutationFn: async (data: { provider: "google" | "microsoft"; clientId: string; clientSecret?: string }) => {
       const res = await apiRequest("PATCH", "/api/email/oauth-app-config", data);
       return await res.json();
     },
@@ -790,7 +790,7 @@ export default function EmailSettingsPage() {
                           size="sm"
                           className="h-7 text-xs gap-1"
                           disabled={!googleAppForm.clientId || (!googleAppForm.clientSecret && !oauthAppConfig?.googleClientIdSet) || saveOAuthAppCredsMutation.isPending}
-                          onClick={() => saveOAuthAppCredsMutation.mutate({ provider: "google", clientId: googleAppForm.clientId, clientSecret: googleAppForm.clientSecret || "KEEP" })}
+                          onClick={() => saveOAuthAppCredsMutation.mutate({ provider: "google", clientId: googleAppForm.clientId, clientSecret: googleAppForm.clientSecret || "" })}
                           data-testid="button-save-google-app-creds"
                         >
                           <Save className="h-3 w-3" /> Save
@@ -941,7 +941,7 @@ export default function EmailSettingsPage() {
                           size="sm"
                           className="h-7 text-xs gap-1"
                           disabled={!microsoftAppForm.clientId || (!microsoftAppForm.clientSecret && !oauthAppConfig?.microsoftClientIdSet) || saveOAuthAppCredsMutation.isPending}
-                          onClick={() => saveOAuthAppCredsMutation.mutate({ provider: "microsoft", clientId: microsoftAppForm.clientId, clientSecret: microsoftAppForm.clientSecret || "KEEP" })}
+                          onClick={() => saveOAuthAppCredsMutation.mutate({ provider: "microsoft", clientId: microsoftAppForm.clientId, clientSecret: microsoftAppForm.clientSecret || "" })}
                           data-testid="button-save-microsoft-app-creds"
                         >
                           <Save className="h-3 w-3" /> Save
