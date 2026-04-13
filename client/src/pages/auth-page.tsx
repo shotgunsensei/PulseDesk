@@ -134,7 +134,8 @@ export default function AuthPage() {
   const m365Only = tenant?.authMode === "m365";
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex flex-col">
+      <div className="flex flex-1">
       <div className="hidden lg:flex lg:w-[45%] bg-primary items-center justify-center p-12 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary to-[hsl(213,65%,22%)]" />
 
@@ -378,6 +379,12 @@ export default function AuthPage() {
             </div>
           )}
         </div>
+      </div>
+      </div>
+      <div className="w-full py-4 border-t bg-background text-center text-xs text-muted-foreground">
+        <a href="/privacy" className="hover:text-foreground transition-colors underline-offset-2 hover:underline">Privacy Policy</a>
+        <span className="mx-2">·</span>
+        <a href="/terms" className="hover:text-foreground transition-colors underline-offset-2 hover:underline">Terms of Service</a>
       </div>
     </div>
   );

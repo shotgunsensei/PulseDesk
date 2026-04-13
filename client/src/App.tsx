@@ -13,6 +13,8 @@ import { PulseLoader } from "@/components/pulse-line";
 import NotFound, { Unauthorized } from "@/pages/not-found";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import AuthPage from "@/pages/auth-page";
+import PrivacyPolicy from "@/pages/privacy-policy";
+import TermsOfService from "@/pages/terms-of-service";
 import OrgSetup from "@/pages/org-setup";
 import Dashboard from "@/pages/dashboard";
 import TicketsPage from "@/pages/tickets";
@@ -54,6 +56,8 @@ function AppContent() {
   if (!user) {
     return (
       <Switch>
+        <Route path="/privacy" component={PrivacyPolicy} />
+        <Route path="/terms" component={TermsOfService} />
         <Route><AuthPage /></Route>
       </Switch>
     );
@@ -80,6 +84,8 @@ function AppContent() {
             </div>
             <ErrorBoundary>
               <Switch>
+                <Route path="/privacy" component={PrivacyPolicy} />
+                <Route path="/terms" component={TermsOfService} />
                 <Route path="/" component={Dashboard} />
                 <Route path="/dashboard" component={Dashboard} />
                 <Route path="/tickets" component={TicketsPage} />
