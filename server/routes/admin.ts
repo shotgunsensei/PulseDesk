@@ -5,6 +5,7 @@ import { db } from "../db";
 import { users, memberships, orgs } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { syncOrgPlanFromStripe } from "./billing";
 
 const router = Router();
 
@@ -108,6 +109,38 @@ router.patch("/api/admin/orgs/:orgId/members/:userId/role", requireAuth, require
 
     await storage.updateMembershipRole(orgId, userId, parsed.data.role);
     res.json({ ok: true, orgId, userId, role: parsed.data.role });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/api/admin/billing", requireAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
+  try {
+    const allOrgs = await storage.getAllOrgs();
+    const rows = allOrgs.map((org) => ({
+      id: org.id,
+      name: org.name,
+      slug: org.slug,
+      plan: org.plan,
+      stripeCustomerId: org.stripeCustomerId || null,
+      stripeSubscriptionId: org.stripeSubscriptionId || null,
+      subscriptionStatus: org.subscriptionStatus || null,
+      cancelAtPeriodEnd: org.cancelAtPeriodEnd ?? false,
+      planExpiresAt: org.planExpiresAt || null,
+    }));
+    res.json(rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/api/admin/billing/sync/:orgId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const org = await storage.getOrg(req.params.orgId);
+    if (!org) return res.status(404).json({ error: "Organization not found" });
+    await syncOrgPlanFromStripe(req.params.orgId);
+    const updated = await storage.getOrg(req.params.orgId);
+    res.json({ ok: true, plan: updated?.plan, subscriptionStatus: updated?.subscriptionStatus });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

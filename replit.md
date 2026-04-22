@@ -56,7 +56,7 @@ PulseDesk employs a monolithic full-stack architecture.
 ## External Dependencies
 
 - **PostgreSQL:** Primary database.
-- **Stripe:** For billing, subscriptions, and plan management. Integrated via `stripe-replit-sync` for webhook synchronization.
+- **Stripe:** For billing, subscriptions, and plan management. Integrated via `stripe-replit-sync` for webhook synchronization. Key files: `server/config/billingConfig.ts` (central plan config), `server/services/billingSync.ts` (real-time webhook event handler that immediately updates org plan/status on subscription events), `server/routes/billing.ts` (checkout/portal/status endpoints with idempotency keys and promo code support), `STRIPE_SETUP.md` (setup documentation). New org columns: `subscriptionStatus`, `cancelAtPeriodEnd`, `lastStripeEventId`.
 - **Microsoft Entra ID / Microsoft 365:** For Single Sign-On (SSO) authentication.
 - **IMAP (via imapflow & mailparser):** For the Email-to-Ticket system, enabling polling of mailboxes and parsing inbound emails.
 - **Google/Microsoft OAuth 2.0:** For Mail Connectors system, allowing secure integration with Gmail and Outlook.

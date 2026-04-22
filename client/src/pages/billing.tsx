@@ -27,6 +27,8 @@ import {
   CheckCircle2,
   PartyPopper,
   Mail,
+  XCircle,
+  CalendarX,
 } from "lucide-react";
 
 interface BillingStatus {
@@ -35,6 +37,7 @@ interface BillingStatus {
   stripeSubscriptionId: string | null;
   planExpiresAt: string | null;
   subscriptionStatus: string | null;
+  cancelAtPeriodEnd: boolean;
   stripeSyncStatus: string;
   limits: { maxMembers: number | null; maxTickets: number | null; entraEnabled: boolean };
   usage: { members: number; tickets: number };
@@ -260,6 +263,57 @@ export default function BillingPage() {
           </div>
         )}
 
+        {billing?.subscriptionStatus === "past_due" && (
+          <div className="rounded-xl border-2 border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/30 p-5 flex items-start gap-4" data-testid="billing-past-due-banner">
+            <XCircle className="h-6 w-6 text-rose-600 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-rose-800 dark:text-rose-200">Payment failed</h3>
+              <p className="text-xs text-rose-700 dark:text-rose-300 mt-0.5">
+                Your last payment could not be processed. Please update your payment method to keep your subscription active.
+              </p>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 border-rose-300 text-rose-700 hover:bg-rose-100 dark:border-rose-700 dark:text-rose-300"
+                  onClick={() => portalMutation.mutate()}
+                  disabled={portalMutation.isPending}
+                  data-testid="button-fix-payment"
+                >
+                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                  Update Payment Method
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {billing?.cancelAtPeriodEnd && billing.planExpiresAt && (
+          <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 p-4 flex items-start gap-3" data-testid="billing-cancel-at-period-end-banner">
+            <CalendarX className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                Subscription cancels on {new Date(billing.planExpiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                Your plan will revert to Free at the end of the billing period. You can reactivate at any time from the billing portal.
+              </p>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
+                  onClick={() => portalMutation.mutate()}
+                  disabled={portalMutation.isPending}
+                  data-testid="button-reactivate-subscription"
+                >
+                  Reactivate Subscription
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <Card className={`lg:col-span-2 ${isFree ? "border-amber-200 dark:border-amber-800" : "border-emerald-200 dark:border-emerald-800"}`} data-testid="card-current-plan">
             <CardHeader className="pb-3">
@@ -277,9 +331,31 @@ export default function BillingPage() {
                         </Badge>
                       )}
                       {isPaid && billing?.subscriptionStatus && (
-                        <Badge variant="outline" className={`text-[10px] font-normal ${billing.subscriptionStatus === "active" ? "border-emerald-300 text-emerald-700 dark:text-emerald-400" : "border-amber-300 text-amber-700"}`} data-testid="badge-subscription-status">
-                          <div className={`h-1.5 w-1.5 rounded-full mr-1 ${billing.subscriptionStatus === "active" ? "bg-emerald-500" : "bg-amber-500"}`} />
-                          {billing.subscriptionStatus === "active" ? "Active" : billing.subscriptionStatus}
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] font-normal ${
+                            billing.subscriptionStatus === "active"
+                              ? "border-emerald-300 text-emerald-700 dark:text-emerald-400"
+                              : billing.subscriptionStatus === "past_due"
+                                ? "border-rose-300 text-rose-700 dark:text-rose-400"
+                                : "border-amber-300 text-amber-700"
+                          }`}
+                          data-testid="badge-subscription-status"
+                        >
+                          <div className={`h-1.5 w-1.5 rounded-full mr-1 ${
+                            billing.subscriptionStatus === "active"
+                              ? "bg-emerald-500"
+                              : billing.subscriptionStatus === "past_due"
+                                ? "bg-rose-500"
+                                : "bg-amber-500"
+                          }`} />
+                          {billing.subscriptionStatus === "active"
+                            ? "Active"
+                            : billing.subscriptionStatus === "past_due"
+                              ? "Past Due"
+                              : billing.subscriptionStatus === "trialing"
+                                ? "Trialing"
+                                : billing.subscriptionStatus}
                         </Badge>
                       )}
                     </CardTitle>
@@ -306,7 +382,7 @@ export default function BillingPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {isPaid && billing?.planExpiresAt && (
+              {isPaid && billing?.planExpiresAt && !billing.cancelAtPeriodEnd && (
                 <p className="text-xs text-muted-foreground">
                   Billing cycle renews on {new Date(billing.planExpiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                 </p>
@@ -563,6 +639,11 @@ export default function BillingPage() {
                             "Processing..."
                           ) : isDowngrade ? (
                             "Downgrade"
+                          ) : isPaid ? (
+                            <>
+                              <Zap className="h-4 w-4 mr-1.5" />
+                              Change Plan
+                            </>
                           ) : (
                             <>
                               <Sparkles className="h-4 w-4 mr-1.5" />

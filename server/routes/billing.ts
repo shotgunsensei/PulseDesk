@@ -5,8 +5,21 @@ import { getUncachableStripeClient, getStripePublishableKey } from "../stripeCli
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { PLAN_LIMITS } from "@shared/schema";
+import { ALLOWED_PLAN_META_KEYS } from "../config/billingConfig";
 
 const router = Router();
+
+function getBaseUrl(req: Request): string {
+  if (process.env.APP_BASE_URL) return process.env.APP_BASE_URL.replace(/\/$/, "");
+  const replitDomains = process.env.REPLIT_DOMAINS;
+  if (replitDomains) {
+    const domain = replitDomains.split(",")[0].trim();
+    return `https://${domain}`;
+  }
+  const host = req.get("host") || "localhost:5000";
+  const proto = req.get("x-forwarded-proto") || "https";
+  return `${proto}://${host}`;
+}
 
 router.get("/api/billing/plans", requireAuth, requireOrg, async (req: Request, res: Response) => {
   try {
@@ -39,7 +52,7 @@ router.get("/api/billing/plans", requireAuth, requireOrg, async (req: Request, r
         const stripe = await getUncachableStripeClient();
         const products = await stripe.products.list({ limit: 100, active: true });
         const pulseProducts = products.data.filter(
-          (p) => p.name.startsWith("PulseDesk") && ALLOWED_PLAN_METADATA.includes(p.metadata?.plan)
+          (p) => p.name.startsWith("PulseDesk") && ALLOWED_PLAN_META_KEYS.includes(p.metadata?.plan)
         );
         for (const product of pulseProducts) {
           const prices = await stripe.prices.list({ product: product.id, active: true });
@@ -70,22 +83,21 @@ router.get("/api/billing/plans", requireAuth, requireOrg, async (req: Request, r
   }
 });
 
-const ALLOWED_PLAN_METADATA = ["pro", "pro_plus", "enterprise", "unlimited"];
-
-async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
+export async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
   const org = await storage.getOrg(orgId);
   if (!org) return;
-  const customerId = (org as any).stripeCustomerId;
+  const customerId = org.stripeCustomerId;
   if (!customerId) return;
 
   let subId: string | null = null;
   let subStatus: string | null = null;
   let periodEnd: number | null = null;
   let planMeta: string | null = null;
+  let cancelAtPeriodEnd: boolean = false;
 
   try {
     const subResult = await db.execute(sql`
-      SELECT s.id, s.status, s.current_period_end, p.metadata as product_metadata
+      SELECT s.id, s.status, s.current_period_end, s.cancel_at_period_end, p.metadata as product_metadata
       FROM stripe.subscriptions s
       JOIN stripe.prices pr ON s.items->'data'->0->'price'->>'id' = pr.id
       JOIN stripe.products p ON pr.product = p.id
@@ -99,6 +111,7 @@ async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
       subId = row.id;
       subStatus = row.status;
       periodEnd = row.current_period_end;
+      cancelAtPeriodEnd = row.cancel_at_period_end ?? false;
       const meta = typeof row.product_metadata === 'string' ? JSON.parse(row.product_metadata) : row.product_metadata;
       planMeta = meta?.plan;
     }
@@ -108,11 +121,7 @@ async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
     const stripe = await getUncachableStripeClient();
     const allSubs: any[] = [];
     for (const status of ["active", "trialing"] as const) {
-      const subs = await stripe.subscriptions.list({
-        customer: customerId,
-        status,
-        limit: 1,
-      });
+      const subs = await stripe.subscriptions.list({ customer: customerId, status, limit: 1 });
       allSubs.push(...subs.data);
     }
     allSubs.sort((a, b) => b.created - a.created);
@@ -121,6 +130,7 @@ async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
       subId = sub.id;
       subStatus = sub.status;
       periodEnd = sub.current_period_end;
+      cancelAtPeriodEnd = sub.cancel_at_period_end ?? false;
       const priceId = sub.items?.data?.[0]?.price?.id;
       if (priceId) {
         const price = await stripe.prices.retrieve(priceId, { expand: ["product"] });
@@ -132,22 +142,30 @@ async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
   }
 
   if (subId && subStatus && planMeta) {
-    const stripePlan = ALLOWED_PLAN_METADATA.includes(planMeta) ? planMeta : "pro";
-    const currentPlan = (org as any).plan || "free";
-    if (stripePlan !== currentPlan || (org as any).stripeSubscriptionId !== subId) {
+    const stripePlan = ALLOWED_PLAN_META_KEYS.includes(planMeta) ? planMeta : "pro";
+    const currentPlan = org.plan || "free";
+    if (
+      stripePlan !== currentPlan ||
+      org.stripeSubscriptionId !== subId ||
+      org.subscriptionStatus !== subStatus
+    ) {
       await storage.updateOrg(orgId, {
-        plan: stripePlan,
+        plan: stripePlan as any,
         stripeSubscriptionId: subId,
         planExpiresAt: periodEnd ? new Date(periodEnd * 1000) : null,
+        subscriptionStatus: subStatus,
+        cancelAtPeriodEnd,
       } as any);
     }
   } else if (!subId) {
-    const currentPlan = (org as any).plan || "free";
+    const currentPlan = org.plan || "free";
     if (currentPlan !== "free") {
       await storage.updateOrg(orgId, {
         plan: "free",
         stripeSubscriptionId: null,
         planExpiresAt: null,
+        subscriptionStatus: null,
+        cancelAtPeriodEnd: false,
       } as any);
     }
   }
@@ -174,7 +192,7 @@ async function getApprovedPriceIds(): Promise<Set<string>> {
     const products = await stripe.products.list({ limit: 100, active: true });
     const ids = new Set<string>();
     for (const p of products.data) {
-      if (!p.name.startsWith("PulseDesk") || !ALLOWED_PLAN_METADATA.includes(p.metadata?.plan)) continue;
+      if (!p.name.startsWith("PulseDesk") || !ALLOWED_PLAN_META_KEYS.includes(p.metadata?.plan)) continue;
       const prices = await stripe.prices.list({ product: p.id, active: true, type: "recurring" });
       for (const pr of prices.data) ids.add(pr.id);
     }
@@ -197,15 +215,16 @@ router.get("/api/billing/status", requireAuth, requireOrg, async (req: Request, 
     if (!org) return res.status(404).json({ error: "Org not found" });
 
     const counts = await storage.getOrgCounts(req.session.orgId!);
-    const plan = (org as any).plan || "free";
+    const plan = org.plan || "free";
     const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
 
-    let subscriptionStatus: string | null = null;
-    if ((org as any).stripeSubscriptionId) {
+    let subscriptionStatus: string | null = org.subscriptionStatus ?? null;
+
+    if (!subscriptionStatus && org.stripeSubscriptionId) {
       try {
         const subResult = await db.execute(sql`
           SELECT s.status FROM stripe.subscriptions s
-          WHERE s.id = ${(org as any).stripeSubscriptionId}
+          WHERE s.id = ${org.stripeSubscriptionId}
           LIMIT 1
         `);
         subscriptionStatus = subResult.rows.length > 0 ? (subResult.rows[0] as any).status : null;
@@ -214,7 +233,7 @@ router.get("/api/billing/status", requireAuth, requireOrg, async (req: Request, 
       if (!subscriptionStatus) {
         try {
           const stripe = await getUncachableStripeClient();
-          const sub = await stripe.subscriptions.retrieve((org as any).stripeSubscriptionId);
+          const sub = await stripe.subscriptions.retrieve(org.stripeSubscriptionId);
           subscriptionStatus = sub.status;
         } catch {
           subscriptionStatus = null;
@@ -224,10 +243,11 @@ router.get("/api/billing/status", requireAuth, requireOrg, async (req: Request, 
 
     res.json({
       plan,
-      stripeCustomerId: (org as any).stripeCustomerId || null,
-      stripeSubscriptionId: (org as any).stripeSubscriptionId || null,
-      planExpiresAt: (org as any).planExpiresAt || null,
+      stripeCustomerId: org.stripeCustomerId || null,
+      stripeSubscriptionId: org.stripeSubscriptionId || null,
+      planExpiresAt: org.planExpiresAt || null,
       subscriptionStatus,
+      cancelAtPeriodEnd: org.cancelAtPeriodEnd ?? false,
       stripeSyncStatus,
       limits: {
         maxMembers: limits.maxMembers === Infinity ? null : limits.maxMembers,
@@ -261,7 +281,7 @@ router.post("/api/billing/checkout", requireAuth, requireOrg, requireMinRole("ad
 
     const stripe = await getUncachableStripeClient();
 
-    let customerId = (org as any).stripeCustomerId;
+    let customerId = org.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
         email: user.email || undefined,
@@ -272,20 +292,23 @@ router.post("/api/billing/checkout", requireAuth, requireOrg, requireMinRole("ad
       await storage.updateOrg(org.id, { stripeCustomerId: customerId } as any);
     }
 
-    const baseUrl = process.env.REPLIT_DEPLOYMENT_URL
-      ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
-      : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-        : `https://${req.get('host')}`;
-    const session = await stripe.checkout.sessions.create({
-      customer: customerId,
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: 'subscription',
-      success_url: `${baseUrl}/billing?billing=success`,
-      cancel_url: `${baseUrl}/billing?billing=cancelled`,
-      metadata: { orgId: org.id },
-    });
+    const baseUrl = getBaseUrl(req);
+    const timeBucket = Math.floor(Date.now() / 3600000);
+    const idempotencyKey = `checkout-${org.id}-${priceId}-${timeBucket}`;
+
+    const session = await stripe.checkout.sessions.create(
+      {
+        customer: customerId,
+        payment_method_types: ['card'],
+        line_items: [{ price: priceId, quantity: 1 }],
+        mode: 'subscription',
+        allow_promotion_codes: true,
+        success_url: `${baseUrl}/billing?billing=success`,
+        cancel_url: `${baseUrl}/billing?billing=cancelled`,
+        metadata: { orgId: org.id },
+      },
+      { idempotencyKey }
+    );
 
     res.json({ url: session.url });
   } catch (err: any) {
@@ -299,15 +322,11 @@ router.post("/api/billing/portal", requireAuth, requireOrg, requireMinRole("admi
     const org = await storage.getOrg(req.session.orgId!);
     if (!org) return res.status(404).json({ error: "Org not found" });
 
-    const customerId = (org as any).stripeCustomerId;
+    const customerId = org.stripeCustomerId;
     if (!customerId) return res.status(400).json({ error: "No billing account linked" });
 
     const stripe = await getUncachableStripeClient();
-    const baseUrl = process.env.REPLIT_DEPLOYMENT_URL
-      ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
-      : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-        : `https://${req.get('host')}`;
+    const baseUrl = getBaseUrl(req);
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: `${baseUrl}/billing`,

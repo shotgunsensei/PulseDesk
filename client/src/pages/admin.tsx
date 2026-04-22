@@ -28,6 +28,8 @@ import {
   Inbox,
   Clock,
   Power,
+  CreditCard,
+  CalendarX,
 } from "lucide-react";
 import { SiGoogle } from "react-icons/si";
 
@@ -343,6 +345,38 @@ export default function AdminPage() {
       toast({ title: vars.isSuperAdmin ? "Super admin granted" : "Super admin revoked" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  interface AdminBillingOrg {
+    id: string;
+    name: string;
+    slug: string;
+    plan: string;
+    stripeCustomerId: string | null;
+    stripeSubscriptionId: string | null;
+    subscriptionStatus: string | null;
+    cancelAtPeriodEnd: boolean;
+    planExpiresAt: string | null;
+  }
+
+  const { data: adminBilling, isLoading: billingLoading } = useQuery<AdminBillingOrg[]>({
+    queryKey: ["/api/admin/billing"],
+  });
+
+  const [syncingOrgId, setSyncingOrgId] = useState<string | null>(null);
+  const adminBillingSyncMutation = useMutation({
+    mutationFn: async (orgId: string) => {
+      setSyncingOrgId(orgId);
+      const res = await apiRequest("POST", `/api/admin/billing/sync/${orgId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/billing"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/orgs"] });
+      toast({ title: "Billing synced" });
+    },
+    onError: (err: any) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
+    onSettled: () => setSyncingOrgId(null),
   });
 
   return (
@@ -801,6 +835,85 @@ export default function AdminPage() {
                 </div>
               );
             })()}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-admin-billing">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <CreditCard className="h-4 w-4" />
+              Billing Overview
+            </CardTitle>
+            <CardDescription>Stripe subscription state for all organizations</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {billingLoading ? (
+              <div className="flex items-center justify-center py-8"><PulseLoader /></div>
+            ) : !adminBilling || adminBilling.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No organizations</p>
+            ) : (
+              <div className="space-y-2">
+                {adminBilling.map((o) => (
+                  <div key={o.id} className="rounded-lg border p-3 flex items-center gap-3" data-testid={`billing-row-${o.id}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium">{o.name}</span>
+                        <Badge className={`text-[10px] ${PLAN_BADGE_STYLES[o.plan] || PLAN_BADGE_STYLES.free}`} variant="secondary">
+                          {getPlanIcon(o.plan)}
+                          <span className="ml-1">{PLAN_LIMITS[o.plan as keyof typeof PLAN_LIMITS]?.label || o.plan}</span>
+                        </Badge>
+                        {o.subscriptionStatus && (
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] ${
+                              o.subscriptionStatus === "active"
+                                ? "border-emerald-300 text-emerald-700 dark:text-emerald-400"
+                                : o.subscriptionStatus === "past_due"
+                                  ? "border-rose-300 text-rose-700 dark:text-rose-400"
+                                  : "border-amber-300 text-amber-700"
+                            }`}
+                            data-testid={`billing-status-badge-${o.id}`}
+                          >
+                            <div className={`h-1.5 w-1.5 rounded-full mr-1 ${
+                              o.subscriptionStatus === "active" ? "bg-emerald-500"
+                              : o.subscriptionStatus === "past_due" ? "bg-rose-500"
+                              : "bg-amber-500"
+                            }`} />
+                            {o.subscriptionStatus === "past_due" ? "Past Due" : o.subscriptionStatus}
+                          </Badge>
+                        )}
+                        {o.cancelAtPeriodEnd && (
+                          <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
+                            <CalendarX className="h-3 w-3 mr-1" />
+                            Cancels
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground mt-1 space-y-0.5">
+                        {o.stripeCustomerId && <p>Customer: {o.stripeCustomerId}</p>}
+                        {o.stripeSubscriptionId && <p>Sub: {o.stripeSubscriptionId}</p>}
+                        {o.planExpiresAt && (
+                          <p>
+                            {o.cancelAtPeriodEnd ? "Cancels" : "Renews"} {new Date(o.planExpiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-xs h-8 shrink-0"
+                      onClick={() => adminBillingSyncMutation.mutate(o.id)}
+                      disabled={adminBillingSyncMutation.isPending && syncingOrgId === o.id}
+                      data-testid={`button-billing-sync-${o.id}`}
+                    >
+                      <RefreshCw className={`h-3 w-3 ${adminBillingSyncMutation.isPending && syncingOrgId === o.id ? "animate-spin" : ""}`} />
+                      Sync
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

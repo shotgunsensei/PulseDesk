@@ -13,5 +13,20 @@ export class WebhookHandlers {
 
     const sync = await getStripeSync();
     await sync.processWebhook(payload, signature);
+
+    let event: any;
+    try {
+      event = JSON.parse(payload.toString('utf8'));
+    } catch (parseErr: any) {
+      console.warn('[billingSync] Could not parse webhook payload as JSON:', parseErr.message);
+      return;
+    }
+
+    try {
+      const { syncOrgFromStripeEvent } = await import('./services/billingSync');
+      await syncOrgFromStripeEvent(event);
+    } catch (syncErr: any) {
+      console.error('[billingSync] Error processing billing event:', syncErr.message);
+    }
   }
 }

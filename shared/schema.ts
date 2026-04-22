@@ -129,6 +129,9 @@ export const orgs = pgTable("orgs", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   planExpiresAt: timestamp("plan_expires_at"),
+  subscriptionStatus: text("subscription_status"),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
+  lastStripeEventId: text("last_stripe_event_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
