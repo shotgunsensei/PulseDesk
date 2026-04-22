@@ -6,7 +6,7 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { PLAN_LIMITS } from "@shared/schema";
 import type { Org } from "@shared/schema";
-import { ALLOWED_PLAN_META_KEYS } from "../config/billingConfig";
+import { ALLOWED_PLAN_META_KEYS, getAllowedPlanMetaKeys } from "../config/billingConfig";
 
 type OrgPlan = Org['plan'];
 
@@ -166,12 +166,14 @@ export async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
 
 async function getApprovedPriceIds(): Promise<Set<string>> {
   try {
+    const planKeys = getAllowedPlanMetaKeys();
+    const planInList = sql.raw(`(${planKeys.map(k => `'${k}'`).join(', ')})`);
     const result = await db.execute(sql`
       SELECT pr.id
       FROM stripe.prices pr
       JOIN stripe.products p ON pr.product = p.id
       WHERE p.active = true AND pr.active = true
-      AND (p.metadata->>'plan' IN ('pro', 'pro_plus', 'enterprise', 'unlimited'))
+      AND (p.metadata->>'plan' IN ${planInList})
       AND p.name LIKE 'PulseDesk%'
       AND pr.recurring IS NOT NULL
     `);
