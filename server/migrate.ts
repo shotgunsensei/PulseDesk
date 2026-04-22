@@ -303,6 +303,34 @@ export async function ensureSchema() {
     `);
 
     await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE orgs ADD COLUMN subscription_status text;
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE orgs ADD COLUMN cancel_at_period_end boolean NOT NULL DEFAULT false;
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE orgs ADD COLUMN last_stripe_event_id text;
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE orgs ADD COLUMN last_stripe_event_created integer;
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS "session" (
         "sid" varchar NOT NULL COLLATE "default",
         "sess" json NOT NULL,
