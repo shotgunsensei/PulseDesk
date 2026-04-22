@@ -615,6 +615,11 @@ export default function BillingPage() {
                 );
               })}
             </div>
+            {isAdmin && sortedGroupedPlans.length > 0 && (
+              <p className="text-center text-xs text-muted-foreground mt-2" data-testid="text-promo-code-hint">
+                Have a promo code? You can enter it on the checkout page.
+              </p>
+            )}
           </div>
         )}
 

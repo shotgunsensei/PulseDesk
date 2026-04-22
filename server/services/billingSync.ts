@@ -1,9 +1,12 @@
 import { db } from '../db';
 import { orgs } from '@shared/schema';
+import type { Org } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
 import { storage } from '../storage';
 import { getAllowedPlanMetaKeys } from '../config/billingConfig';
 import { getUncachableStripeClient } from '../stripeClient';
+
+type OrgPlan = Org['plan'];
 
 export async function syncOrgFromStripeEvent(event: any): Promise<void> {
   const eventId: string = event.id;
@@ -40,7 +43,7 @@ export async function syncOrgFromStripeEvent(event: any): Promise<void> {
     return;
   }
 
-  const update: Record<string, any> = {
+  const update: Partial<Org> & { lastStripeEventId: string; lastStripeEventCreated: number } = {
     lastStripeEventId: eventId,
     lastStripeEventCreated: eventCreated,
   };
@@ -56,8 +59,8 @@ export async function syncOrgFromStripeEvent(event: any): Promise<void> {
     if (priceId) {
       const planKey = await resolvePlanFromPriceId(priceId);
       if (planKey && (sub?.status === 'active' || sub?.status === 'trialing')) {
-        update.plan = planKey;
-      } else if (sub?.status !== 'active' && sub?.status !== 'trialing') {
+        update.plan = planKey as OrgPlan;
+      } else if (sub?.status === 'canceled' || sub?.status === 'unpaid') {
         update.plan = 'free';
       }
     }
@@ -81,7 +84,7 @@ export async function syncOrgFromStripeEvent(event: any): Promise<void> {
     return;
   }
 
-  await storage.updateOrg(org.id, update as any);
+  await storage.updateOrg(org.id, update);
   console.log(`[billingSync] Synced org ${org.id} (${org.slug}) from Stripe event ${eventType} (${eventId})`);
 }
 

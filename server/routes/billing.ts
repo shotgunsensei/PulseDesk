@@ -5,7 +5,10 @@ import { getUncachableStripeClient, getStripePublishableKey } from "../stripeCli
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { PLAN_LIMITS } from "@shared/schema";
+import type { Org } from "@shared/schema";
 import { ALLOWED_PLAN_META_KEYS } from "../config/billingConfig";
+
+type OrgPlan = Org['plan'];
 
 const router = Router();
 
@@ -142,22 +145,22 @@ export async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
   }
 
   if (subId && subStatus && planMeta) {
-    const stripePlan = ALLOWED_PLAN_META_KEYS.includes(planMeta) ? planMeta : "pro";
+    const stripePlan = (ALLOWED_PLAN_META_KEYS.includes(planMeta) ? planMeta : "pro") as OrgPlan;
     await storage.updateOrg(orgId, {
-      plan: stripePlan as any,
+      plan: stripePlan,
       stripeSubscriptionId: subId,
       planExpiresAt: periodEnd ? new Date(periodEnd * 1000) : null,
       subscriptionStatus: subStatus,
       cancelAtPeriodEnd,
-    } as any);
+    });
   } else if (!subId) {
     await storage.updateOrg(orgId, {
-      plan: "free",
+      plan: "free" as OrgPlan,
       stripeSubscriptionId: null,
       planExpiresAt: null,
       subscriptionStatus: null,
       cancelAtPeriodEnd: false,
-    } as any);
+    });
   }
 }
 

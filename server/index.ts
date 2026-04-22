@@ -34,16 +34,24 @@ app.post(
   '/api/stripe/webhook',
   express.raw({ type: 'application/json' }),
   async (req, res) => {
+    const signature = req.headers['stripe-signature'];
+    if (!signature) return res.status(400).json({ error: 'Missing signature' });
+    const sig = Array.isArray(signature) ? signature[0] : signature;
     try {
-      const signature = req.headers['stripe-signature'];
-      if (!signature) return res.status(400).json({ error: 'Missing signature' });
-      const sig = Array.isArray(signature) ? signature[0] : signature;
       const { WebhookHandlers } = await import('./webhookHandlers');
       await WebhookHandlers.processWebhook(req.body as Buffer, sig);
       res.status(200).json({ received: true });
     } catch (err: any) {
-      console.error('[stripe webhook error]', err.message);
-      res.status(400).json({ error: err.message });
+      const isSignatureError =
+        err?.type === 'StripeSignatureVerificationError' ||
+        err?.message?.includes('No signatures found') ||
+        err?.message?.includes('STRIPE WEBHOOK ERROR');
+      if (isSignatureError) {
+        console.error('[stripe webhook] Signature verification failed:', err.message);
+        return res.status(400).json({ error: 'Webhook signature verification failed' });
+      }
+      console.error('[stripe webhook] Processing error (returning 200 to prevent retries):', err.message);
+      res.status(200).json({ received: true, warning: 'Processing error logged' });
     }
   }
 );
