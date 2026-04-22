@@ -22,11 +22,14 @@ export class WebhookHandlers {
       return;
     }
 
+    const eventType: string = event.type ?? 'unknown';
+    const eventId: string = event.id ?? 'unknown';
     try {
       const { syncOrgFromStripeEvent } = await import('./services/billingSync');
       await syncOrgFromStripeEvent(event);
+      console.log(`[webhook] event=${eventId} type=${eventType} billing_sync=ok`);
     } catch (syncErr: any) {
-      console.error('[billingSync] Error processing billing event:', syncErr.message);
+      console.error(`[webhook] event=${eventId} type=${eventType} billing_sync=error: ${syncErr.message}`);
     }
   }
 }
