@@ -12,6 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+export { PLAN_LIMITS } from "./billingConfig";
 
 export const membershipRoleEnum = pgEnum("membership_role", [
   "owner",
@@ -132,6 +133,7 @@ export const orgs = pgTable("orgs", {
   subscriptionStatus: text("subscription_status"),
   cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
   lastStripeEventId: text("last_stripe_event_id"),
+  lastStripeEventCreated: integer("last_stripe_event_created"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -603,13 +605,6 @@ export const ROLE_LABELS: Record<string, string> = {
   readonly: "Read-Only Executive",
 };
 
-export const PLAN_LIMITS = {
-  free: { maxMembers: 5, maxTickets: Infinity, entraEnabled: false, emailToTicket: false, label: "Free", price: 0 },
-  pro: { maxMembers: 50, maxTickets: Infinity, entraEnabled: true, emailToTicket: false, label: "Pro", price: 60 },
-  pro_plus: { maxMembers: 100, maxTickets: Infinity, entraEnabled: true, emailToTicket: false, label: "Pro Plus", price: 80 },
-  enterprise: { maxMembers: 200, maxTickets: Infinity, entraEnabled: true, emailToTicket: true, label: "Enterprise", price: 100 },
-  unlimited: { maxMembers: Infinity, maxTickets: Infinity, entraEnabled: true, emailToTicket: true, label: "Unlimited", price: 200 },
-} as const;
 
 export const onboardingStatusEnum = pgEnum("onboarding_status", [
   "pending",

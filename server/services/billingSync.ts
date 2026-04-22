@@ -8,6 +8,7 @@ import { getUncachableStripeClient } from '../stripeClient';
 export async function syncOrgFromStripeEvent(event: any): Promise<void> {
   const eventId: string = event.id;
   const eventType: string = event.type;
+  const eventCreated: number = event.created;
 
   if (!eventId || !eventType) return;
 
@@ -30,11 +31,19 @@ export async function syncOrgFromStripeEvent(event: any): Promise<void> {
   }
 
   if (org.lastStripeEventId === eventId) {
-    console.log(`[billingSync] Event ${eventId} already processed for org ${org.id} — skipping`);
+    console.log(`[billingSync] Event ${eventId} already processed for org ${org.id} — skipping (exact match)`);
     return;
   }
 
-  const update: Record<string, any> = { lastStripeEventId: eventId };
+  if (org.lastStripeEventCreated && eventCreated < org.lastStripeEventCreated) {
+    console.log(`[billingSync] Event ${eventId} (created=${eventCreated}) is older than last processed event (created=${org.lastStripeEventCreated}) for org ${org.id} — skipping`);
+    return;
+  }
+
+  const update: Record<string, any> = {
+    lastStripeEventId: eventId,
+    lastStripeEventCreated: eventCreated,
+  };
 
   if (eventType === 'customer.subscription.created' || eventType === 'customer.subscription.updated') {
     const sub = obj;

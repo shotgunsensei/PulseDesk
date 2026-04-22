@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PulseLoader } from "@/components/pulse-line";
 import { canManageSettings } from "@/lib/permissions";
 import { PLAN_LIMITS } from "@shared/schema";
+import { BILLING_PLANS } from "@shared/billingConfig";
 import {
   CreditCard,
   Zap,
@@ -54,52 +55,9 @@ interface StripePlan {
   interval: string;
 }
 
-const PLAN_FEATURES: Record<string, string[]> = {
-  free: [
-    "Up to 5 team members",
-    "Unlimited tickets",
-    "Department management",
-    "Equipment tracking",
-    "Local login only",
-  ],
-  pro: [
-    "Up to 50 team members",
-    "Unlimited tickets",
-    "Microsoft 365 / Entra SSO",
-    "Priority support",
-    "Vendor management",
-    "Analytics dashboard",
-  ],
-  pro_plus: [
-    "Up to 100 team members",
-    "Unlimited tickets",
-    "Microsoft 365 / Entra SSO",
-    "Priority support",
-    "Advanced analytics",
-    "Custom role mappings",
-  ],
-  enterprise: [
-    "Up to 200 team members",
-    "Unlimited tickets",
-    "Microsoft 365 / Entra SSO",
-    "Email-to-Ticket automation",
-    "Dedicated support",
-    "Advanced analytics",
-    "Custom integrations",
-    "SLA management",
-  ],
-  unlimited: [
-    "Unlimited team members",
-    "Unlimited tickets",
-    "Microsoft 365 / Entra SSO",
-    "Email-to-Ticket automation",
-    "White-glove support",
-    "All features included",
-    "Custom integrations",
-    "SLA management",
-    "API access",
-  ],
-};
+function getPlanFeatures(plan: string): string[] {
+  return BILLING_PLANS[plan as keyof typeof BILLING_PLANS]?.features ?? [];
+}
 
 const PLAN_COLORS: Record<string, { bg: string; border: string; badge: string; icon: string; button: string }> = {
   pro: {
@@ -486,7 +444,7 @@ export default function BillingPage() {
             </CardHeader>
             <CardContent>
               <ul className="space-y-2.5">
-                {(PLAN_FEATURES[currentPlan] || PLAN_FEATURES.free).map((feature, i) => (
+                {getPlanFeatures(currentPlan).map((feature, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm">
                     <Check className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
                     <span>{feature}</span>
@@ -565,7 +523,7 @@ export default function BillingPage() {
                 const isCurrentPlan = planKey === currentPlan;
                 const isDowngrade = planIdx < currentPlanIndex;
                 const colors = PLAN_COLORS[planKey] || PLAN_COLORS.pro;
-                const features = PLAN_FEATURES[planKey] || [];
+                const features = getPlanFeatures(planKey);
                 const planLimits = PLAN_LIMITS[planKey as keyof typeof PLAN_LIMITS];
                 const isPopular = planKey === "pro";
 

@@ -143,31 +143,21 @@ export async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
 
   if (subId && subStatus && planMeta) {
     const stripePlan = ALLOWED_PLAN_META_KEYS.includes(planMeta) ? planMeta : "pro";
-    const currentPlan = org.plan || "free";
-    if (
-      stripePlan !== currentPlan ||
-      org.stripeSubscriptionId !== subId ||
-      org.subscriptionStatus !== subStatus
-    ) {
-      await storage.updateOrg(orgId, {
-        plan: stripePlan as any,
-        stripeSubscriptionId: subId,
-        planExpiresAt: periodEnd ? new Date(periodEnd * 1000) : null,
-        subscriptionStatus: subStatus,
-        cancelAtPeriodEnd,
-      } as any);
-    }
+    await storage.updateOrg(orgId, {
+      plan: stripePlan as any,
+      stripeSubscriptionId: subId,
+      planExpiresAt: periodEnd ? new Date(periodEnd * 1000) : null,
+      subscriptionStatus: subStatus,
+      cancelAtPeriodEnd,
+    } as any);
   } else if (!subId) {
-    const currentPlan = org.plan || "free";
-    if (currentPlan !== "free") {
-      await storage.updateOrg(orgId, {
-        plan: "free",
-        stripeSubscriptionId: null,
-        planExpiresAt: null,
-        subscriptionStatus: null,
-        cancelAtPeriodEnd: false,
-      } as any);
-    }
+    await storage.updateOrg(orgId, {
+      plan: "free",
+      stripeSubscriptionId: null,
+      planExpiresAt: null,
+      subscriptionStatus: null,
+      cancelAtPeriodEnd: false,
+    } as any);
   }
 }
 
