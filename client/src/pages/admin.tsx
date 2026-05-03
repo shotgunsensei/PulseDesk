@@ -222,6 +222,29 @@ export default function AdminPage() {
     dbOnlyEnabled: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; orgPlan: string; imapEmailsProcessed?: number }>;
   }>({ queryKey: ["/api/admin/imap/status"], refetchInterval: 15000 });
 
+  const { data: failedEmails, isLoading: failedEmailsLoading } = useQuery<Array<{
+    id: string;
+    fromEmail: string;
+    subject: string | null;
+    receivedAt: string;
+    errorMessage: string | null;
+    provider: string | null;
+  }>>({ queryKey: ["/api/admin/email/failed"], refetchInterval: 30000 });
+
+  const replayEmailMutation = useMutation({
+    mutationFn: async (eventId: string) => {
+      const res = await apiRequest("POST", `/api/admin/email/replay/${eventId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/email/failed"] });
+      toast({ title: "Email replayed", description: "Event re-processed successfully." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Replay failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const purgeAuditMutation = useMutation({
     mutationFn: async (days: number) => {
       const res = await apiRequest("POST", "/api/admin/audit/purge", { days });
@@ -925,6 +948,52 @@ export default function AdminPage() {
                     >
                       <RefreshCw className={`h-3 w-3 ${adminBillingSyncMutation.isPending && syncingOrgId === o.id ? "animate-spin" : ""}`} />
                       Sync
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-failed-emails">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Inbox className="h-4 w-4" />
+              Failed Inbound Emails ({failedEmails?.length || 0})
+            </CardTitle>
+            <CardDescription>Emails that failed processing — replay to re-attempt ticket creation.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {failedEmailsLoading ? (
+              <div className="flex items-center justify-center py-6"><PulseLoader /></div>
+            ) : !failedEmails || failedEmails.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">No failed emails — all good.</p>
+            ) : (
+              <div className="space-y-2">
+                {failedEmails.map((ev) => (
+                  <div key={ev.id} className="flex items-start gap-3 rounded-lg border p-3" data-testid={`failed-email-${ev.id}`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{ev.subject || "(no subject)"}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        from {ev.fromEmail} · {ev.provider || "unknown"} · {new Date(ev.receivedAt).toLocaleString()}
+                      </p>
+                      {ev.errorMessage && (
+                        <p className="text-[10px] text-rose-600 dark:text-rose-400 mt-1 truncate" title={ev.errorMessage}>
+                          {ev.errorMessage}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-xs h-8 shrink-0"
+                      disabled={replayEmailMutation.isPending}
+                      onClick={() => replayEmailMutation.mutate(ev.id)}
+                      data-testid={`button-replay-${ev.id}`}
+                    >
+                      <RefreshCw className={`h-3 w-3 ${replayEmailMutation.isPending ? "animate-spin" : ""}`} />
+                      Replay
                     </Button>
                   </div>
                 ))}

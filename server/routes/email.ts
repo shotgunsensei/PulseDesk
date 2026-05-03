@@ -443,6 +443,15 @@ router.post("/api/admin/email/regenerate-alias/:orgId", requireAuth, requireSupe
   }
 });
 
+router.get("/api/admin/email/failed", requireAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
+  try {
+    const events = await storage.getFailedInboundEmails(50);
+    res.json(events);
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
 router.post("/api/admin/email/replay/:eventId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;

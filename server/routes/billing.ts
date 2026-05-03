@@ -167,13 +167,14 @@ export async function syncOrgPlanFromStripe(orgId: string): Promise<void> {
 async function getApprovedPriceIds(): Promise<Set<string>> {
   try {
     const planKeys = getAllowedPlanMetaKeys();
-    const planInList = sql.raw(`(${planKeys.map(k => `'${k}'`).join(', ')})`);
+    if (planKeys.length === 0) return new Set<string>();
+    const placeholders = sql.join(planKeys.map((k) => sql`${k}`), sql`, `);
     const result = await db.execute(sql`
       SELECT pr.id
       FROM stripe.prices pr
       JOIN stripe.products p ON pr.product = p.id
       WHERE p.active = true AND pr.active = true
-      AND (p.metadata->>'plan' IN ${planInList})
+      AND (p.metadata->>'plan' IN (${placeholders}))
       AND p.name LIKE 'PulseDesk%'
       AND pr.recurring IS NOT NULL
     `);

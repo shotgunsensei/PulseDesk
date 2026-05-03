@@ -30,25 +30,81 @@ PulseDesk is most often paired with **TechDeck** (for the IT teams that keep hea
 
 - **Frontend:** React 18 + Vite + TypeScript + wouter + TanStack Query v5 + shadcn/ui + Tailwind
 - **Backend:** Express + tsx + Drizzle ORM + PostgreSQL
-- **Auth:** Local + Microsoft 365 Entra ID (per-org OAuth, multi-tenant)
+- **Auth:** Local + Microsoft 365 Entra ID (per-org OAuth, multi-tenant) + Google Workspace OAuth
 - **Email:** SendGrid Inbound Parse + IMAP polling + Google/Microsoft connector OAuth
 - **Billing:** Stripe (per-org subscriptions, webhook-driven plan sync)
 - **PWA:** installable, theme-aware, offline-capable shell
+
+## Architecture
+
+```
+client/             React + Vite SPA
+  src/
+    pages/          Route components (lazy-loaded for admin pages)
+    components/     Shared UI + shadcn primitives
+    lib/            queryClient, auth context, permissions, helpers
+
+server/             Express API
+  routes/           Feature routes (tickets, billing, email, admin, ...)
+  auth/             Argon2id-style password hashing + Entra OAuth + crypto
+  email/            Inbound parsers + IMAP poller + processor pipeline
+  storage.ts        Single source of truth for all DB access (IStorage)
+  db.ts             Drizzle client + Neon connection
+
+shared/             Code shared between client + server
+  schema.ts         Drizzle tables + Zod insert schemas + types
+  billingConfig.ts  Plan definitions and feature gates
+  permissions.ts    Role helpers
+```
+
+Every request flows through `requireAuth → requireOrg → requireMinRole(?)` middleware. All data access goes through `storage` (an `IStorage` implementation), never direct table queries from routes. This keeps multi-tenant scoping in one auditable place.
 
 ## Develop
 
 ```bash
 npm install
-npm run dev    # starts Express + Vite on :5000
-npm run build  # client + server production bundles
+npm run dev          # starts Express + Vite on :5000
+npm run build        # client + server production bundles
+node scripts/check-bundle-size.mjs   # post-build size guard
 ```
+
+## Environment variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | yes | Postgres connection string |
+| `SESSION_SECRET` | yes | Session signing + Entra secret encryption |
+| `STRIPE_SECRET_KEY` | yes (for billing) | Stripe API |
+| `STRIPE_WEBHOOK_SECRET` | yes (for billing) | Webhook signature verification |
+| `SENDGRID_API_KEY` | optional | For Inbound Parse provider |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | optional | Default Google OAuth client (most orgs use per-org credentials instead) |
+| `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | optional | Default Microsoft OAuth client (most orgs use per-org credentials instead) |
+
+OAuth credentials are stored **per-org** in `org_email_connectors` and `org_auth_config`. The env-level Google/Microsoft secrets only act as fallbacks for development convenience. New customers should configure their own OAuth apps in Settings → Authentication or Connected Inboxes.
+
+## Deployment
+
+- Replit Deployments (autoscale or reserved VM). Build runs `npm run build`,
+  start runs `npm run start` (esbuild server bundle in `dist/index.cjs`).
+- Stripe webhook endpoint: `POST /api/billing/webhook` (raw body, signature
+  verified).
+- SendGrid Inbound Parse: `POST /api/email/inbound/sendgrid` (alias routes
+  to org).
+- Health: `GET /api/health`.
 
 ## Project conventions
 
 - Multi-tenant by design — every API route is org-scoped via `requireOrg`.
-- OAuth credentials are stored **per-org** (no global `GOOGLE_CLIENT_ID` env required).
+- OAuth credentials are stored **per-org**; no global secret required for production.
 - Stripe plans drive feature gates via `shared/billingConfig.ts`.
 - All interactive elements carry `data-testid` for stable test selectors.
+- Admin-only pages are lazy-loaded via `React.lazy` to keep the main bundle small.
+- Use `apiRequest` from `@/lib/queryClient` for mutations; cache invalidation by `queryKey` array segments.
+- Backend reads/writes always go through `storage` (`IStorage`); never query Drizzle from a route directly.
+
+## Security
+
+A lightweight STRIDE-based threat model lives in [`threat_model.md`](./threat_model.md). It covers assets, trust boundaries, mitigations, and known follow-ups. Run scans with the Replit security tooling (`runDependencyAudit`, `runSastScan`, `runHoundDogScan`) before any release.
 
 ## Contact & support
 

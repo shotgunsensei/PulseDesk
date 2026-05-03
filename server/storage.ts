@@ -17,6 +17,7 @@ import {
   authAuditLog,
   notifications,
   onboardingItems,
+  inboundEmailLog,
   type User,
   type InsertUser,
   type Org,
@@ -42,6 +43,7 @@ import {
   type OrgRoleMapping,
   type AuthAuditLogEntry,
   type OnboardingItem,
+  type InboundEmailLog,
 } from "@shared/schema";
 import { randomBytes } from "crypto";
 
@@ -136,6 +138,7 @@ export interface IStorage {
   seedOnboardingItems(orgId: string): Promise<void>;
 
   purgeAuthAuditLogsOlderThan(days: number): Promise<number>;
+  getFailedInboundEmails(limit?: number): Promise<InboundEmailLog[]>;
   createAuthAuditLog(entry: {
     orgId?: string | null;
     userId?: string | null;
@@ -829,6 +832,13 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(authAuditLog)
       .where(eq(authAuditLog.orgId, orgId))
       .orderBy(desc(authAuditLog.createdAt))
+      .limit(limit);
+  }
+
+  async getFailedInboundEmails(limit: number = 25): Promise<InboundEmailLog[]> {
+    return db.select().from(inboundEmailLog)
+      .where(eq(inboundEmailLog.status, "failed"))
+      .orderBy(desc(inboundEmailLog.receivedAt))
       .limit(limit);
   }
 
