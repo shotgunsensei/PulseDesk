@@ -496,7 +496,7 @@ export default function EmailSettingsPage() {
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  const startOAuth = async (connectorId: string) => {
+  const startOAuth = async (connectorId: string, provider?: "google" | "microsoft") => {
     try {
       const res = await apiRequest("GET", `/api/connectors/${connectorId}/oauth/start`);
       const data = await res.json();
@@ -505,11 +505,23 @@ export default function EmailSettingsPage() {
       }
     } catch (err: any) {
       let description = err.message || "Unknown error";
+      let code: string | undefined;
       try {
         const parsed = JSON.parse(description.replace(/^\d+:\s*/, ""));
         if (parsed.error) description = parsed.error;
+        if (parsed.code) code = parsed.code;
       } catch {}
-      toast({ title: "OAuth failed", description, variant: "destructive" });
+      if (code === "OAUTH_NOT_CONFIGURED") {
+        if (provider === "google") setShowGoogleAppCreds(true);
+        if (provider === "microsoft") setShowMicrosoftAppCreds(true);
+        toast({
+          title: "OAuth credentials required",
+          description: description + " Expand the credentials section below to configure.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "OAuth failed", description, variant: "destructive" });
+      }
     }
   };
 
@@ -517,7 +529,7 @@ export default function EmailSettingsPage() {
     const existing = connectors?.find(c => c.provider === provider);
     if (existing) {
       if (existing.status === "pending_auth" || existing.status === "error") {
-        await startOAuth(existing.id);
+        await startOAuth(existing.id, provider);
       } else if (existing.status === "disabled" || !existing.enabled) {
         try {
           await apiRequest("PATCH", `/api/connectors/${existing.id}`, { enabled: true });
@@ -529,14 +541,14 @@ export default function EmailSettingsPage() {
       } else if (existing.status === "active") {
         toast({ title: "Already connected", description: `${PROVIDER_INFO[provider].name} is already connected` });
       } else {
-        await startOAuth(existing.id);
+        await startOAuth(existing.id, provider);
       }
       return;
     }
     try {
       const res = await apiRequest("POST", "/api/connectors", { provider });
       const created = await res.json();
-      await startOAuth(created.id);
+      await startOAuth(created.id, provider);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
@@ -729,7 +741,7 @@ export default function EmailSettingsPage() {
                     </p>
                     <p className="text-xs text-rose-600 dark:text-rose-400">{googleConnector.lastError}</p>
                     {needsReauth(googleConnector) && (
-                      <Button size="sm" variant="outline" className="mt-2 text-xs h-7 gap-1 border-rose-300 text-rose-700 hover:bg-rose-50" onClick={() => startOAuth(googleConnector.id)} data-testid="button-reauth-google-inline">
+                      <Button size="sm" variant="outline" className="mt-2 text-xs h-7 gap-1 border-rose-300 text-rose-700 hover:bg-rose-50" onClick={() => startOAuth(googleConnector.id, "google")} data-testid="button-reauth-google-inline">
                         <RefreshCw className="h-3 w-3" /> Re-authorize Now
                       </Button>
                     )}
@@ -880,7 +892,7 @@ export default function EmailSettingsPage() {
                     </p>
                     <p className="text-xs text-rose-600 dark:text-rose-400">{microsoftConnector.lastError}</p>
                     {needsReauth(microsoftConnector) && (
-                      <Button size="sm" variant="outline" className="mt-2 text-xs h-7 gap-1 border-rose-300 text-rose-700 hover:bg-rose-50" onClick={() => startOAuth(microsoftConnector.id)} data-testid="button-reauth-microsoft-inline">
+                      <Button size="sm" variant="outline" className="mt-2 text-xs h-7 gap-1 border-rose-300 text-rose-700 hover:bg-rose-50" onClick={() => startOAuth(microsoftConnector.id, "microsoft")} data-testid="button-reauth-microsoft-inline">
                         <RefreshCw className="h-3 w-3" /> Re-authorize Now
                       </Button>
                     )}
