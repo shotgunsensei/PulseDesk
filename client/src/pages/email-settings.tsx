@@ -294,6 +294,21 @@ export default function EmailSettingsPage() {
 
   const [testEmailForm, setTestEmailForm] = useState({ fromEmail: "", fromName: "", subject: "", body: "" });
   const [testEmailOpen, setTestEmailOpen] = useState(false);
+  const [outboundTestRecipient, setOutboundTestRecipient] = useState("");
+
+  const { data: outboundStatus } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/email/outbound/status"],
+    enabled: !!settingsResponse?.eligible,
+  });
+
+  const outboundTestMutation = useMutation({
+    mutationFn: async (to: string) => {
+      const res = await apiRequest("POST", "/api/email/outbound/test", { to });
+      return res.json();
+    },
+    onSuccess: () => toast({ title: "Test email sent", description: `Check ${outboundTestRecipient} (and spam folder).` }),
+    onError: (err: any) => toast({ title: "Send failed", description: err.message, variant: "destructive" }),
+  });
 
   const testEmailMutation = useMutation({
     mutationFn: async (data: typeof testEmailForm) => {
@@ -1019,6 +1034,42 @@ export default function EmailSettingsPage() {
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground space-y-2 px-1 border-t pt-3">
+                    <div className="border rounded-lg p-3 bg-background mb-2">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-xs font-medium text-foreground flex items-center gap-2">
+                          <Send className="h-3 w-3" /> Outbound notifications
+                        </p>
+                        <Badge variant={outboundStatus?.enabled ? "default" : "secondary"} className="text-[10px]" data-testid="badge-outbound-status">
+                          {outboundStatus?.enabled ? "Enabled" : "Not configured"}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mb-2">
+                        {outboundStatus?.enabled
+                          ? "Ticket-update emails are sent automatically when SendGrid is configured."
+                          : "Set SENDGRID_API_KEY in your environment to enable automatic ticket update emails."}
+                      </p>
+                      <div className="flex gap-2">
+                        <Input
+                          type="email"
+                          placeholder="you@example.com"
+                          value={outboundTestRecipient}
+                          onChange={(e) => setOutboundTestRecipient(e.target.value)}
+                          className="h-8 text-xs"
+                          data-testid="input-outbound-test-to"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 h-8 text-xs whitespace-nowrap"
+                          disabled={!outboundStatus?.enabled || !outboundTestRecipient || outboundTestMutation.isPending}
+                          onClick={() => outboundTestMutation.mutate(outboundTestRecipient)}
+                          data-testid="button-send-test-outbound"
+                        >
+                          <Send className={`h-3 w-3 ${outboundTestMutation.isPending ? "animate-pulse" : ""}`} />
+                          Send test
+                        </Button>
+                      </div>
+                    </div>
                     <p className="font-medium text-foreground">Setup Instructions:</p>
                     <div className="space-y-2">
                       <div>

@@ -443,6 +443,34 @@ router.post("/api/admin/email/regenerate-alias/:orgId", requireAuth, requireSupe
   }
 });
 
+router.get("/api/email/outbound/status", requireAuth, requireOrg, async (_req: Request, res: Response) => {
+  const { isOutboundEnabled } = await import("../email/outbound");
+  res.json({ enabled: isOutboundEnabled() });
+});
+
+router.post("/api/email/outbound/test", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+  try {
+    const { to } = req.body as { to?: string };
+    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      return res.status(400).json({ error: "Valid recipient email required" });
+    }
+    const { isOutboundEnabled, sendOutbound } = await import("../email/outbound");
+    if (!isOutboundEnabled()) {
+      return res.status(503).json({ error: "Outbound email not configured. Set SENDGRID_API_KEY in environment." });
+    }
+    const result = await sendOutbound({
+      to,
+      subject: "PulseDesk test email",
+      text: "This is a test from your PulseDesk outbound mailer. If you received this, SendGrid is wired up correctly.",
+      html: `<p>This is a <strong>test</strong> from your PulseDesk outbound mailer. If you received this, SendGrid is wired up correctly.</p>`,
+    });
+    if (!result.ok) return res.status(502).json({ error: result.reason });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: safeError(err) });
+  }
+});
+
 router.get("/api/admin/email/failed", requireAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
   try {
     const events = await storage.getFailedInboundEmails(50);

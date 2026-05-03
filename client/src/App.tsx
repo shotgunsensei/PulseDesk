@@ -14,6 +14,7 @@ import { PulseLoader } from "@/components/pulse-line";
 import NotFound, { Unauthorized } from "@/pages/not-found";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import AuthPage from "@/pages/auth-page";
+import LandingPage from "@/pages/landing";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import TermsOfService from "@/pages/terms-of-service";
 import OrgSetup from "@/pages/org-setup";
@@ -67,6 +68,8 @@ function AppContent() {
       <Switch>
         <Route path="/privacy" component={PrivacyPolicy} />
         <Route path="/terms" component={TermsOfService} />
+        <Route path="/login" component={AuthPage} />
+        <Route path="/" component={LandingPage} />
         <Route><AuthPage /></Route>
       </Switch>
     );

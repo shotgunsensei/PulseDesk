@@ -590,6 +590,7 @@ export class DatabaseStorage implements IStorage {
       if (targetUserId) {
         if (targetUserId !== excludeUserId) {
           await this.createNotification(orgId, targetUserId, type, title, message, ticketId);
+          await this.sendOutboundForNotification(orgId, targetUserId, type, title, message, ticketId);
         }
         return;
       }
@@ -597,9 +598,33 @@ export class DatabaseStorage implements IStorage {
       const userIds = mems.map(m => m.userId).filter(id => id !== excludeUserId);
       for (const uid of userIds) {
         await this.createNotification(orgId, uid, type, title, message, ticketId);
+        await this.sendOutboundForNotification(orgId, uid, type, title, message, ticketId);
       }
     } catch (err) {
       console.error("Error creating notifications:", err);
+    }
+  }
+
+  private async sendOutboundForNotification(orgId: string, userId: string, type: string, title: string, message: string, ticketId?: string | null): Promise<void> {
+    try {
+      const { isOutboundEnabled, sendOutbound, buildTicketEmail } = await import("./email/outbound");
+      if (!isOutboundEnabled()) return;
+      const user = await this.getUser(userId);
+      if (!user?.email) return;
+      if (ticketId && type.startsWith("ticket_")) {
+        const ticket = await this.getTicket(orgId, ticketId);
+        if (!ticket) return;
+        const built = buildTicketEmail({
+          type: type as any,
+          ticketNumber: ticket.ticketNumber,
+          ticketTitle: ticket.title,
+          ticketId: ticket.id,
+          body: message,
+        });
+        await sendOutbound({ to: user.email, ...built });
+      }
+    } catch (err: any) {
+      console.error("[outbound] notification send failed:", err?.message || err);
     }
   }
 
