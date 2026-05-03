@@ -19,6 +19,7 @@ const MicrosoftIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 import { PulseLine, PulseDivider } from "@/components/pulse-line";
+import { EcosystemFooter } from "@/components/ecosystem-footer";
 
 interface TenantInfo {
   orgId: string;
@@ -381,11 +382,8 @@ export default function AuthPage() {
         </div>
       </div>
       </div>
-      <div className="w-full py-4 border-t bg-background text-center text-xs text-muted-foreground">
-        <a href="/privacy" className="hover:text-foreground transition-colors underline-offset-2 hover:underline">Privacy Policy</a>
-        <span className="mx-2">·</span>
-        <a href="/terms" className="hover:text-foreground transition-colors underline-offset-2 hover:underline">Terms of Service</a>
-      </div>
+      <EcosystemFooter />
+
     </div>
   );
 }

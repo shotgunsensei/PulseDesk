@@ -197,6 +197,7 @@ export function AppSidebar() {
             </button>
           </div>
         )}
+        <EcosystemFooter variant="sidebar" />
       </SidebarFooter>
     </Sidebar>
   );

@@ -22,6 +22,7 @@ const MicrosoftIcon = ({ className }: { className?: string }) => (
 );
 import { ROLE_LABELS, canManageSettings } from "@/lib/permissions";
 import { PLAN_LIMITS } from "@shared/schema";
+import { RelatedProducts } from "@/components/related-products";
 
 interface MemberWithUser {
   userId: string;
@@ -487,6 +488,8 @@ export default function SettingsPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              <RelatedProducts />
             </TabsContent>
           </Tabs>
         </div>
