@@ -579,10 +579,14 @@ export const SUPPLY_STATUS_LABELS: Record<string, string> = {
 
 export const FACILITY_STATUS_LABELS: Record<string, string> = {
   new: "New",
+  triage: "Triage",
   assigned: "Assigned",
+  waiting_department: "Waiting on Department",
+  waiting_vendor: "Waiting on Vendor",
   in_progress: "In Progress",
-  completed: "Completed",
-  cancelled: "Cancelled",
+  escalated: "Escalated",
+  resolved: "Resolved",
+  closed: "Closed",
 };
 
 export const FACILITY_TYPE_LABELS: Record<string, string> = {

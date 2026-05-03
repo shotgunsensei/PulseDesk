@@ -110,7 +110,32 @@ export default function AnalyticsPage() {
         description="Issue volume, resolution trends, and department performance"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => { toast({ title: "Export coming soon", description: "Report export will be available in a future update." }); }} data-testid="button-export-analytics">
+            <Button variant="outline" size="sm" onClick={() => {
+              if (!data) return;
+              const rows: string[] = [];
+              rows.push("Section,Label,Value");
+              rows.push(`Summary,Total Issues,${data.totalTickets}`);
+              rows.push(`Summary,Resolution Rate,${resolutionRate}%`);
+              rows.push(`Summary,Avg Resolution Hours,${data.avgResolutionHours}`);
+              rows.push(`Summary,Overdue,${data.overdueCount}`);
+              rows.push(`Summary,Recurring,${data.recurringCount}`);
+              rows.push(`Summary,Vendor Incidents,${data.vendorRelatedIncidents}`);
+              rows.push(`Summary,Equipment Down,${data.equipmentDowntime}`);
+              data.volumeOverTime.forEach(v => rows.push(`Volume,${v.date},${v.count}`));
+              Object.entries(data.categoryCounts).forEach(([k, v]) => rows.push(`Category,"${(TICKET_CATEGORY_LABELS[k] || k).replace(/"/g, '""')}",${v}`));
+              Object.entries(data.departmentCounts).forEach(([k, v]) => rows.push(`Department,"${k.replace(/"/g, '""')}",${v}`));
+              const csv = rows.join("\n");
+              const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `pulsedesk-analytics-${new Date().toISOString().slice(0, 10)}.csv`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              toast({ title: "Export complete", description: "Analytics report downloaded as CSV." });
+            }} data-testid="button-export-analytics">
               <Download className="h-4 w-4 mr-1.5" /> Export
             </Button>
             <Button variant="outline" size="sm" onClick={() => window.print()} data-testid="button-print-analytics">

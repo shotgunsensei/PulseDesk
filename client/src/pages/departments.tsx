@@ -92,9 +92,13 @@ export default function DepartmentsPage() {
           <div className="flex items-center justify-center py-16"><PulseLoader /></div>
         ) : !departments || departments.length === 0 ? (
           <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Building2 className="h-8 w-8 text-muted-foreground mb-2" />
-              <p className="text-sm text-muted-foreground">No departments configured yet</p>
+            <CardContent className="flex flex-col items-center justify-center py-12 px-4 text-center">
+              <Building2 className="h-10 w-10 text-muted-foreground mb-3" />
+              <p className="text-base font-medium mb-1">No departments yet</p>
+              <p className="text-sm text-muted-foreground max-w-md mb-4">Departments help you route tickets, assign supply requests, and track performance by team. Add your first department to get started.</p>
+              {canManageSettings(role) && (
+                <Button size="sm" onClick={() => setOpen(true)} data-testid="button-empty-add-department">Add your first department</Button>
+              )}
             </CardContent>
           </Card>
         ) : (

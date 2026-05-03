@@ -91,7 +91,7 @@ export default function FacilityRequestsPage() {
                           <SelectItem value="low">Low</SelectItem>
                           <SelectItem value="normal">Standard</SelectItem>
                           <SelectItem value="high">High</SelectItem>
-                          <SelectItem value="emergency">Emergency</SelectItem>
+                          <SelectItem value="critical">Critical</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -137,7 +137,7 @@ export default function FacilityRequestsPage() {
         ) : (
           <div className="space-y-2">
             {filtered.map((req) => (
-              <div key={req.id} className={`flex items-center gap-4 rounded-lg border bg-card px-4 py-3 ${req.priority === "emergency" ? "border-l-2 border-l-rose-400" : ""}`} data-testid={`facility-${req.id}`}>
+              <div key={req.id} className={`flex items-center gap-4 rounded-lg border bg-card px-4 py-3 ${req.priority === "critical" ? "border-l-2 border-l-rose-400" : ""}`} data-testid={`facility-${req.id}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                     <span className="text-xs text-muted-foreground">{FACILITY_TYPE_LABELS[req.requestType]}</span>

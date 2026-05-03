@@ -458,7 +458,7 @@ router.post("/api/admin/email/replay/:eventId", requireAuth, requireSuperAdmin, 
       bodyPlain: event.bodyPlain || "",
       bodyHtml: event.bodyHtml || "",
       inReplyTo: event.inReplyTo || undefined,
-      references: event.referencesHeader || undefined,
+      references: (event as any).references || undefined,
       headers: (event.headers as any) || {},
       provider: event.provider || "mock",
     };

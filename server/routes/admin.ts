@@ -85,7 +85,7 @@ router.get("/api/admin/users", requireAuth, requireSuperAdmin, async (_req: Requ
           fullName: u.fullName,
           email: u.email,
           isSuperAdmin: u.isSuperAdmin,
-          createdAt: u.createdAt,
+          createdAt: (u as any).createdAt ?? null,
           memberships: userMemberships,
         };
       })

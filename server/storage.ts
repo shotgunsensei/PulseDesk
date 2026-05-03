@@ -703,7 +703,7 @@ export class DatabaseStorage implements IStorage {
       else agingBuckets.over7days++;
     }
 
-    const openFacilityCount = allFacility.filter(f => f.status !== "completed" && f.status !== "cancelled").length;
+    const openFacilityCount = allFacility.filter(f => f.status !== "resolved" && f.status !== "closed").length;
 
     return {
       totalTickets: allTickets.length,

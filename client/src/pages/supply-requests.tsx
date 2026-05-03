@@ -36,7 +36,7 @@ export default function SupplyRequestsPage() {
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
       if (search) {
         const s = search.toLowerCase();
-        return r.itemName.toLowerCase().includes(s) || (r.departmentName || "").toLowerCase().includes(s) || r.requestType.toLowerCase().includes(s);
+        return r.itemName.toLowerCase().includes(s) || (r.departmentName || "").toLowerCase().includes(s) || (r.requestType || "").toLowerCase().includes(s);
       }
       return true;
     });

@@ -84,7 +84,16 @@ export default function VendorsPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-16"><PulseLoader /></div>
         ) : !vendors || vendors.length === 0 ? (
-          <Card><CardContent className="flex flex-col items-center justify-center py-12"><Users2 className="h-8 w-8 text-muted-foreground mb-2" /><p className="text-sm text-muted-foreground">No vendors registered yet</p></CardContent></Card>
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12 px-4 text-center">
+              <Users2 className="h-10 w-10 text-muted-foreground mb-3" />
+              <p className="text-base font-medium mb-1">No vendors yet</p>
+              <p className="text-sm text-muted-foreground max-w-md mb-4">Track service contractors, biomed providers, and external partners so tickets can be linked to the right vendor for follow-up.</p>
+              {canManageSettings(role) && (
+                <Button size="sm" onClick={() => setOpen(true)} data-testid="button-empty-add-vendor">Add your first vendor</Button>
+              )}
+            </CardContent>
+          </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {vendors.map((vendor) => (
