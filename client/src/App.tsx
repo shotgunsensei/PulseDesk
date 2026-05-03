@@ -1,4 +1,5 @@
 import { Switch, Route } from "wouter";
+import { lazy, Suspense } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -25,12 +26,20 @@ import AssetsPage from "@/pages/assets";
 import SupplyRequestsPage from "@/pages/supply-requests";
 import FacilityRequestsPage from "@/pages/facility-requests";
 import VendorsPage from "@/pages/vendors";
-import AnalyticsPage from "@/pages/analytics";
-import SettingsPage from "@/pages/settings";
-import BillingPage from "@/pages/billing";
-import EmailSettingsPage from "@/pages/email-settings";
-import AdminPage from "@/pages/admin";
+const AnalyticsPage = lazy(() => import("@/pages/analytics"));
+const SettingsPage = lazy(() => import("@/pages/settings"));
+const BillingPage = lazy(() => import("@/pages/billing"));
+const EmailSettingsPage = lazy(() => import("@/pages/email-settings"));
+const AdminPage = lazy(() => import("@/pages/admin"));
 import { canSubmitIssues, canViewAnalytics, isReadOnly, canManageSettings } from "@/lib/permissions";
+
+function LazyFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-[40vh]">
+      <PulseLoader />
+    </div>
+  );
+}
 
 function RoleGate({ children, check, fallback }: {
   children: React.ReactNode;
@@ -83,6 +92,7 @@ function AppContent() {
               <NotificationCenter />
             </div>
             <ErrorBoundary>
+              <Suspense fallback={<LazyFallback />}>
               <Switch>
                 <Route path="/privacy" component={PrivacyPolicy} />
                 <Route path="/terms" component={TermsOfService} />
@@ -135,6 +145,7 @@ function AppContent() {
                 </Route>
                 <Route component={NotFound} />
               </Switch>
+              </Suspense>
             </ErrorBoundary>
           </main>
         </div>

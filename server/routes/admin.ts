@@ -16,6 +16,23 @@ const updatePlanSchema = z.object({
   plan: z.enum(VALID_PLANS),
 });
 
+const purgeAuditSchema = z.object({
+  days: z.number().int().min(7).max(3650),
+});
+
+router.post("/api/admin/audit/purge", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const parsed = purgeAuditSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid input", details: parsed.error.flatten() });
+    }
+    const deleted = await storage.purgeAuthAuditLogsOlderThan(parsed.data.days);
+    res.json({ deleted, days: parsed.data.days });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const updateRoleSchema = z.object({
   role: z.enum(VALID_ROLES),
 });

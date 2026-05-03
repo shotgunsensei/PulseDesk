@@ -135,6 +135,7 @@ export interface IStorage {
   updateOnboardingItem(orgId: string, id: string, data: Partial<OnboardingItem>): Promise<OnboardingItem | undefined>;
   seedOnboardingItems(orgId: string): Promise<void>;
 
+  purgeAuthAuditLogsOlderThan(days: number): Promise<number>;
   createAuthAuditLog(entry: {
     orgId?: string | null;
     userId?: string | null;
@@ -829,6 +830,14 @@ export class DatabaseStorage implements IStorage {
       .where(eq(authAuditLog.orgId, orgId))
       .orderBy(desc(authAuditLog.createdAt))
       .limit(limit);
+  }
+
+  async purgeAuthAuditLogsOlderThan(days: number): Promise<number> {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const result = await db.delete(authAuditLog)
+      .where(sql`${authAuditLog.createdAt} < ${cutoff}`)
+      .returning({ id: authAuditLog.id });
+    return result.length;
   }
 
   async getOnboardingItems(orgId: string): Promise<OnboardingItem[]> {

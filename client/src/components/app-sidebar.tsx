@@ -38,6 +38,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { EcosystemFooter } from "@/components/ecosystem-footer";
+import { HelpDrawer } from "@/components/help-drawer";
 import { ROLE_LABELS } from "@/lib/permissions";
 import { PulseLine } from "@/components/pulse-line";
 import { NotificationCenter } from "@/components/notification-center";
@@ -197,6 +199,7 @@ export function AppSidebar() {
             </button>
           </div>
         )}
+        <HelpDrawer />
         <EcosystemFooter variant="sidebar" />
       </SidebarFooter>
     </Sidebar>

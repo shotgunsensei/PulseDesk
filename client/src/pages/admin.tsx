@@ -222,6 +222,22 @@ export default function AdminPage() {
     dbOnlyEnabled: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; orgPlan: string; imapEmailsProcessed?: number }>;
   }>({ queryKey: ["/api/admin/imap/status"], refetchInterval: 15000 });
 
+  const purgeAuditMutation = useMutation({
+    mutationFn: async (days: number) => {
+      const res = await apiRequest("POST", "/api/admin/audit/purge", { days });
+      return res.json();
+    },
+    onSuccess: (data: { deleted: number; days: number }) => {
+      toast({
+        title: "Audit log purged",
+        description: `Removed ${data.deleted} entries older than ${data.days} days.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Purge failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const deleteOrgMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/admin/orgs/${id}`),
     onSuccess: () => {
@@ -914,6 +930,33 @@ export default function AdminPage() {
                 ))}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-audit-retention">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Audit Log Retention</CardTitle>
+            <CardDescription>Purge auth audit log entries older than the selected window. Useful for keeping the table lean.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap items-center gap-2">
+              {[30, 90, 180, 365].map((d) => (
+                <Button
+                  key={d}
+                  variant="outline"
+                  size="sm"
+                  disabled={purgeAuditMutation.isPending}
+                  onClick={() => {
+                    if (confirm(`Permanently delete all audit log entries older than ${d} days across all orgs?`)) {
+                      purgeAuditMutation.mutate(d);
+                    }
+                  }}
+                  data-testid={`button-purge-audit-${d}`}
+                >
+                  Purge &gt; {d} days
+                </Button>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
