@@ -106,6 +106,11 @@ export const users = pgTable("users", {
   entraManagerId: text("entra_manager_id"),
   graphLastSyncedAt: timestamp("graph_last_synced_at"),
   lastLoginAt: timestamp("last_login_at"),
+  operatorOsUserId: text("operatoros_user_id").unique(),
+  operatorOsRole: text("operatoros_role"),
+  operatorOsPlanSlug: text("operatoros_plan_slug"),
+  operatorOsOrgId: text("operatoros_org_id"),
+  lastSsoAt: timestamp("last_sso_at"),
 });
 
 export const orgPlanEnum = pgEnum("org_plan", [
@@ -134,6 +139,7 @@ export const orgs = pgTable("orgs", {
   cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
   lastStripeEventId: text("last_stripe_event_id"),
   lastStripeEventCreated: integer("last_stripe_event_created"),
+  operatorOsOrgId: text("operatoros_org_id").unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
