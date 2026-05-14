@@ -63,7 +63,7 @@ router.get("/sso", async (req: Request, res: Response) => {
     if (err instanceof SsoRejectError) {
       return reject(req, res, err.code, err.httpStatus, earlyJti);
     }
-    return reject(req, res, "token_invalid", 401, earlyJti);
+    return reject(req, res, "signature_invalid", 401, earlyJti);
   }
 
   try {

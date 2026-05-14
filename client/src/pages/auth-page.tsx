@@ -67,7 +67,6 @@ export default function AuthPage() {
         audience_mismatch: "Launch token was issued for a different application.",
         env_mismatch: "Launch token was issued for a different environment.",
         issuer_mismatch: "Launch token came from an unrecognized issuer.",
-        unsupported_alg: "Launch token uses an unsupported signing algorithm.",
       };
       toast({
         title: "Sign-in issue",

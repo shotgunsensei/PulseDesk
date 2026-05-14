@@ -81,7 +81,7 @@ export async function verifyToken(
     throw new SsoRejectError("bad_request", 400);
   }
   if (header?.alg !== "HS256") {
-    throw new SsoRejectError("unsupported_alg", 401);
+    throw new SsoRejectError("signature_invalid", 401);
   }
 
   const key = new TextEncoder().encode(cfg.secret);
@@ -106,16 +106,16 @@ export async function verifyToken(
       if (err.claim === "iss") {
         throw new SsoRejectError("issuer_mismatch", 401);
       }
-      throw new SsoRejectError("claim_invalid", 401);
+      throw new SsoRejectError("bad_request", 400);
     }
     if (err instanceof joseErrors.JWSSignatureVerificationFailed) {
       throw new SsoRejectError("signature_invalid", 401);
     }
-    throw new SsoRejectError("token_invalid", 401);
+    throw new SsoRejectError("signature_invalid", 401);
   }
 
   if (typeof payload.iat !== "number" || typeof payload.exp !== "number") {
-    throw new SsoRejectError("claim_invalid", 401);
+    throw new SsoRejectError("bad_request", 400);
   }
   const now = Math.floor(Date.now() / 1000);
   if (payload.iat - CLOCK_SKEW_S > now) {
@@ -127,20 +127,23 @@ export async function verifyToken(
   if (payload.env !== cfg.env) {
     throw new SsoRejectError("env_mismatch", 401);
   }
+  if (typeof payload.module_slug !== "string" || payload.module_slug !== cfg.audience) {
+    throw new SsoRejectError("audience_mismatch", 401);
+  }
   if (typeof payload.jti !== "string" || payload.jti.length === 0) {
-    throw new SsoRejectError("claim_invalid", 401);
+    throw new SsoRejectError("bad_request", 400);
   }
   if (typeof payload.sub !== "string" || payload.sub.length === 0) {
-    throw new SsoRejectError("claim_invalid", 401);
+    throw new SsoRejectError("bad_request", 400);
   }
   if (typeof payload.user_id !== "string" || payload.user_id !== payload.sub) {
-    throw new SsoRejectError("claim_invalid", 401);
+    throw new SsoRejectError("bad_request", 400);
   }
   if (typeof payload.email !== "string" || !payload.email.includes("@")) {
-    throw new SsoRejectError("claim_invalid", 401);
+    throw new SsoRejectError("bad_request", 400);
   }
   if (!isValidRole(payload.role)) {
-    throw new SsoRejectError("claim_invalid", 401);
+    throw new SsoRejectError("bad_request", 400);
   }
   if (
     payload.plan_slug !== null &&
@@ -148,13 +151,13 @@ export async function verifyToken(
     payload.plan_slug !== "pro" &&
     payload.plan_slug !== "elite"
   ) {
-    throw new SsoRejectError("claim_invalid", 401);
+    throw new SsoRejectError("bad_request", 400);
   }
   if (
     payload.organization_id !== null &&
     typeof payload.organization_id !== "string"
   ) {
-    throw new SsoRejectError("claim_invalid", 401);
+    throw new SsoRejectError("bad_request", 400);
   }
 
   return {
