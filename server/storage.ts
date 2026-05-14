@@ -837,100 +837,117 @@ export class DatabaseStorage implements IStorage {
     organizationId: string | null;
   }): Promise<{ user: User; org: Org; userCreated: boolean; orgCreated: boolean }> {
     const desiredOrgRole = input.role === "super_admin" ? "owner" : "admin";
+    const RANK: Record<string, number> = {
+      owner: 120, admin: 100, supervisor: 80, technician: 60, staff: 40, readonly: 10,
+    };
+    const personalSlug = `oos-personal-${input.sub}`.toLowerCase().slice(0, 60);
+    const tenantSlug = input.organizationId
+      ? `oos-${input.organizationId}`.toLowerCase().slice(0, 60)
+      : null;
 
-    let org: Org | undefined;
-    let orgCreated = false;
-    if (input.organizationId) {
-      org = await this.getOrgByOperatorOsId(input.organizationId);
-      if (!org) {
-        const slug = `oos-${input.organizationId}`.toLowerCase().slice(0, 60);
-        const [created] = await db.insert(orgs).values({
-          name: `OperatorOS Tenant ${input.organizationId.slice(0, 8)}`,
-          slug,
-          operatorOsOrgId: input.organizationId,
-        }).returning();
-        org = created;
-        orgCreated = true;
-        for (const deptName of DEFAULT_DEPARTMENTS) {
-          await this.createDepartment(org.id, { name: deptName });
+    const { hashPassword } = await import("./middleware");
+    const randomPw = randomBytes(32).toString("hex");
+    const passwordHash = await hashPassword(randomPw);
+
+    const result = await db.transaction(async (tx) => {
+      let org: Org | undefined;
+      let orgCreated = false;
+
+      if (input.organizationId && tenantSlug) {
+        const [existingOrg] = await tx.select().from(orgs).where(eq(orgs.operatorOsOrgId, input.organizationId));
+        if (existingOrg) {
+          org = existingOrg;
+        } else {
+          const [created] = await tx.insert(orgs).values({
+            name: `OperatorOS Tenant ${input.organizationId.slice(0, 8)}`,
+            slug: tenantSlug,
+            operatorOsOrgId: input.organizationId,
+          }).returning();
+          org = created;
+          orgCreated = true;
         }
-        try {
-          await this.seedOnboardingItems(org.id);
-        } catch {}
       }
-    }
 
-    let user = await this.getUserByOperatorOsId(input.sub);
-    let userCreated = false;
-    if (!user) {
-      const username = `oos_${input.sub}`.slice(0, 64);
-      const randomPw = randomBytes(32).toString("hex");
-      const { hashPassword } = await import("./middleware");
-      const passwordHash = await hashPassword(randomPw);
-      [user] = await db.insert(users).values({
-        username,
-        password: passwordHash,
-        fullName: input.name || input.email.split("@")[0],
-        email: input.email,
-        authSource: "operatoros",
-        operatorOsUserId: input.sub,
-        operatorOsRole: input.role,
-        operatorOsPlanSlug: input.planSlug ?? null,
-        operatorOsOrgId: input.organizationId ?? null,
-        lastSsoAt: new Date(),
-        isSuperAdmin: false,
-      }).returning();
-      userCreated = true;
-    } else {
-      const update: Partial<User> = {
-        email: input.email || user.email,
-        operatorOsRole: input.role,
-        operatorOsPlanSlug: input.planSlug ?? null,
-        operatorOsOrgId: input.organizationId ?? null,
-        lastSsoAt: new Date(),
-      };
-      if (input.name && !user.fullName) update.fullName = input.name;
-      const [updated] = await db.update(users).set(update).where(eq(users.id, user.id)).returning();
-      user = updated;
-    }
-
-    if (!org) {
-      const personalSlug = `oos-personal-${input.sub}`.toLowerCase().slice(0, 60);
-      const userOrgs = await this.getUserOrgs(user.id);
-      const personal = userOrgs.find((o) => o.slug === personalSlug);
-      if (personal) {
-        org = personal;
+      const [existingUser] = await tx.select().from(users).where(eq(users.operatorOsUserId, input.sub));
+      let user: User;
+      let userCreated = false;
+      if (!existingUser) {
+        const username = `oos_${input.sub}`.slice(0, 64);
+        const [created] = await tx.insert(users).values({
+          username,
+          password: passwordHash,
+          fullName: input.name || input.email.split("@")[0],
+          email: input.email,
+          authSource: "operatoros",
+          operatorOsUserId: input.sub,
+          operatorOsRole: input.role,
+          operatorOsPlanSlug: input.planSlug ?? null,
+          operatorOsOrgId: input.organizationId ?? null,
+          lastSsoAt: new Date(),
+          isSuperAdmin: false,
+        }).returning();
+        user = created;
+        userCreated = true;
       } else {
-        const [created] = await db.insert(orgs).values({
-          name: `${input.name || input.email.split("@")[0]}'s Workspace`,
-          slug: personalSlug,
-        }).returning();
-        org = created;
-        orgCreated = true;
-        for (const deptName of DEFAULT_DEPARTMENTS) {
-          await this.createDepartment(org.id, { name: deptName });
+        const update: Partial<User> = {
+          email: input.email || existingUser.email,
+          operatorOsRole: input.role,
+          operatorOsPlanSlug: input.planSlug ?? null,
+          operatorOsOrgId: input.organizationId ?? null,
+          lastSsoAt: new Date(),
+        };
+        if (input.name && !existingUser.fullName) update.fullName = input.name;
+        const [updated] = await tx.update(users).set(update).where(eq(users.id, existingUser.id)).returning();
+        user = updated;
+      }
+
+      if (!org) {
+        const [existingPersonal] = await tx.select().from(orgs).where(eq(orgs.slug, personalSlug));
+        if (existingPersonal) {
+          org = existingPersonal;
+        } else {
+          const [created] = await tx.insert(orgs).values({
+            name: `${input.name || input.email.split("@")[0]}'s Workspace`,
+            slug: personalSlug,
+          }).returning();
+          org = created;
+          orgCreated = true;
         }
-        try {
-          await this.seedOnboardingItems(org.id);
-        } catch {}
+      }
+
+      const [existingMembership] = await tx
+        .select()
+        .from(memberships)
+        .where(and(eq(memberships.orgId, org.id), eq(memberships.userId, user.id)));
+
+      if (!existingMembership) {
+        await tx.insert(memberships).values({ orgId: org.id, userId: user.id, role: desiredOrgRole as any });
+      } else {
+        const currentRank = RANK[existingMembership.role] ?? 0;
+        const desiredRank = RANK[desiredOrgRole] ?? 0;
+        if (desiredRank > currentRank) {
+          await tx
+            .update(memberships)
+            .set({ role: desiredOrgRole as any })
+            .where(and(eq(memberships.orgId, org.id), eq(memberships.userId, user.id)));
+        }
+      }
+
+      return { user, org, userCreated, orgCreated };
+    });
+
+    if (result.orgCreated) {
+      try {
+        for (const deptName of DEFAULT_DEPARTMENTS) {
+          await this.createDepartment(result.org.id, { name: deptName });
+        }
+        await this.seedOnboardingItems(result.org.id);
+      } catch (err: any) {
+        console.error("[provisionOperatorOsUser] post-create seed failed:", err?.message);
       }
     }
 
-    const existingMembership = await this.getMembership(org.id, user.id);
-    if (!existingMembership) {
-      await this.createMembership(org.id, user.id, desiredOrgRole);
-    } else {
-      const RANK: Record<string, number> = {
-        owner: 120, admin: 100, supervisor: 80, technician: 60, staff: 40, readonly: 10,
-      };
-      const currentRank = RANK[existingMembership.role] ?? 0;
-      const desiredRank = RANK[desiredOrgRole] ?? 0;
-      if (desiredRank > currentRank) {
-        await this.updateMembershipRole(org.id, user.id, desiredOrgRole);
-      }
-    }
-
-    return { user, org, userCreated, orgCreated };
+    return result;
   }
 
   async getOrgRoleMappings(orgId: string): Promise<OrgRoleMapping[]> {

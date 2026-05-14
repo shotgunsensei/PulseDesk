@@ -96,6 +96,14 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  if (!process.env.MODULE_SSO_SECRET) {
+    log(
+      "FATAL: MODULE_SSO_SECRET is not set. PulseDesk requires the OperatorOS shared secret to be configured before startup. Refusing to boot.",
+      "startup"
+    );
+    process.exit(1);
+  }
+
   log("Connecting to database...", "startup");
   try {
     const { pool: dbPool } = await import("./db");

@@ -31,6 +31,18 @@ export class SsoRejectError extends Error {
   }
 }
 
+export function peekJti(token: string): string | null {
+  if (!token || typeof token !== "string") return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    return typeof payload?.jti === "string" ? payload.jti : null;
+  } catch {
+    return null;
+  }
+}
+
 const CLOCK_SKEW_S = 5;
 const MAX_TOKEN_AGE_S = 90;
 const CONSUME_TIMEOUT_MS = 5000;

@@ -4,6 +4,7 @@ import {
   loadConfig,
   verifyToken,
   consumeToken,
+  peekJti,
   SsoRejectError,
 } from "../auth/operatoros-sso";
 
@@ -46,22 +47,23 @@ function reject(
 }
 
 router.get("/sso", async (req: Request, res: Response) => {
-  const cfg = loadConfig();
-  if (!cfg) {
-    return reject(req, res, "sso_not_configured", 503, null);
-  }
-
   const tokenRaw = req.query.token;
   const token = typeof tokenRaw === "string" ? tokenRaw : "";
+  const earlyJti = peekJti(token);
+
+  const cfg = loadConfig();
+  if (!cfg) {
+    return reject(req, res, "sso_not_configured", 503, earlyJti);
+  }
 
   let claims;
   try {
     claims = await verifyToken(token, cfg);
   } catch (err) {
     if (err instanceof SsoRejectError) {
-      return reject(req, res, err.code, err.httpStatus, null);
+      return reject(req, res, err.code, err.httpStatus, earlyJti);
     }
-    return reject(req, res, "token_invalid", 401, null);
+    return reject(req, res, "token_invalid", 401, earlyJti);
   }
 
   try {
@@ -101,6 +103,14 @@ router.get("/sso", async (req: Request, res: Response) => {
   req.session.save((err) => {
     if (err) {
       console.error("[sso] session save failed:", err);
+      void logAttempt(
+        req,
+        "session_error",
+        false,
+        { jti: claims.jti, message: String(err?.message ?? "") },
+        provisioned.user.id,
+        provisioned.org.id
+      );
       return res.status(500).json({ code: "session_error" });
     }
     void logAttempt(
