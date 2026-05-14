@@ -20,6 +20,7 @@ import billingRouter from "./billing";
 import onboardingRouter from "./onboarding";
 import emailRouter from "./email";
 import connectorsRouter from "./connectors";
+import ssoRouter from "./sso";
 
 declare module "express-session" {
   interface SessionData {
@@ -82,6 +83,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use(onboardingRouter);
   app.use(emailRouter);
   app.use(connectorsRouter);
+  app.use(ssoRouter);
 
   return httpServer;
 }

@@ -1,5 +1,6 @@
 import { eq, and, desc, sql, inArray, count, ilike, or, gte, lte } from "drizzle-orm";
 import { db } from "./db";
+import { DEFAULT_DEPARTMENTS } from "@shared/schema";
 import {
   users,
   orgs,
@@ -126,6 +127,17 @@ export interface IStorage {
   upsertOrgAuthConfig(orgId: string, data: Partial<OrgAuthConfig>): Promise<OrgAuthConfig>;
   getOrgBySlug(slug: string): Promise<Org | undefined>;
   getUserByEntraObjectId(entraObjectId: string, orgId: string): Promise<User | undefined>;
+
+  getUserByOperatorOsId(operatorOsUserId: string): Promise<User | undefined>;
+  getOrgByOperatorOsId(operatorOsOrgId: string): Promise<Org | undefined>;
+  provisionOperatorOsUser(input: {
+    sub: string;
+    email: string;
+    name?: string;
+    role: "user" | "super_admin";
+    planSlug: "starter" | "pro" | "elite" | null;
+    organizationId: string | null;
+  }): Promise<{ user: User; org: Org; userCreated: boolean; orgCreated: boolean }>;
 
   getOrgRoleMappings(orgId: string): Promise<OrgRoleMapping[]>;
   createOrgRoleMapping(orgId: string, entraGroupId: string, pulsedeskRole: string, displayLabel?: string): Promise<OrgRoleMapping>;
@@ -804,6 +816,121 @@ export class DatabaseStorage implements IStorage {
       if (mem) return u;
     }
     return undefined;
+  }
+
+  async getUserByOperatorOsId(operatorOsUserId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.operatorOsUserId, operatorOsUserId));
+    return user;
+  }
+
+  async getOrgByOperatorOsId(operatorOsOrgId: string): Promise<Org | undefined> {
+    const [org] = await db.select().from(orgs).where(eq(orgs.operatorOsOrgId, operatorOsOrgId));
+    return org;
+  }
+
+  async provisionOperatorOsUser(input: {
+    sub: string;
+    email: string;
+    name?: string;
+    role: "user" | "super_admin";
+    planSlug: "starter" | "pro" | "elite" | null;
+    organizationId: string | null;
+  }): Promise<{ user: User; org: Org; userCreated: boolean; orgCreated: boolean }> {
+    const desiredOrgRole = input.role === "super_admin" ? "owner" : "admin";
+
+    let org: Org | undefined;
+    let orgCreated = false;
+    if (input.organizationId) {
+      org = await this.getOrgByOperatorOsId(input.organizationId);
+      if (!org) {
+        const slug = `oos-${input.organizationId}`.toLowerCase().slice(0, 60);
+        const [created] = await db.insert(orgs).values({
+          name: `OperatorOS Tenant ${input.organizationId.slice(0, 8)}`,
+          slug,
+          operatorOsOrgId: input.organizationId,
+        }).returning();
+        org = created;
+        orgCreated = true;
+        for (const deptName of DEFAULT_DEPARTMENTS) {
+          await this.createDepartment(org.id, { name: deptName });
+        }
+        try {
+          await this.seedOnboardingItems(org.id);
+        } catch {}
+      }
+    }
+
+    let user = await this.getUserByOperatorOsId(input.sub);
+    let userCreated = false;
+    if (!user) {
+      const username = `oos_${input.sub}`.slice(0, 64);
+      const randomPw = randomBytes(32).toString("hex");
+      const { hashPassword } = await import("./middleware");
+      const passwordHash = await hashPassword(randomPw);
+      [user] = await db.insert(users).values({
+        username,
+        password: passwordHash,
+        fullName: input.name || input.email.split("@")[0],
+        email: input.email,
+        authSource: "operatoros",
+        operatorOsUserId: input.sub,
+        operatorOsRole: input.role,
+        operatorOsPlanSlug: input.planSlug ?? null,
+        operatorOsOrgId: input.organizationId ?? null,
+        lastSsoAt: new Date(),
+        isSuperAdmin: false,
+      }).returning();
+      userCreated = true;
+    } else {
+      const update: Partial<User> = {
+        email: input.email || user.email,
+        operatorOsRole: input.role,
+        operatorOsPlanSlug: input.planSlug ?? null,
+        operatorOsOrgId: input.organizationId ?? null,
+        lastSsoAt: new Date(),
+      };
+      if (input.name && !user.fullName) update.fullName = input.name;
+      const [updated] = await db.update(users).set(update).where(eq(users.id, user.id)).returning();
+      user = updated;
+    }
+
+    if (!org) {
+      const personalSlug = `oos-personal-${input.sub}`.toLowerCase().slice(0, 60);
+      const userOrgs = await this.getUserOrgs(user.id);
+      const personal = userOrgs.find((o) => o.slug === personalSlug);
+      if (personal) {
+        org = personal;
+      } else {
+        const [created] = await db.insert(orgs).values({
+          name: `${input.name || input.email.split("@")[0]}'s Workspace`,
+          slug: personalSlug,
+        }).returning();
+        org = created;
+        orgCreated = true;
+        for (const deptName of DEFAULT_DEPARTMENTS) {
+          await this.createDepartment(org.id, { name: deptName });
+        }
+        try {
+          await this.seedOnboardingItems(org.id);
+        } catch {}
+      }
+    }
+
+    const existingMembership = await this.getMembership(org.id, user.id);
+    if (!existingMembership) {
+      await this.createMembership(org.id, user.id, desiredOrgRole);
+    } else {
+      const RANK: Record<string, number> = {
+        owner: 120, admin: 100, supervisor: 80, technician: 60, staff: 40, readonly: 10,
+      };
+      const currentRank = RANK[existingMembership.role] ?? 0;
+      const desiredRank = RANK[desiredOrgRole] ?? 0;
+      if (desiredRank > currentRank) {
+        await this.updateMembershipRole(org.id, user.id, desiredOrgRole);
+      }
+    }
+
+    return { user, org, userCreated, orgCreated };
   }
 
   async getOrgRoleMappings(orgId: string): Promise<OrgRoleMapping[]> {

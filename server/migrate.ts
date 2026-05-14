@@ -330,6 +330,37 @@ export async function ensureSchema() {
       END $$;
     `);
 
+    const operatorOsUserCols = [
+      { col: "operatoros_user_id", def: "text" },
+      { col: "operatoros_role", def: "text" },
+      { col: "operatoros_plan_slug", def: "text" },
+      { col: "operatoros_org_id", def: "text" },
+      { col: "last_sso_at", def: "timestamp" },
+    ];
+    for (const { col, def } of operatorOsUserCols) {
+      await client.query(`
+        DO $$ BEGIN
+          ALTER TABLE users ADD COLUMN ${col} ${def};
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END $$;
+      `);
+    }
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_operatoros_user_id
+        ON users(operatoros_user_id) WHERE operatoros_user_id IS NOT NULL;
+    `);
+
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE orgs ADD COLUMN operatoros_org_id text;
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_orgs_operatoros_org_id
+        ON orgs(operatoros_org_id) WHERE operatoros_org_id IS NOT NULL;
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS "session" (
         "sid" varchar NOT NULL COLLATE "default",

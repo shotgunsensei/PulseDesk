@@ -119,6 +119,49 @@ Boundaries enforced:
   - **Mitigation:** `requireSuperAdmin` checks `users.is_super_admin`, set
     only via direct DB.
 
+## 4a. OperatorOS SSO (child-app handoff)
+
+PulseDesk is registered as an OperatorOS module and accepts launches at
+`GET /sso?token=…`. New trust boundary:
+
+```
+OperatorOS (parent) ──HS256 JWT──> PulseDesk /sso ──HTTPS POST──> OperatorOS API
+                                                  /v1/modules/sso/consume
+```
+
+- **Trust anchor:** `MODULE_SSO_SECRET` shared between OperatorOS and
+  PulseDesk. Stored as a Replit secret, never logged or echoed in API
+  responses.
+- **Token verify:** HS256 only; `alg: "none"`, `RS256`, and any other
+  algorithm are rejected before signature check. Issuer locked to
+  `OPERATOROS_BASE_URL`; audience locked to `OPERATOROS_SSO_AUDIENCE`
+  (`pulsedesk`); `env` claim must match `OPERATOROS_SSO_ENV`. Clock
+  skew capped at ±5s; max token age 90s.
+- **Single-use enforcement:** every locally-valid token MUST be
+  confirmed via `POST {OPERATOROS_API_URL}/v1/modules/sso/consume` (Bearer
+  `MODULE_SSO_SECRET`, body `{jti, aud, env}`) before a session is
+  issued. Replays (HTTP 409 `TOKEN_REPLAYED`) → `401 consume_failed`,
+  no session created. 5xx → `502 sso_consume_unavailable`. The consume
+  call is hard-timed at 5s.
+- **Provisioning:** lazy upsert keyed on `sub`. New users get a random
+  scrypt-hashed local password (the user can never log in via the
+  password — only via re-launch). Org mapping: 1:1 PulseDesk org per
+  OperatorOS `organization_id`, or a per-user "Personal" workspace
+  when `organization_id` is null. Existing membership roles are never
+  downgraded.
+- **Audit:** every `/sso` attempt writes one `auth_audit_log` row
+  with `event_type = operatoros_sso_<outcome>`, `auth_source = operatoros`,
+  IP, UA, and `jti`. Raw token never persisted.
+- **Failure mode:** missing config → `503 sso_not_configured`. The
+  rest of PulseDesk continues to serve traffic.
+
+Open items specific to this surface:
+
+- Outbound re-launch link (deep-link back to `OPERATOROS_BASE_URL`) for
+  expired/replayed sessions is not yet wired into the dashboard UI.
+- Consider verifying `iss` against a known parent issuer once the
+  OperatorOS contract pins one.
+
 ## 5. Open follow-ups (security debt)
 
 1. Add `express-rate-limit` to `/api/auth/*` and `/api/email/inbound/*`.

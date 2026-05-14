@@ -56,6 +56,18 @@ export default function AuthPage() {
         session_error: "Session error. Please try again.",
         callback_error: "An error occurred during sign-in. Please try again.",
         no_matching_role: "Your Microsoft 365 groups do not match any configured roles for this organization. Contact your administrator.",
+        sso_not_configured: "OperatorOS SSO is not configured on this PulseDesk instance.",
+        missing_token: "No launch token provided. Re-launch from OperatorOS.",
+        bad_request: "Launch token was malformed. Re-launch from OperatorOS.",
+        signature_invalid: "Launch token signature is invalid. Re-launch from OperatorOS.",
+        expired: "Launch link expired. Re-launch from OperatorOS.",
+        clock_skew: "Launch token timing is off — check that your device clock is correct.",
+        consume_failed: "Launch link was already used or rejected. Re-launch from OperatorOS.",
+        sso_consume_unavailable: "OperatorOS is temporarily unreachable. Try again in a moment.",
+        audience_mismatch: "Launch token was issued for a different application.",
+        env_mismatch: "Launch token was issued for a different environment.",
+        issuer_mismatch: "Launch token came from an unrecognized issuer.",
+        unsupported_alg: "Launch token uses an unsupported signing algorithm.",
       };
       toast({
         title: "Sign-in issue",
