@@ -192,7 +192,7 @@ export async function consumeToken(
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${cfg.secret}`,
-        "X-Module-Slug": "pulsedesk",
+        "X-Module-Slug": cfg.audience,
       },
       body: JSON.stringify({
         jti: claims.jti,
