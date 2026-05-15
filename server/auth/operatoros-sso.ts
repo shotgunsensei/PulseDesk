@@ -8,6 +8,8 @@ export interface OperatorOsSsoConfig {
   baseUrl: string;
 }
 
+export type OperatorOsRole = "user" | "member" | "admin" | "super_admin";
+
 export interface OperatorOsTokenClaims {
   iss: string;
   aud: string;
@@ -18,7 +20,7 @@ export interface OperatorOsTokenClaims {
   sub: string;
   user_id: string;
   email: string;
-  role: "user" | "super_admin";
+  role: OperatorOsRole;
   plan_slug: "starter" | "pro" | "elite" | null;
   organization_id: string | null;
   name?: string;
@@ -63,8 +65,8 @@ export function getPublicConfig(): { baseUrl: string } | null {
   return { baseUrl: cfg.baseUrl.replace(/\/+$/, "") };
 }
 
-function isValidRole(r: unknown): r is "user" | "super_admin" {
-  return r === "user" || r === "super_admin";
+function isValidRole(r: unknown): r is OperatorOsRole {
+  return r === "user" || r === "member" || r === "admin" || r === "super_admin";
 }
 
 export async function verifyToken(
@@ -187,7 +189,7 @@ export async function consumeToken(
   claims: OperatorOsTokenClaims,
   cfg: OperatorOsSsoConfig
 ): Promise<void> {
-  const url = `${cfg.apiUrl.replace(/\/+$/, "")}/v1/modules/sso/consume`;
+  const url = cfg.apiUrl;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), CONSUME_TIMEOUT_MS);
 

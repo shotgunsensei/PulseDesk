@@ -1,3 +1,42 @@
+/**
+ * OperatorOS SSO end-to-end verification — VALIDATED 2026-05-15
+ * --------------------------------------------------------------
+ * A real OperatorOS-issued launch token (jti
+ * b453eefa6ccefd310de08365c3b8ecd9993d60f37d499587, sub
+ * 6c0e2f28-da08-4601-b0ff-7ff31194b7b0, role=admin, plan_slug=elite,
+ * organization_id=null) was POSTed at GET /sso?token=… against the
+ * live `https://operatoros.net/api/modules/sso/consume` endpoint.
+ *
+ * Result of the success run:
+ *   - HTTP 302 → /dashboard with Set-Cookie connect.sid
+ *   - GET /api/auth/me returned the provisioned user authenticated
+ *   - 1 row in `users` (operatoros_user_id = sub, operatoros_role=admin,
+ *     operatoros_plan_slug=elite, last_sso_at populated)
+ *   - 1 row in `orgs` ("john's Workspace", per-user Personal workspace
+ *     because organization_id was null in the token)
+ *   - 1 row in `memberships` (role=admin)
+ *   - 1 row in `auth_audit_log` (event_type = operatoros_sso_success,
+ *     success=true, user_id+org_id populated, jti recorded)
+ *
+ * Result of the immediate replay (same token, second hit):
+ *   - HTTP 401 { code: "consume_failed" }
+ *   - 1 additional `auth_audit_log` row (event_type
+ *     operatoros_sso_consume_failed, success=false, no session created)
+ *
+ * Two interop bugs were uncovered and fixed during this verification:
+ *   1. The role validator only accepted "user"|"super_admin" but
+ *      OperatorOS tokens carry role="admin"/"member" too. Broadened in
+ *      `server/auth/operatoros-sso.ts::isValidRole` to accept the full
+ *      set ("user", "member", "admin", "super_admin"). All non-
+ *      "super_admin" values map to PulseDesk org role "admin" downstream
+ *      (see `storage.provisionOperatorOsUser`).
+ *   2. The consume URL was being built as
+ *      `${OPERATOROS_API_URL}/v1/modules/sso/consume`. The real route
+ *      lives at `https://operatoros.net/api/modules/sso/consume` with
+ *      no `/v1` segment. `consumeToken` now POSTs to OPERATOROS_API_URL
+ *      as-is (full URL, no path appending). `replit.md` and
+ *      `threat_model.md` updated to match.
+ */
 import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
 import {

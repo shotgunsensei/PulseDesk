@@ -138,7 +138,7 @@ OperatorOS (parent) ──HS256 JWT──> PulseDesk /sso ──HTTPS POST──
   (`pulsedesk`); `env` claim must match `OPERATOROS_SSO_ENV`. Clock
   skew capped at ±5s; max token age 90s.
 - **Single-use enforcement:** every locally-valid token MUST be
-  confirmed via `POST {OPERATOROS_API_URL}/v1/modules/sso/consume` (Bearer
+  confirmed via `POST {OPERATOROS_API_URL}` (Bearer
   `MODULE_SSO_SECRET`, body `{jti, aud, env}`) before a session is
   issued. Replays (HTTP 409 `TOKEN_REPLAYED`) → `401 consume_failed`,
   no session created. 5xx → `502 sso_consume_unavailable`. The consume
