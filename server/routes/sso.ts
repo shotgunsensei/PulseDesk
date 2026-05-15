@@ -7,6 +7,7 @@ import {
   peekJti,
   SsoRejectError,
 } from "../auth/operatoros-sso";
+import { ssoRateLimiter } from "../middleware/rateLimit";
 
 const router = Router();
 
@@ -46,7 +47,7 @@ function reject(
   return res.status(status).json({ code });
 }
 
-router.get("/sso", async (req: Request, res: Response) => {
+router.get("/sso", ssoRateLimiter, async (req: Request, res: Response) => {
   const tokenRaw = req.query.token;
   const token = typeof tokenRaw === "string" ? tokenRaw : "";
   const earlyJti = peekJti(token);

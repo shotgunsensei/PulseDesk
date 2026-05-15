@@ -164,7 +164,20 @@ Open items specific to this surface:
 
 ## 5. Open follow-ups (security debt)
 
-1. Add `express-rate-limit` to `/api/auth/*` and `/api/email/inbound/*`.
+1. **Done (2026-05-15)** for `GET /sso` (30/min/IP),
+   `POST /api/auth/login` (10/min/IP), and `POST /api/auth/register`
+   (20/min/IP) via `server/middleware/rateLimit.ts`. The previous global
+   limiter mounted in `server/index.ts` (10 req / 15 min, production-only,
+   plain-text 429 body) was removed so these three routes are governed
+   only by the new per-route limiters. Blocks return
+   `429 { error: "rate_limited" }` with a `Retry-After` header (seconds)
+   and write an `auth_audit_log` row with
+   `event_type = "rate_limit_blocked"`. The Stripe webhook and SendGrid
+   inbound routes are intentionally not rate-limited — they have their
+   own auth (signature verification / alias routing) and the limiter is
+   scoped per-route, not global. Other `/api/auth/*` routes (m365,
+   logout, change-password, config, role-mappings, audit-log) are still
+   unlimited; `/api/email/inbound/*` rate limiting is still open.
 2. Add HMAC or IP allowlist for SendGrid inbound webhook.
 3. Audit-log destructive admin actions (org delete, plan change, role
    change, audit purge).

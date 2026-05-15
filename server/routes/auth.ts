@@ -6,6 +6,7 @@ import { requireAuth, requireOrg, requireMinRole, resolveTenant } from "../middl
 import { hashPassword, verifyPassword } from "../middleware";
 import type { ResolvedTenantRequest } from "../middleware";
 import { getAuthProvider, localProvider, encryptSecret, decryptSecret } from "../auth";
+import { loginRateLimiter, registerRateLimiter } from "../middleware/rateLimit";
 import type { AuthProviderConfig } from "../auth";
 import type { InsertOrgAuthConfig } from "@shared/schema";
 
@@ -73,7 +74,7 @@ router.get("/api/auth/tenant/:slug", resolveTenant, async (req: Request, res: Re
   }
 });
 
-router.post("/api/auth/register", async (req: Request, res: Response) => {
+router.post("/api/auth/register", registerRateLimiter, async (req: Request, res: Response) => {
   try {
     const { username, password, fullName } = req.body;
     if (!username?.trim() || !password) {
@@ -114,7 +115,7 @@ router.post("/api/auth/register", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/api/auth/login", async (req: Request, res: Response) => {
+router.post("/api/auth/login", loginRateLimiter, async (req: Request, res: Response) => {
   try {
     const { username, password, orgSlug } = req.body;
     if (!username || !password) {
