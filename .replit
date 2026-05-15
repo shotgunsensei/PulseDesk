@@ -45,3 +45,7 @@ integrations = ["stripe:1.0.0"]
 
 [userenv.development]
 VITE_DEMO_MODE = "true"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
