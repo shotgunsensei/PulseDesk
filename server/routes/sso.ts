@@ -5,6 +5,7 @@ import {
   verifyToken,
   consumeToken,
   peekJti,
+  getPublicConfig,
   SsoRejectError,
 } from "../auth/operatoros-sso";
 import { ssoRateLimiter } from "../middleware/rateLimit";
@@ -46,6 +47,12 @@ function reject(
   void logAttempt(req, code, false, jti ? { jti } : {});
   return res.status(status).json({ code });
 }
+
+router.get("/api/public/sso-config", (_req: Request, res: Response) => {
+  const pub = getPublicConfig();
+  if (!pub) return res.status(404).json({ error: "sso_not_configured" });
+  return res.json(pub);
+});
 
 router.get("/sso", ssoRateLimiter, async (req: Request, res: Response) => {
   const tokenRaw = req.query.token;

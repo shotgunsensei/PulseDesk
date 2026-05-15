@@ -39,10 +39,29 @@ export default function AuthPage() {
   const [tenant, setTenant] = useState<TenantInfo | null>(null);
   const [tenantLoading, setTenantLoading] = useState(false);
   const [m365Loading, setM365Loading] = useState(false);
+  const [operatorOsBaseUrl, setOperatorOsBaseUrl] = useState<string | null>(null);
+
+  const SSO_RELAUNCH_ERRORS = new Set([
+    "expired",
+    "consume_failed",
+    "issuer_mismatch",
+    "audience_mismatch",
+    "env_mismatch",
+    "signature_invalid",
+    "unsupported_alg",
+  ]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const error = params.get("error");
+    if (error && SSO_RELAUNCH_ERRORS.has(error)) {
+      fetch("/api/public/sso-config", { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data?.baseUrl) setOperatorOsBaseUrl(data.baseUrl);
+        })
+        .catch(() => {});
+    }
     if (error) {
       const errorMessages: Record<string, string> = {
         invalid_session: "Session expired. Please sign in again.",
@@ -204,6 +223,26 @@ export default function AuthPage() {
             <img src={pulsedeskTitleLogo} alt="PulseDesk" className="h-10 mx-auto mb-3" />
             <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground mt-1 font-medium">Operations Management</p>
           </div>
+
+          {operatorOsBaseUrl && (
+            <Card data-testid="card-relaunch-operatoros">
+              <CardContent className="pt-6 space-y-3">
+                <div>
+                  <p className="text-sm font-medium">Launch link couldn't be used</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Get a fresh launch link from OperatorOS to sign back in.
+                  </p>
+                </div>
+                <Button
+                  asChild
+                  className="w-full"
+                  data-testid="button-relaunch-operatoros"
+                >
+                  <a href={operatorOsBaseUrl}>Return to OperatorOS</a>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
           {tenant && (
             <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">

@@ -57,6 +57,12 @@ export function loadConfig(): OperatorOsSsoConfig | null {
   return { secret, audience, env, apiUrl, baseUrl };
 }
 
+export function getPublicConfig(): { baseUrl: string } | null {
+  const cfg = loadConfig();
+  if (!cfg) return null;
+  return { baseUrl: cfg.baseUrl.replace(/\/+$/, "") };
+}
+
 function isValidRole(r: unknown): r is "user" | "super_admin" {
   return r === "user" || r === "super_admin";
 }
