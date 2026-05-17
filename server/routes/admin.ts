@@ -258,33 +258,112 @@ router.get("/api/admin/billing", requireAuth, requireSuperAdmin, async (_req: Re
 });
 
 router.post("/api/admin/billing/sync/:orgId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  const { orgId } = req.params;
   try {
-    const org = await storage.getOrg(req.params.orgId);
-    if (!org) return res.status(404).json({ error: "Organization not found" });
-    await syncOrgPlanFromStripe(req.params.orgId);
-    const updated = await storage.getOrg(req.params.orgId);
+    const org = await storage.getOrg(orgId);
+    if (!org) {
+      await logAdminAction(req, {
+        eventType: "admin_billing_resynced",
+        orgId,
+        success: false,
+        details: { reason: "not_found" },
+      });
+      return res.status(404).json({ error: "Organization not found" });
+    }
+    const before = { plan: org.plan, subscriptionStatus: org.subscriptionStatus ?? null };
+    await syncOrgPlanFromStripe(orgId);
+    const updated = await storage.getOrg(orgId);
+    await logAdminAction(req, {
+      eventType: "admin_billing_resynced",
+      orgId,
+      success: true,
+      details: {
+        before,
+        after: {
+          plan: updated?.plan ?? null,
+          subscriptionStatus: updated?.subscriptionStatus ?? null,
+        },
+      },
+    });
     res.json({ ok: true, plan: updated?.plan, subscriptionStatus: updated?.subscriptionStatus });
   } catch (err: any) {
+    let before: { plan: string | null; subscriptionStatus: string | null } | undefined;
+    try {
+      const snapshot = await storage.getOrg(orgId);
+      if (snapshot) {
+        before = {
+          plan: snapshot.plan,
+          subscriptionStatus: snapshot.subscriptionStatus ?? null,
+        };
+      }
+    } catch {}
+    await logAdminAction(req, {
+      eventType: "admin_billing_resynced",
+      orgId,
+      success: false,
+      details: { error: err?.message ?? "unknown", ...(before ? { before } : {}) },
+    });
     res.status(500).json({ error: err.message });
   }
 });
 
 router.patch("/api/admin/users/:id/superadmin", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  const { id } = req.params;
   try {
-    const { id } = req.params;
     const { isSuperAdmin } = req.body;
 
     if (typeof isSuperAdmin !== "boolean") {
+      await logAdminAction(req, {
+        eventType: "admin_superadmin_toggled",
+        targetUserId: id,
+        success: false,
+        details: {
+          reason: "invalid_body",
+          receivedType: typeof req.body?.isSuperAdmin,
+        },
+      });
       return res.status(400).json({ error: "isSuperAdmin must be a boolean" });
     }
 
     if (id === req.session.userId && !isSuperAdmin) {
+      await logAdminAction(req, {
+        eventType: "admin_superadmin_toggled",
+        targetUserId: id,
+        success: false,
+        details: { reason: "self_demotion_blocked", requested: { isSuperAdmin } },
+      });
       return res.status(400).json({ error: "Cannot remove your own super admin status" });
     }
 
+    const [existing] = await db.select().from(users).where(eq(users.id, id));
+    if (!existing) {
+      await logAdminAction(req, {
+        eventType: "admin_superadmin_toggled",
+        targetUserId: id,
+        success: false,
+        details: { reason: "not_found", requested: { isSuperAdmin } },
+      });
+      return res.status(404).json({ error: "User not found" });
+    }
+
     await db.update(users).set({ isSuperAdmin }).where(eq(users.id, id));
+    await logAdminAction(req, {
+      eventType: "admin_superadmin_toggled",
+      targetUserId: id,
+      success: true,
+      details: {
+        before: { isSuperAdmin: existing.isSuperAdmin ?? false },
+        after: { isSuperAdmin },
+      },
+    });
     res.json({ ok: true, userId: id, isSuperAdmin });
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_superadmin_toggled",
+      targetUserId: id,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: err.message });
   }
 });

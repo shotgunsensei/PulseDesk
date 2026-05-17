@@ -209,15 +209,23 @@ Open items specific to this surface:
      `PATCH /api/memberships/:userId/role`.
    - `admin_audit_log_purged` — `POST /api/admin/audit/purge`.
      `details.days` and `details.deletedCount` are recorded.
+   - `admin_superadmin_toggled` — `PATCH
+     /api/admin/users/:id/superadmin` (super-admin). `targetUserId`
+     is the affected user; `details.before.isSuperAdmin` /
+     `details.after.isSuperAdmin` capture the flip. Self-demotion
+     attempts, invalid bodies, and missing-user lookups are logged
+     with `success=false` and `details.reason`.
+   - `admin_billing_resynced` — `POST /api/admin/billing/sync/:orgId`
+     (super-admin). `orgId` is the synced org;
+     `details.before.{plan,subscriptionStatus}` and `details.after.…`
+     snapshot the org row before and after `syncOrgPlanFromStripe`.
+     Unknown-org and Stripe-sync errors are logged with
+     `success=false`.
    Both successful and failed attempts are logged (4xx/5xx paths
    include `details.reason` or `details.error`). The per-org audit
    viewer at `GET /api/auth/audit-log` (rendered in
    `client/src/pages/settings.tsx`) surfaces every new event type
    automatically because it renders any `eventType` generically.
-   Still open: super-admin toggle (`PATCH
-   /api/admin/users/:id/superadmin`) and admin-initiated Stripe
-   resync (`POST /api/admin/billing/sync/:orgId`) are not yet
-   audited.
 4. Upgrade `drizzle-orm` to ≥ 0.45.2 (CVE-2026-39356) and other npm high
    advisories — requires `package.json` edit (out of agent scope per
    guidelines).

@@ -14,7 +14,9 @@ export type AdminAuditEventType =
   | "admin_org_plan_changed"
   | "admin_membership_role_changed"
   | "admin_audit_log_purged"
-  | "org_membership_role_changed";
+  | "org_membership_role_changed"
+  | "admin_superadmin_toggled"
+  | "admin_billing_resynced";
 
 export async function logAdminAction(
   req: Request,
