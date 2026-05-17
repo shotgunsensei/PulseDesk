@@ -191,8 +191,33 @@ Open items specific to this surface:
    signature header, HTTP Basic Auth, or source IP allowlist via
    `server/middleware/inboundEmailAuth.ts`. Forged requests return `401`
    and are persisted to `inbound_email_log` with `status='rejected'`.
-3. Audit-log destructive admin actions (org delete, plan change, role
-   change, audit purge).
+3. **Done (2026-05-17)** — destructive admin actions now write
+   `auth_audit_log` rows via `server/lib/adminAudit.ts`
+   (`logAdminAction`). Each row records the actor (`userId` =
+   `req.session.userId`, mirrored in `details.actorUserId`), target
+   org (`orgId`), target user (`details.targetUserId` when
+   applicable), before/after values, IP, UA, success flag, and
+   `authSource = "admin"`. Event types:
+   - `admin_org_deleted` — `DELETE /api/admin/orgs/:id` (super-admin).
+     On success `orgId` is null (org row gone); `details` carries
+     `deletedOrgId` and the pre-delete `{name, slug, plan}` snapshot.
+   - `admin_org_plan_changed` — `PATCH /api/admin/orgs/:id/plan`
+     (super-admin). `details.before.plan` / `details.after.plan`.
+   - `admin_membership_role_changed` — super-admin
+     `PATCH /api/admin/orgs/:orgId/members/:userId/role`.
+   - `org_membership_role_changed` — org-admin
+     `PATCH /api/memberships/:userId/role`.
+   - `admin_audit_log_purged` — `POST /api/admin/audit/purge`.
+     `details.days` and `details.deletedCount` are recorded.
+   Both successful and failed attempts are logged (4xx/5xx paths
+   include `details.reason` or `details.error`). The per-org audit
+   viewer at `GET /api/auth/audit-log` (rendered in
+   `client/src/pages/settings.tsx`) surfaces every new event type
+   automatically because it renders any `eventType` generically.
+   Still open: super-admin toggle (`PATCH
+   /api/admin/users/:id/superadmin`) and admin-initiated Stripe
+   resync (`POST /api/admin/billing/sync/:orgId`) are not yet
+   audited.
 4. Upgrade `drizzle-orm` to ≥ 0.45.2 (CVE-2026-39356) and other npm high
    advisories — requires `package.json` edit (out of agent scope per
    guidelines).

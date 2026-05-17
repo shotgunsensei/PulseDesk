@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
 import { requireAuth, requireOrg, requireRole } from "../middleware";
 import { DEFAULT_DEPARTMENTS, PLAN_LIMITS } from "@shared/schema";
+import { logAdminAction } from "../lib/adminAudit";
 
 const router = Router();
 
@@ -107,16 +108,59 @@ router.get("/api/memberships", requireAuth, requireOrg, async (req: Request, res
 router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, requireRole("admin"), async (req: Request, res: Response) => {
   try {
     const userId = req.params.userId;
+    const orgId = req.session.orgId!;
     const { role } = req.body;
     if (!["admin", "supervisor", "staff", "technician", "readonly"].includes(role)) {
+      await logAdminAction(req, {
+        eventType: "org_membership_role_changed",
+        orgId,
+        targetUserId: userId,
+        success: false,
+        details: { reason: "invalid_role", requestedRole: role },
+      });
       return res.status(400).json({ error: "Invalid role" });
     }
     if (userId === req.session.userId) {
+      await logAdminAction(req, {
+        eventType: "org_membership_role_changed",
+        orgId,
+        targetUserId: userId,
+        success: false,
+        details: { reason: "self_role_change_blocked", requestedRole: role },
+      });
       return res.status(400).json({ error: "Cannot change your own role" });
     }
-    await storage.updateMembershipRole(req.session.orgId!, userId, role);
+    const existing = await storage.getMembership(orgId, userId);
+    if (!existing) {
+      await logAdminAction(req, {
+        eventType: "org_membership_role_changed",
+        orgId,
+        targetUserId: userId,
+        success: false,
+        details: { reason: "not_found", requestedRole: role },
+      });
+      return res.status(404).json({ error: "Membership not found" });
+    }
+    await storage.updateMembershipRole(orgId, userId, role);
+    await logAdminAction(req, {
+      eventType: "org_membership_role_changed",
+      orgId,
+      targetUserId: userId,
+      success: true,
+      details: {
+        before: { role: existing.role },
+        after: { role },
+      },
+    });
     res.json({ ok: true });
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "org_membership_role_changed",
+      orgId: req.session.orgId ?? null,
+      targetUserId: req.params.userId,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: err.message });
   }
 });

@@ -6,6 +6,7 @@ import { users, memberships, orgs } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { syncOrgPlanFromStripe } from "./billing";
+import { logAdminAction } from "../lib/adminAudit";
 
 const router = Router();
 
@@ -24,11 +25,29 @@ router.post("/api/admin/audit/purge", requireAuth, requireSuperAdmin, async (req
   try {
     const parsed = purgeAuditSchema.safeParse(req.body);
     if (!parsed.success) {
+      await logAdminAction(req, {
+        eventType: "admin_audit_log_purged",
+        orgId: req.session.orgId ?? null,
+        success: false,
+        details: { reason: "invalid_input", body: req.body },
+      });
       return res.status(400).json({ error: "Invalid input", details: parsed.error.flatten() });
     }
     const deleted = await storage.purgeAuthAuditLogsOlderThan(parsed.data.days);
+    await logAdminAction(req, {
+      eventType: "admin_audit_log_purged",
+      orgId: req.session.orgId ?? null,
+      success: true,
+      details: { days: parsed.data.days, deletedCount: deleted, scope: "global" },
+    });
     res.json({ deleted, days: parsed.data.days });
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_audit_log_purged",
+      orgId: req.session.orgId ?? null,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: err.message });
   }
 });
@@ -55,9 +74,34 @@ router.get("/api/admin/orgs", requireAuth, requireSuperAdmin, async (_req: Reque
 
 router.delete("/api/admin/orgs/:id", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
   try {
+    const existing = await storage.getOrg(req.params.id);
+    if (!existing) {
+      await logAdminAction(req, {
+        eventType: "admin_org_deleted",
+        orgId: req.params.id,
+        success: false,
+        details: { reason: "not_found" },
+      });
+      return res.status(404).json({ error: "Organization not found" });
+    }
     await storage.deleteOrg(req.params.id);
+    await logAdminAction(req, {
+      eventType: "admin_org_deleted",
+      orgId: null,
+      success: true,
+      details: {
+        deletedOrgId: existing.id,
+        before: { name: existing.name, slug: existing.slug, plan: existing.plan },
+      },
+    });
     res.json({ ok: true });
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_org_deleted",
+      orgId: req.params.id,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: err.message });
   }
 });
@@ -66,15 +110,44 @@ router.patch("/api/admin/orgs/:id/plan", requireAuth, requireSuperAdmin, async (
   try {
     const parsed = updatePlanSchema.safeParse(req.body);
     if (!parsed.success) {
+      await logAdminAction(req, {
+        eventType: "admin_org_plan_changed",
+        orgId: req.params.id,
+        success: false,
+        details: { reason: "invalid_plan", body: req.body },
+      });
       return res.status(400).json({ error: "Invalid plan", validPlans: VALID_PLANS });
     }
 
     const org = await storage.getOrg(req.params.id);
-    if (!org) return res.status(404).json({ error: "Organization not found" });
+    if (!org) {
+      await logAdminAction(req, {
+        eventType: "admin_org_plan_changed",
+        orgId: req.params.id,
+        success: false,
+        details: { reason: "not_found", requestedPlan: parsed.data.plan },
+      });
+      return res.status(404).json({ error: "Organization not found" });
+    }
 
     const updated = await storage.updateOrg(req.params.id, { plan: parsed.data.plan as any });
+    await logAdminAction(req, {
+      eventType: "admin_org_plan_changed",
+      orgId: req.params.id,
+      success: true,
+      details: {
+        before: { plan: org.plan },
+        after: { plan: parsed.data.plan },
+      },
+    });
     res.json(updated);
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_org_plan_changed",
+      orgId: req.params.id,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: err.message });
   }
 });
@@ -118,15 +191,48 @@ router.patch("/api/admin/orgs/:orgId/members/:userId/role", requireAuth, require
     const { orgId, userId } = req.params;
     const parsed = updateRoleSchema.safeParse(req.body);
     if (!parsed.success) {
+      await logAdminAction(req, {
+        eventType: "admin_membership_role_changed",
+        orgId,
+        targetUserId: userId,
+        success: false,
+        details: { reason: "invalid_role", body: req.body },
+      });
       return res.status(400).json({ error: "Invalid role", validRoles: VALID_ROLES });
     }
 
     const mem = await storage.getMembership(orgId, userId);
-    if (!mem) return res.status(404).json({ error: "Membership not found" });
+    if (!mem) {
+      await logAdminAction(req, {
+        eventType: "admin_membership_role_changed",
+        orgId,
+        targetUserId: userId,
+        success: false,
+        details: { reason: "not_found", requestedRole: parsed.data.role },
+      });
+      return res.status(404).json({ error: "Membership not found" });
+    }
 
     await storage.updateMembershipRole(orgId, userId, parsed.data.role);
+    await logAdminAction(req, {
+      eventType: "admin_membership_role_changed",
+      orgId,
+      targetUserId: userId,
+      success: true,
+      details: {
+        before: { role: mem.role },
+        after: { role: parsed.data.role },
+      },
+    });
     res.json({ ok: true, orgId, userId, role: parsed.data.role });
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_membership_role_changed",
+      orgId: req.params.orgId,
+      targetUserId: req.params.userId,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: err.message });
   }
 });
