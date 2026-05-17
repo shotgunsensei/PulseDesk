@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -30,6 +30,7 @@ import {
   Power,
   CreditCard,
   CalendarX,
+  FileSearch,
 } from "lucide-react";
 import { SiGoogle } from "react-icons/si";
 
@@ -245,12 +246,57 @@ export default function AdminPage() {
     },
   });
 
+  const [auditEventType, setAuditEventType] = useState<string>("all");
+  const [auditSince, setAuditSince] = useState<string>("");
+  const [auditUntil, setAuditUntil] = useState<string>("");
+  const [auditOffset, setAuditOffset] = useState<number>(0);
+  const [expandedAuditRow, setExpandedAuditRow] = useState<string | null>(null);
+  const AUDIT_PAGE_SIZE = 50;
+
+  const auditQueryParams = (() => {
+    const p = new URLSearchParams();
+    if (auditEventType !== "all") p.set("eventTypes", auditEventType);
+    if (auditSince) p.set("since", new Date(auditSince).toISOString());
+    if (auditUntil) p.set("until", new Date(auditUntil).toISOString());
+    p.set("limit", String(AUDIT_PAGE_SIZE));
+    p.set("offset", String(auditOffset));
+    return p.toString();
+  })();
+
+  const { data: auditData, isLoading: auditLoading } = useQuery<{
+    rows: Array<{
+      id: string;
+      orgId: string | null;
+      userId: string | null;
+      eventType: string;
+      authSource: string | null;
+      ipAddress: string | null;
+      userAgent: string | null;
+      details: any;
+      success: boolean;
+      createdAt: string;
+      orgName: string | null;
+      orgSlug: string | null;
+      actorUsername: string | null;
+      actorFullName: string | null;
+    }>;
+    total: number;
+    limit: number;
+    offset: number;
+    availableEventTypes: string[];
+  }>({ queryKey: ["/api/admin/audit", auditQueryParams] , queryFn: async () => {
+    const res = await fetch(`/api/admin/audit?${auditQueryParams}`, { credentials: "include" });
+    if (!res.ok) throw new Error("Failed to fetch admin audit log");
+    return res.json();
+  }});
+
   const purgeAuditMutation = useMutation({
     mutationFn: async (days: number) => {
       const res = await apiRequest("POST", "/api/admin/audit/purge", { days });
       return res.json();
     },
     onSuccess: (data: { deleted: number; days: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/audit"] });
       toast({
         title: "Audit log purged",
         description: `Removed ${data.deleted} entries older than ${data.days} days.`,
@@ -997,6 +1043,193 @@ export default function AdminPage() {
                     </Button>
                   </div>
                 ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-admin-audit-log">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <FileSearch className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Admin Action Audit Log</CardTitle>
+              </div>
+              <span className="text-xs text-muted-foreground" data-testid="text-audit-total">
+                {auditData ? `${auditData.total} total event${auditData.total === 1 ? "" : "s"}` : ""}
+              </span>
+            </div>
+            <CardDescription>
+              Cross-tenant trail of destructive admin actions (org deletes, plan changes, role changes, audit purges).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Event type</label>
+                <Select
+                  value={auditEventType}
+                  onValueChange={(v) => { setAuditEventType(v); setAuditOffset(0); }}
+                >
+                  <SelectTrigger className="w-[260px] h-8 text-xs" data-testid="select-audit-event-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All admin events</SelectItem>
+                    <SelectItem value="admin_org_deleted">Org deleted</SelectItem>
+                    <SelectItem value="admin_org_plan_changed">Org plan changed</SelectItem>
+                    <SelectItem value="admin_membership_role_changed">Membership role changed (super-admin)</SelectItem>
+                    <SelectItem value="org_membership_role_changed">Membership role changed (org-admin)</SelectItem>
+                    <SelectItem value="admin_audit_log_purged">Audit log purged</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">From</label>
+                <Input
+                  type="datetime-local"
+                  value={auditSince}
+                  onChange={(e) => { setAuditSince(e.target.value); setAuditOffset(0); }}
+                  className="h-8 text-xs w-[200px]"
+                  data-testid="input-audit-since"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">To</label>
+                <Input
+                  type="datetime-local"
+                  value={auditUntil}
+                  onChange={(e) => { setAuditUntil(e.target.value); setAuditOffset(0); }}
+                  className="h-8 text-xs w-[200px]"
+                  data-testid="input-audit-until"
+                />
+              </div>
+              {(auditEventType !== "all" || auditSince || auditUntil) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => { setAuditEventType("all"); setAuditSince(""); setAuditUntil(""); setAuditOffset(0); }}
+                  data-testid="button-audit-clear-filters"
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            {auditLoading ? (
+              <div className="flex items-center justify-center py-8"><PulseLoader /></div>
+            ) : !auditData || auditData.rows.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center" data-testid="text-audit-empty">
+                No admin events match the current filters.
+              </p>
+            ) : (
+              <div className="border rounded-md overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50">
+                    <tr className="text-left">
+                      <th className="px-2 py-2 font-medium">When</th>
+                      <th className="px-2 py-2 font-medium">Event</th>
+                      <th className="px-2 py-2 font-medium">Actor</th>
+                      <th className="px-2 py-2 font-medium">Target org</th>
+                      <th className="px-2 py-2 font-medium">Target user</th>
+                      <th className="px-2 py-2 font-medium">IP</th>
+                      <th className="px-2 py-2 font-medium">OK</th>
+                      <th className="px-2 py-2 font-medium"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditData.rows.map((row) => {
+                      const isOpen = expandedAuditRow === row.id;
+                      const details = row.details || {};
+                      const targetUserId = details.targetUserId || null;
+                      return (
+                        <Fragment key={row.id}>
+                          <tr className="border-t hover:bg-muted/30" data-testid={`row-audit-${row.id}`}>
+                            <td className="px-2 py-2 whitespace-nowrap">{new Date(row.createdAt).toLocaleString()}</td>
+                            <td className="px-2 py-2"><code className="text-[11px]">{row.eventType}</code></td>
+                            <td className="px-2 py-2">
+                              {row.actorUsername || row.actorFullName || (row.userId ? <span className="text-muted-foreground">{row.userId.slice(0, 8)}…</span> : <span className="text-muted-foreground">—</span>)}
+                            </td>
+                            <td className="px-2 py-2">
+                              {row.orgName ? (
+                                <span>{row.orgName}{row.orgSlug ? <span className="text-muted-foreground"> ({row.orgSlug})</span> : null}</span>
+                              ) : details.deletedOrgId ? (
+                                <span className="text-muted-foreground">{details.before?.name || details.deletedOrgId} (deleted)</span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-2">
+                              {targetUserId ? <span className="text-muted-foreground">{String(targetUserId).slice(0, 8)}…</span> : <span className="text-muted-foreground">—</span>}
+                            </td>
+                            <td className="px-2 py-2 whitespace-nowrap">{row.ipAddress || <span className="text-muted-foreground">—</span>}</td>
+                            <td className="px-2 py-2">
+                              {row.success ? (
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                              ) : (
+                                <XCircle className="h-3.5 w-3.5 text-rose-600" />
+                              )}
+                            </td>
+                            <td className="px-2 py-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-1.5"
+                                onClick={() => setExpandedAuditRow(isOpen ? null : row.id)}
+                                data-testid={`button-audit-toggle-${row.id}`}
+                              >
+                                {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                              </Button>
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr className="bg-muted/20 border-t" data-testid={`row-audit-details-${row.id}`}>
+                              <td colSpan={8} className="px-3 py-2">
+                                <div className="space-y-1 text-[11px]">
+                                  {row.userAgent && (
+                                    <div><span className="text-muted-foreground">UA:</span> {row.userAgent}</div>
+                                  )}
+                                  <pre className="bg-background border rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(details, null, 2)}</pre>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {auditData && auditData.total > AUDIT_PAGE_SIZE && (
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-xs text-muted-foreground" data-testid="text-audit-page-info">
+                  Showing {auditOffset + 1}–{Math.min(auditOffset + AUDIT_PAGE_SIZE, auditData.total)} of {auditData.total}
+                </span>
+                <div className="flex gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={auditOffset === 0}
+                    onClick={() => setAuditOffset(Math.max(0, auditOffset - AUDIT_PAGE_SIZE))}
+                    data-testid="button-audit-prev"
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={auditOffset + AUDIT_PAGE_SIZE >= auditData.total}
+                    onClick={() => setAuditOffset(auditOffset + AUDIT_PAGE_SIZE)}
+                    data-testid="button-audit-next"
+                  >
+                    Next
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>

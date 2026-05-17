@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray, count, ilike, or, gte, lte } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, count, ilike, or, gte, lte, type SQL } from "drizzle-orm";
 import { db } from "./db";
 import { DEFAULT_DEPARTMENTS } from "@shared/schema";
 import {
@@ -163,6 +163,21 @@ export interface IStorage {
     success: boolean;
   }): Promise<AuthAuditLogEntry>;
   getAuthAuditLog(orgId: string, limit?: number): Promise<AuthAuditLogEntry[]>;
+  getAllAuthAuditLogs(opts: {
+    eventTypes?: string[];
+    since?: Date;
+    until?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<{
+    rows: Array<AuthAuditLogEntry & {
+      orgName: string | null;
+      orgSlug: string | null;
+      actorUsername: string | null;
+      actorFullName: string | null;
+    }>;
+    total: number;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1002,6 +1017,65 @@ export class DatabaseStorage implements IStorage {
       .where(eq(authAuditLog.orgId, orgId))
       .orderBy(desc(authAuditLog.createdAt))
       .limit(limit);
+  }
+
+  async getAllAuthAuditLogs(opts: {
+    eventTypes?: string[];
+    since?: Date;
+    until?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<{
+    rows: Array<AuthAuditLogEntry & {
+      orgName: string | null;
+      orgSlug: string | null;
+      actorUsername: string | null;
+      actorFullName: string | null;
+    }>;
+    total: number;
+  }> {
+    const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
+    const offset = Math.max(opts.offset ?? 0, 0);
+    const conds: SQL[] = [];
+    if (opts.eventTypes && opts.eventTypes.length > 0) {
+      conds.push(inArray(authAuditLog.eventType, opts.eventTypes));
+    }
+    if (opts.since) conds.push(gte(authAuditLog.createdAt, opts.since));
+    if (opts.until) conds.push(lte(authAuditLog.createdAt, opts.until));
+    const whereClause: SQL | undefined = conds.length > 0 ? and(...conds) : undefined;
+
+    const baseRows = await db
+      .select({
+        id: authAuditLog.id,
+        orgId: authAuditLog.orgId,
+        userId: authAuditLog.userId,
+        eventType: authAuditLog.eventType,
+        authSource: authAuditLog.authSource,
+        tenantResolved: authAuditLog.tenantResolved,
+        ipAddress: authAuditLog.ipAddress,
+        userAgent: authAuditLog.userAgent,
+        details: authAuditLog.details,
+        success: authAuditLog.success,
+        createdAt: authAuditLog.createdAt,
+        orgName: orgs.name,
+        orgSlug: orgs.slug,
+        actorUsername: users.username,
+        actorFullName: users.fullName,
+      })
+      .from(authAuditLog)
+      .leftJoin(orgs, eq(authAuditLog.orgId, orgs.id))
+      .leftJoin(users, eq(authAuditLog.userId, users.id))
+      .where(whereClause)
+      .orderBy(desc(authAuditLog.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const [{ value: total }] = await db
+      .select({ value: count() })
+      .from(authAuditLog)
+      .where(whereClause);
+
+    return { rows: baseRows, total: Number(total) };
   }
 
   async getFailedInboundEmails(limit: number = 25): Promise<InboundEmailLog[]> {

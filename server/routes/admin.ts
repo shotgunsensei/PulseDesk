@@ -21,6 +21,63 @@ const purgeAuditSchema = z.object({
   days: z.number().int().min(7).max(3650),
 });
 
+const ADMIN_AUDIT_EVENT_TYPES = [
+  "admin_org_deleted",
+  "admin_org_plan_changed",
+  "admin_membership_role_changed",
+  "org_membership_role_changed",
+  "admin_audit_log_purged",
+] as const;
+
+router.get("/api/admin/audit", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const querySchema = z.object({
+      eventTypes: z.string().optional(),
+      since: z.string().datetime().optional(),
+      until: z.string().datetime().optional(),
+      limit: z.coerce.number().int().min(1).max(500).optional(),
+      offset: z.coerce.number().int().min(0).optional(),
+    });
+    const parsed = querySchema.safeParse(req.query);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid query", details: parsed.error.flatten() });
+    }
+    const requested = parsed.data.eventTypes
+      ? parsed.data.eventTypes.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+    if (requested.length > 0) {
+      const invalid = requested.filter(
+        (t) => !(ADMIN_AUDIT_EVENT_TYPES as readonly string[]).includes(t)
+      );
+      if (invalid.length > 0) {
+        return res.status(400).json({
+          error: "Unknown event types",
+          invalid,
+          allowed: ADMIN_AUDIT_EVENT_TYPES,
+        });
+      }
+    }
+    const eventTypes = requested.length > 0 ? requested : [...ADMIN_AUDIT_EVENT_TYPES];
+
+    const result = await storage.getAllAuthAuditLogs({
+      eventTypes,
+      since: parsed.data.since ? new Date(parsed.data.since) : undefined,
+      until: parsed.data.until ? new Date(parsed.data.until) : undefined,
+      limit: parsed.data.limit ?? 100,
+      offset: parsed.data.offset ?? 0,
+    });
+    res.json({
+      rows: result.rows,
+      total: result.total,
+      limit: parsed.data.limit ?? 100,
+      offset: parsed.data.offset ?? 0,
+      availableEventTypes: ADMIN_AUDIT_EVENT_TYPES,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post("/api/admin/audit/purge", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
   try {
     const parsed = purgeAuditSchema.safeParse(req.body);
