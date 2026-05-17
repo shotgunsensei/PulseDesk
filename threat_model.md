@@ -65,9 +65,18 @@ Boundaries enforced:
   - **Mitigation:** signature verified with `STRIPE_WEBHOOK_SECRET` before
     body parse.
 - **Threat:** Forged SendGrid inbound payload → ticket spam / cross-org write.
-  - **Mitigation:** alias-based routing — payload must include an alias that
-    maps to a real org's `email_settings.inbound_alias`. **Gap:** no
-    SendGrid IP allowlist or HMAC verification yet.
+  - **Mitigation:** alias-based routing plus inbound webhook authentication
+    (`server/middleware/inboundEmailAuth.ts`). For the `sendgrid` provider
+    the request must satisfy at least one of: a valid signed-event-webhook
+    signature (`SENDGRID_WEBHOOK_VERIFICATION_KEY`), HTTP Basic Auth
+    (`SENDGRID_INBOUND_BASIC_AUTH`), or origin IP in
+    `SENDGRID_INBOUND_IP_ALLOWLIST` (matched against `req.ip` only, which
+    is resolved via Express's configured `trust proxy` setting — raw
+    `X-Forwarded-For` values are not consulted, to block XFF spoofing).
+    In production, the route fails closed
+    with `401` when none of these envs are configured. Forged/unsigned
+    requests are recorded in `inbound_email_log` with `status='rejected'`
+    and `status_reason='Forged inbound request: …'` (orgId null).
 
 ### Tampering
 
@@ -178,7 +187,10 @@ Open items specific to this surface:
    scoped per-route, not global. Other `/api/auth/*` routes (m365,
    logout, change-password, config, role-mappings, audit-log) are still
    unlimited; `/api/email/inbound/*` rate limiting is still open.
-2. Add HMAC or IP allowlist for SendGrid inbound webhook.
+2. **Done (2026-05-17)** — SendGrid inbound webhook now requires a valid
+   signature header, HTTP Basic Auth, or source IP allowlist via
+   `server/middleware/inboundEmailAuth.ts`. Forged requests return `401`
+   and are persisted to `inbound_email_log` with `status='rejected'`.
 3. Audit-log destructive admin actions (org delete, plan change, role
    change, audit purge).
 4. Upgrade `drizzle-orm` to ≥ 0.45.2 (CVE-2026-39356) and other npm high

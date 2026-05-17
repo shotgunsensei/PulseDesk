@@ -27,6 +27,7 @@ import {
   forcePollForOrg,
   disablePollerForOrg,
 } from "../services/imapPoller";
+import { verifyInboundRequest } from "../middleware/inboundEmailAuth";
 
 const router = Router();
 
@@ -302,7 +303,31 @@ router.post("/api/email/inbound/:provider", async (req: Request, res: Response) 
       if (typeof val === "string") headerObj[key] = val;
     }
 
-    if (!provider.verifySignature(req.body, headerObj)) {
+    const inboundAuth = verifyInboundRequest(providerName, req);
+    if (!inboundAuth.ok) {
+      try {
+        const fromField = typeof req.body?.from === "string" ? req.body.from : "";
+        const toField = typeof req.body?.to === "string" ? req.body.to : "";
+        await db.insert(inboundEmailLog).values({
+          orgId: null,
+          fromEmail: (fromField.match(/<(.+?)>/)?.[1] || fromField || "unknown").slice(0, 255),
+          fromName: "",
+          toAddress: (toField.match(/<(.+?)>/)?.[1] || toField || "unknown").slice(0, 255),
+          subject: typeof req.body?.subject === "string" ? req.body.subject.slice(0, 500) : "(forged inbound)",
+          bodyPlain: "",
+          bodyHtml: "",
+          status: "rejected",
+          statusReason: `Forged inbound request: ${inboundAuth.reason}`,
+          provider: providerName,
+        });
+      } catch (logErr: any) {
+        console.error("[email/inbound] Failed to log forged request:", logErr?.message);
+      }
+      console.warn(`[email/inbound] Rejected forged ${providerName} request from ${req.ip}: ${inboundAuth.reason}`);
+      return res.status(inboundAuth.status).json({ error: "Unauthorized" });
+    }
+
+    if (providerName !== "sendgrid" && !provider.verifySignature(req.body, headerObj)) {
       return res.status(401).json({ error: "Invalid webhook signature" });
     }
 

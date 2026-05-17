@@ -77,6 +77,9 @@ node scripts/check-bundle-size.mjs   # post-build size guard
 | `STRIPE_SECRET_KEY` | yes (for billing) | Stripe API |
 | `STRIPE_WEBHOOK_SECRET` | yes (for billing) | Webhook signature verification |
 | `SENDGRID_API_KEY` | optional | For Inbound Parse provider |
+| `SENDGRID_INBOUND_BASIC_AUTH` | recommended in prod | `user:pass` expected in the `Authorization: Basic …` header of inbound POSTs. Configure SendGrid Inbound Parse to use a URL like `https://user:pass@your-host/api/email/inbound/sendgrid`. |
+| `SENDGRID_INBOUND_IP_ALLOWLIST` | alternative to basic auth | Comma-separated list of allowed source IPs (exact match, no CIDR). Compared against the Express-resolved `req.ip` only — `X-Forwarded-For` is intentionally not consulted directly, so the deployment must have `trust proxy` configured for the upstream proxy. Use the explicit IPs SendGrid publishes for inbound parse. |
+| `SENDGRID_WEBHOOK_VERIFICATION_KEY` | optional | ECDSA public key for SendGrid signed event/inbound webhooks (`X-Twilio-Email-Event-Webhook-Signature`). |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | optional | Default Google OAuth client (most orgs use per-org credentials instead) |
 | `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | optional | Default Microsoft OAuth client (most orgs use per-org credentials instead) |
 
