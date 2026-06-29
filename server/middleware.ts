@@ -3,6 +3,11 @@ import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import type { Org, OrgAuthConfig } from "@shared/schema";
+import {
+  getCurrentEntitlementSnapshotForRequest,
+  isSnapshotActive,
+  snapshotAllowsFeature,
+} from "./services/operatorosEntitlements";
 
 export interface ResolvedTenantRequest extends Request {
   resolvedOrg: Org;
@@ -27,9 +32,26 @@ export async function verifyPassword(password: string, storedHash: string): Prom
   return bcrypt.compare(password, storedHash);
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+function destroyOperatorOsSession(req: Request, res: Response, code: string) {
+  return req.session.destroy(() => {
+    res.status(403).json({ error: "OperatorOS entitlement required", code });
+  });
+}
+
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
     return res.status(401).json({ error: "Unauthorized", code: "SESSION_EXPIRED" });
+  }
+  if (req.session.authSource === "operatoros") {
+    const snapshot = await getCurrentEntitlementSnapshotForRequest(req, {
+      refreshIfMissing: true,
+    });
+    if (snapshot && !isSnapshotActive(snapshot)) {
+      return destroyOperatorOsSession(req, res, "OPERATOROS_ENTITLEMENT_REVOKED");
+    }
+    if (!snapshot && req.session.operatorOsTenantId) {
+      return destroyOperatorOsSession(req, res, "OPERATOROS_ENTITLEMENT_MISSING");
+    }
   }
   next();
 }
@@ -44,6 +66,15 @@ export function requireOrg(req: Request, res: Response, next: NextFunction) {
 export async function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
     return res.status(401).json({ error: "Unauthorized", code: "SESSION_EXPIRED" });
+  }
+  if (req.session.authSource === "operatoros") {
+    const snapshot = await getCurrentEntitlementSnapshotForRequest(req, {
+      refreshIfMissing: true,
+      refreshIfStale: true,
+    });
+    if (!isSnapshotActive(snapshot)) {
+      return destroyOperatorOsSession(req, res, "OPERATOROS_ENTITLEMENT_REQUIRED");
+    }
   }
   const user = await storage.getUser(req.session.userId);
   if (!user?.isSuperAdmin) {
@@ -120,17 +151,77 @@ export function requireFeature(feature: string) {
     if (!req.session.orgId) {
       return res.status(400).json({ error: "No organization selected" });
     }
-    const org = await storage.getOrg(req.session.orgId);
-    if (!org) {
-      return res.status(404).json({ error: "Organization not found" });
+
+    const snapshot = await getCurrentEntitlementSnapshotForRequest(req, {
+      refreshIfMissing: true,
+      refreshIfStale: true,
+    });
+    if (snapshotAllowsFeature(snapshot, feature)) {
+      return next();
     }
-    const plan = (org as any).plan || "free";
-    const { PLAN_LIMITS } = await import("@shared/schema");
-    const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
-    if (!(limits as any)[feature]) {
-      return res.status(403).json({ error: `This feature requires an upgraded plan`, feature, requiredPlans: ["enterprise", "unlimited"] });
+
+    if (!snapshot && req.session.authSource !== "operatoros" && process.env.PULSEDESK_LOCAL_AUTH_ENABLED === "true") {
+      return next();
     }
-    next();
+
+    return res.status(403).json({
+      error: "OperatorOS entitlement does not allow this feature",
+      code: "FEATURE_NOT_ENTITLED",
+      feature,
+    });
+  };
+}
+
+export async function getCurrentEntitlementSnapshot(req: Request) {
+  return getCurrentEntitlementSnapshotForRequest(req, {
+    refreshIfMissing: true,
+    refreshIfStale: true,
+  });
+}
+
+export function requireOperatorOsModuleAccess(req: Request, res: Response, next: NextFunction) {
+  void (async () => {
+    const snapshot = await getCurrentEntitlementSnapshotForRequest(req, {
+      refreshIfMissing: true,
+      refreshIfStale: true,
+    });
+    if (isSnapshotActive(snapshot)) return next();
+    if (!snapshot && req.session.authSource !== "operatoros" && process.env.PULSEDESK_LOCAL_AUTH_ENABLED === "true") {
+      return next();
+    }
+    return destroyOperatorOsSession(req, res, "OPERATOROS_ENTITLEMENT_REQUIRED");
+  })().catch(next);
+}
+
+const MODULE_ROLE_HIERARCHY: Record<string, number> = {
+  none: 0,
+  viewer: 10,
+  module_user: 50,
+  module_admin: 100,
+};
+
+export function requireOperatorOsModuleRole(requiredRole: string) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    void (async () => {
+      const snapshot = await getCurrentEntitlementSnapshotForRequest(req, {
+        refreshIfMissing: true,
+        refreshIfStale: true,
+      });
+      if (!isSnapshotActive(snapshot)) {
+        return destroyOperatorOsSession(req, res, "OPERATOROS_ENTITLEMENT_REQUIRED");
+      }
+
+      const actualLevel = MODULE_ROLE_HIERARCHY[snapshot.moduleRole] ?? 0;
+      const requiredLevel = MODULE_ROLE_HIERARCHY[requiredRole] ?? MODULE_ROLE_HIERARCHY.module_admin;
+      if (actualLevel < requiredLevel) {
+        return res.status(403).json({
+          error: "OperatorOS module role is insufficient",
+          code: "OPERATOROS_MODULE_ROLE_REQUIRED",
+          requiredRole,
+        });
+      }
+      return next();
+    })().catch(next);
   };
 }
 

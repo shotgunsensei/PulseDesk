@@ -52,6 +52,7 @@ import {
   type OperatorOsEntitlementClaims,
 } from "../auth/operatoros-sso";
 import { ssoRateLimiter } from "../middleware/rateLimit";
+import { cacheOperatorOsEntitlementSnapshot } from "../services/operatorosEntitlements";
 
 const router = Router();
 
@@ -154,6 +155,11 @@ router.get("/sso", ssoRateLimiter, async (req, res) => {
     extractEntitlementClaims(consumeResponse, cfg.audience)
   );
   const entitlementSummary = summarizeEntitlement(entitlement);
+  const operatorOsTenantId =
+    entitlement?.operatoros_tenant_id
+    ?? entitlement?.tenant_id
+    ?? entitlement?.organization_id
+    ?? claims.organization_id;
   const targetEnabled = isTargetModuleEnabled(entitlement, cfg.audience);
   if (targetEnabled === false) {
     return reject(req, res, "entitlement_disabled", 403, claims.jti, "entitlement_denied", {
@@ -170,11 +176,7 @@ router.get("/sso", ssoRateLimiter, async (req, res) => {
       name: claims.name ?? "",
       role: claims.role,
       planSlug: entitlement?.plan_slug ?? claims.plan_slug,
-      organizationId:
-        entitlement?.operatoros_tenant_id
-        ?? entitlement?.tenant_id
-        ?? entitlement?.organization_id
-        ?? claims.organization_id,
+      organizationId: operatorOsTenantId,
       entitlement,
     });
   } catch (err: any) {
@@ -188,9 +190,45 @@ router.get("/sso", ssoRateLimiter, async (req, res) => {
     return res.status(500).json({ code: "provisioning_failed" });
   }
 
+  let cachedSnapshot = null;
+  let staleSnapshotIgnored = false;
+  const cacheSource = consumeResponse ?? entitlement?.raw ?? claims;
+  if (operatorOsTenantId) {
+    const cacheResult = await cacheOperatorOsEntitlementSnapshot(cacheSource, {
+      localUserId: provisioned.user.id,
+      localOrgId: provisioned.org.id,
+      fallbackOperatorOsUserId: claims.sub,
+      fallbackOperatorOsTenantId: operatorOsTenantId,
+      fallbackComputedAt: new Date(claims.iat * 1000),
+      moduleSlug: cfg.audience,
+    });
+    cachedSnapshot = cacheResult.snapshot;
+    staleSnapshotIgnored = cacheResult.staleIgnored;
+    if (cachedSnapshot && (!cachedSnapshot.enabled || cachedSnapshot.revokedAt)) {
+      void logAttempt(
+        req,
+        "entitlement_denied",
+        false,
+        {
+          jti: claims.jti,
+          snapshotId: cachedSnapshot.id,
+          staleIgnored: staleSnapshotIgnored,
+          entitlement: entitlementSummary,
+        },
+        provisioned.user.id,
+        provisioned.org.id
+      );
+      return res.status(403).json({ code: "entitlement_disabled" });
+    }
+  }
+
   req.session.userId = provisioned.user.id;
   req.session.orgId = provisioned.org.id;
   req.session.authSource = "operatoros";
+  req.session.operatorOsUserId = claims.sub;
+  req.session.operatorOsTenantId = operatorOsTenantId ?? undefined;
+  req.session.operatorOsModuleSlug = cfg.audience;
+  req.session.operatorOsEntitlementSnapshotId = cachedSnapshot?.id;
 
   req.session.save((err) => {
     if (err) {
@@ -217,6 +255,8 @@ router.get("/sso", ssoRateLimiter, async (req, res) => {
         localSuperAdmin: provisioned.user.isSuperAdmin,
         entitlement: entitlementSummary,
         consumeResponseReceived: consumeResponse !== null,
+        snapshotId: cachedSnapshot?.id ?? null,
+        staleSnapshotIgnored,
       },
       provisioned.user.id,
       provisioned.org.id

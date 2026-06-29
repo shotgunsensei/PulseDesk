@@ -10,6 +10,7 @@ import type { ConnectorCredentials, ConnectorProvider } from "../services/connec
 import { isGoogleConfigured } from "../services/connectors/google";
 import { isMicrosoftConfigured } from "../services/connectors/microsoft";
 import { storage } from "../storage";
+import { logAdminAction } from "../lib/adminAudit";
 
 type ConnectorEventType = "poll_success" | "poll_error" | "auth_success" | "auth_error" | "disabled" | "enabled" | "config_changed";
 import {
@@ -578,18 +579,41 @@ router.get("/api/admin/connectors/events", requireAuth, requireSuperAdmin, async
 });
 
 router.post("/api/admin/connectors/:id/force-poll", requireAuth, requireSuperAdmin, async (req, res) => {
+  const connId = String((req.params.id as string));
   try {
-    const connId = String((req.params.id as string));
+    const [connector] = await db.select().from(mailConnectors).where(connectorById(connId));
+    if (!connector) {
+      await logAdminAction(req, {
+        eventType: "admin_connector_force_poll",
+        orgId: null,
+        success: false,
+        details: { reason: "not_found", connectorId: connId },
+      });
+      return res.status(404).json({ error: "Connector not found" });
+    }
     const result = await forcePollConnector(connId);
+    await logAdminAction(req, {
+      eventType: "admin_connector_force_poll",
+      orgId: connector.orgId,
+      success: !!result.success,
+      details: { connectorId: connId, result },
+    });
     res.json(result);
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_connector_force_poll",
+      orgId: null,
+      success: false,
+      details: { connectorId: connId, error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: safeError(err) });
   }
 });
 
 router.post("/api/admin/connectors/:id/disable", requireAuth, requireSuperAdmin, async (req, res) => {
+  const connId = String((req.params.id as string));
   try {
-    const connId = String((req.params.id as string));
+    const [existing] = await db.select().from(mailConnectors).where(connectorById(connId));
     stopPollerForConnector(connId);
     const [updated] = await db.update(mailConnectors).set({
       enabled: false,
@@ -598,18 +622,43 @@ router.post("/api/admin/connectors/:id/disable", requireAuth, requireSuperAdmin,
       updatedAt: new Date(),
     }).where(connectorById(connId)).returning();
 
-    if (!updated) return res.status(404).json({ error: "Connector not found" });
+    if (!updated) {
+      await logAdminAction(req, {
+        eventType: "admin_connector_disabled",
+        orgId: null,
+        success: false,
+        details: { reason: "not_found", connectorId: connId },
+      });
+      return res.status(404).json({ error: "Connector not found" });
+    }
 
     await logEvent(updated.id, updated.orgId, "disabled", "Disabled by super admin");
+    await logAdminAction(req, {
+      eventType: "admin_connector_disabled",
+      orgId: updated.orgId,
+      success: true,
+      details: {
+        connectorId: connId,
+        before: existing ? { enabled: existing.enabled, status: existing.status } : null,
+        after: { enabled: updated.enabled, status: updated.status },
+      },
+    });
     res.json(sanitizeConnector(updated));
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_connector_disabled",
+      orgId: null,
+      success: false,
+      details: { connectorId: connId, error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: safeError(err) });
   }
 });
 
 router.post("/api/admin/connectors/:id/enable", requireAuth, requireSuperAdmin, async (req, res) => {
+  const connId = String((req.params.id as string));
   try {
-    const connId = String((req.params.id as string));
+    const [existing] = await db.select().from(mailConnectors).where(connectorById(connId));
     const [updated] = await db.update(mailConnectors).set({
       enabled: true,
       status: "active",
@@ -618,15 +667,39 @@ router.post("/api/admin/connectors/:id/enable", requireAuth, requireSuperAdmin, 
       updatedAt: new Date(),
     }).where(connectorById(connId)).returning();
 
-    if (!updated) return res.status(404).json({ error: "Connector not found" });
+    if (!updated) {
+      await logAdminAction(req, {
+        eventType: "admin_connector_enabled",
+        orgId: null,
+        success: false,
+        details: { reason: "not_found", connectorId: connId },
+      });
+      return res.status(404).json({ error: "Connector not found" });
+    }
 
     if (updated.provider !== "forwarding") {
       startPollerForConnector(updated);
     }
 
     await logEvent(updated.id, updated.orgId, "enabled", "Enabled by super admin");
+    await logAdminAction(req, {
+      eventType: "admin_connector_enabled",
+      orgId: updated.orgId,
+      success: true,
+      details: {
+        connectorId: connId,
+        before: existing ? { enabled: existing.enabled, status: existing.status } : null,
+        after: { enabled: updated.enabled, status: updated.status },
+      },
+    });
     res.json(sanitizeConnector(updated));
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_connector_enabled",
+      orgId: null,
+      success: false,
+      details: { connectorId: connId, error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: safeError(err) });
   }
 });

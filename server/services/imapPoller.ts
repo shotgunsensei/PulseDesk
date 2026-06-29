@@ -1,10 +1,11 @@
 import { db } from "../db";
-import { emailSettings, PLAN_LIMITS } from "@shared/schema";
+import { emailSettings } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { storage } from "../storage";
 import { decryptSecret } from "../auth/crypto";
 import { fetchUnseenEmails, markMessagesSeen, type ImapConfig } from "./imapClient";
 import { processInboundEmail } from "./emailProcessor";
+import { isOperatorOsFeatureEnabledForOrg } from "./operatorosEntitlements";
 
 const MAX_CONSECUTIVE_FAILURES = 5;
 const BACKOFF_BASE_MS = 30_000;
@@ -82,9 +83,8 @@ export async function startImapPolling() {
       const org = await storage.getOrg(settings.orgId);
       if (!org) continue;
 
-      const plan = (org as any).plan || "free";
-      const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
-      if (!limits.emailToTicket) continue;
+      const emailToTicketEnabled = await isOperatorOsFeatureEnabledForOrg(settings.orgId, "emailToTicket");
+      if (!emailToTicketEnabled) continue;
 
       startPollerForOrg(settings.orgId, settings);
     }
@@ -196,9 +196,8 @@ async function executePoll(orgId: string, expectedVersion: number) {
       return;
     }
 
-    const plan = (org as any).plan || "free";
-    const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
-    if (!limits.emailToTicket) {
+    const emailToTicketEnabled = await isOperatorOsFeatureEnabledForOrg(orgId, "emailToTicket");
+    if (!emailToTicketEnabled) {
       stopPollerForOrg(orgId);
       return;
     }

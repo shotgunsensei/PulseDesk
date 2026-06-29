@@ -1,7 +1,10 @@
 import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
 import { requireAuth, requireOrg, requireMinRole } from "../middleware";
-import { PLAN_LIMITS } from "@shared/schema";
+import {
+  getCurrentEntitlementSnapshotForRequest,
+  snapshotNumericLimit,
+} from "../services/operatorosEntitlements";
 
 const router = Router();
 
@@ -35,13 +38,15 @@ router.get("/api/tickets/:id/events", requireAuth, requireOrg, async (req, res) 
 
 router.post("/api/tickets", requireAuth, requireOrg, requireMinRole("staff"), async (req, res) => {
   try {
-    const org = await storage.getOrg(req.session.orgId!);
-    const plan = (org as any)?.plan || "free";
-    const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
-    if (limits.maxTickets !== Infinity) {
+    const snapshot = await getCurrentEntitlementSnapshotForRequest(req, {
+      refreshIfMissing: true,
+      refreshIfStale: true,
+    });
+    const maxTickets = snapshotNumericLimit(snapshot, "maxTickets");
+    if (maxTickets !== null) {
       const counts = await storage.getOrgCounts(req.session.orgId!);
-      if (counts.tickets >= limits.maxTickets) {
-        return res.status(403).json({ error: `Ticket limit reached (${limits.maxTickets}). Upgrade your plan for more.` });
+      if (counts.tickets >= maxTickets) {
+        return res.status(403).json({ error: `Ticket limit reached (${maxTickets}). Update the OperatorOS entitlement for more.` });
       }
     }
 

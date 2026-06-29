@@ -45,10 +45,9 @@ export default function PrivacyPolicy() {
               When your organization creates an account, we collect:
             </p>
             <ul className="list-disc list-inside text-muted-foreground space-y-1 ml-2">
-              <li>Organization name, slug identifier, and plan tier</li>
+              <li>Organization name, slug identifier, and OperatorOS entitlement identifiers</li>
               <li>Administrator name, username, and hashed password</li>
               <li>Staff member names, usernames, roles, and department assignments</li>
-              <li>Billing contact information and payment method details (processed by Stripe — see Section 5)</li>
             </ul>
 
             <h3 className="text-base font-semibold mb-2 mt-4">2.2 Ticket & Operational Data</h3>
@@ -93,7 +92,7 @@ export default function PrivacyPolicy() {
               <li>Process and route support tickets and operational requests within your organization</li>
               <li>Authenticate users and enforce role-based access controls</li>
               <li>Send email notifications related to ticket activity (status changes, assignments, comments)</li>
-              <li>Process subscription payments and manage your plan</li>
+              <li>Validate module access using OperatorOS SSO and entitlement snapshots</li>
               <li>Monitor service health, diagnose errors, and improve reliability</li>
               <li>Comply with legal obligations and enforce our Terms of Service</li>
             </ul>
@@ -126,14 +125,11 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-xl font-semibold mb-3">5. Third-Party Services</h2>
 
-            <h3 className="text-base font-semibold mb-2 mt-4">5.1 Stripe (Payments)</h3>
+            <h3 className="text-base font-semibold mb-2 mt-4">5.1 OperatorOS (Access and Entitlements)</h3>
             <p className="text-muted-foreground leading-relaxed">
-              Subscription billing is handled by Stripe, Inc. When you subscribe to a paid plan, your
-              payment card details are transmitted directly to Stripe and are never stored on our
-              servers. Stripe's privacy policy is available at{" "}
-              <a href="https://stripe.com/privacy" target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                stripe.com/privacy
-              </a>.
+              PulseDesk receives SSO identity claims and module entitlement snapshots from OperatorOS.
+              Subscription terms, seats, access status, and account history are managed in OperatorOS,
+              not inside the PulseDesk child application.
             </p>
 
             <h3 className="text-base font-semibold mb-2 mt-4">5.2 Google (Gmail / Google Workspace)</h3>
@@ -176,8 +172,8 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-xl font-semibold mb-3">6. Data Retention</h2>
             <p className="text-muted-foreground leading-relaxed">
-              We retain your organization's data for the duration of your active subscription plus a
-              90-day grace period following cancellation or non-payment, during which you may export
+              We retain your organization's data while OperatorOS reports active PulseDesk module access plus a
+              90-day grace period following entitlement revocation, during which you may export
               or request your data. After the grace period, data may be permanently deleted. OAuth
               tokens are deleted immediately when you disconnect a mail connector. Hashed passwords
               and session records are retained only as long as the associated account exists.

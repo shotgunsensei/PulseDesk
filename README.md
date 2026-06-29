@@ -2,7 +2,7 @@
 
 **The operational heartbeat of your healthcare facility.**
 
-PulseDesk is a multi-tenant healthcare operations coordination platform: ticketing, departments, assets, supply requests, facility requests, vendors, analytics, billing, and email-to-ticket — all role-gated and ready for HIPAA-conscious workflows.
+PulseDesk is a multi-tenant healthcare operations coordination platform: ticketing, departments, assets, supply requests, facility requests, vendors, analytics, and email-to-ticket — all role-gated and ready for HIPAA-conscious workflows.
 
 Live: [pulsedesk.support](https://pulsedesk.support)
 
@@ -30,9 +30,9 @@ PulseDesk is most often paired with **TechDeck** (for the IT teams that keep hea
 
 - **Frontend:** React 18 + Vite + TypeScript + wouter + TanStack Query v5 + shadcn/ui + Tailwind
 - **Backend:** Express + tsx + Drizzle ORM + PostgreSQL
-- **Auth:** Local + Microsoft 365 Entra ID (per-org OAuth, multi-tenant) + Google Workspace OAuth
+- **Auth:** OperatorOS SSO + local development/reviewer fallback + Microsoft 365 Entra ID (per-org OAuth, multi-tenant) + Google Workspace OAuth
 - **Email:** SendGrid Inbound Parse + IMAP polling + Google/Microsoft connector OAuth
-- **Billing:** Stripe (per-org subscriptions, webhook-driven plan sync)
+- **Access:** OperatorOS owns pricing, checkout, subscriptions, seats, and PulseDesk module entitlements
 - **PWA:** installable, theme-aware, offline-capable shell
 
 ## Architecture
@@ -45,7 +45,7 @@ client/             React + Vite SPA
     lib/            queryClient, auth context, permissions, helpers
 
 server/             Express API
-  routes/           Feature routes (tickets, billing, email, admin, ...)
+  routes/           Feature routes (tickets, SSO, email, admin, ...)
   auth/             Argon2id-style password hashing + Entra OAuth + crypto
   email/            Inbound parsers + IMAP poller + processor pipeline
   storage.ts        Single source of truth for all DB access (IStorage)
@@ -53,7 +53,7 @@ server/             Express API
 
 shared/             Code shared between client + server
   schema.ts         Drizzle tables + Zod insert schemas + types
-  billingConfig.ts  Plan definitions and feature gates
+  billingConfig.ts  Deprecated legacy plan definitions retained for rollback only
   permissions.ts    Role helpers
 ```
 
@@ -74,8 +74,14 @@ node scripts/check-bundle-size.mjs   # post-build size guard
 |---|---|---|
 | `DATABASE_URL` | yes | Postgres connection string |
 | `SESSION_SECRET` | yes | Session signing + Entra secret encryption |
-| `STRIPE_SECRET_KEY` | yes (for billing) | Stripe API |
-| `STRIPE_WEBHOOK_SECRET` | yes (for billing) | Webhook signature verification |
+| `MODULE_SSO_SECRET` | yes | OperatorOS SSO JWT verification and entitlement webhook HMAC |
+| `OPERATOROS_BASE_URL` | yes | Expected OperatorOS issuer and parent launch URL |
+| `OPERATOROS_SSO_AUDIENCE` | recommended | SSO audience, defaults to `pulsedesk` |
+| `OPERATOROS_SSO_ENV` | yes | Expected SSO environment claim |
+| `OPERATOROS_SSO_CONSUME_URL` | yes in production | Full OperatorOS token-consume URL |
+| `OPERATOROS_SERVICE_TOKEN` | recommended | Server-to-server entitlement introspection and webhook registration |
+| `PULSEDESK_MASTER_ADMIN_EMAIL` | optional | Comma-separated master-admin emails; defaults to `john@shotgunninjas.com` |
+| `PULSEDESK_LOCAL_AUTH_ENABLED` | development/reviewer only | Enables local username/password login and registration |
 | `SENDGRID_API_KEY` | optional | For Inbound Parse provider |
 | `SENDGRID_INBOUND_BASIC_AUTH` | recommended in prod | `user:pass` expected in the `Authorization: Basic …` header of inbound POSTs. Configure SendGrid Inbound Parse to use a URL like `https://user:pass@your-host/api/email/inbound/sendgrid`. |
 | `SENDGRID_INBOUND_IP_ALLOWLIST` | alternative to basic auth | Comma-separated list of allowed source IPs (exact match, no CIDR). Compared against the Express-resolved `req.ip` only — `X-Forwarded-For` is intentionally not consulted directly, so the deployment must have `trust proxy` configured for the upstream proxy. Use the explicit IPs SendGrid publishes for inbound parse. |
@@ -89,8 +95,7 @@ OAuth credentials are stored **per-org** in `org_email_connectors` and `org_auth
 
 - Replit Deployments (autoscale or reserved VM). Build runs `npm run build`,
   start runs `npm run start` (esbuild server bundle in `dist/index.cjs`).
-- Stripe webhook endpoint: `POST /api/billing/webhook` (raw body, signature
-  verified).
+- OperatorOS entitlement webhook endpoint: `POST /webhooks/operatoros/entitlements` (raw body, HMAC signature verified).
 - SendGrid Inbound Parse: `POST /api/email/inbound/sendgrid` (alias routes
   to org).
 - Health: `GET /api/health`.
@@ -99,7 +104,7 @@ OAuth credentials are stored **per-org** in `org_email_connectors` and `org_auth
 
 - Multi-tenant by design — every API route is org-scoped via `requireOrg`.
 - OAuth credentials are stored **per-org**; no global secret required for production.
-- Stripe plans drive feature gates via `shared/billingConfig.ts`.
+- OperatorOS entitlement snapshots drive app access and feature gates. PulseDesk-local Stripe routes and plan config are deprecated legacy rollback code and are not mounted in production.
 - All interactive elements carry `data-testid` for stable test selectors.
 - Admin-only pages are lazy-loaded via `React.lazy` to keep the main bundle small.
 - Use `apiRequest` from `@/lib/queryClient` for mutations; cache invalidation by `queryKey` array segments.

@@ -16,6 +16,7 @@ import {
   orgAuthConfig,
   orgRoleMappings,
   authAuditLog,
+  operatorOsEntitlementSnapshots,
   notifications,
   onboardingItems,
   inboundEmailLog,
@@ -43,29 +44,32 @@ import {
   type InsertOrgAuthConfig,
   type OrgRoleMapping,
   type AuthAuditLogEntry,
+  type OperatorOsEntitlementSnapshot,
   type OnboardingItem,
   type InboundEmailLog,
 } from "@shared/schema";
 import { randomBytes } from "crypto";
 import type { OperatorOsEntitlementClaims, OperatorOsRole } from "./auth/operatoros-sso";
+import { isMasterAdminEmail, normalizeEmail } from "./config/masterAdmin";
 
 type PulseDeskMembershipRole = "owner" | "admin" | "supervisor" | "technician" | "staff" | "readonly";
 
-const DEFAULT_OPERATOROS_MASTER_ADMIN_EMAIL = "john@shotgunninjas.com";
-
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-function isOperatorOsMasterAdminEmail(email: string): boolean {
-  const configuredEmails = [
-    DEFAULT_OPERATOROS_MASTER_ADMIN_EMAIL,
-    ...(process.env.PULSEDESK_MASTER_ADMIN_EMAIL ?? "").split(","),
-  ]
-    .map(normalizeEmail)
-    .filter(Boolean);
-
-  return configuredEmails.includes(normalizeEmail(email));
+export interface UpsertOperatorOsEntitlementSnapshotInput {
+  operatorOsUserId: string;
+  operatorOsTenantId: string;
+  localUserId?: string | null;
+  localOrgId?: string | null;
+  moduleSlug: string;
+  enabled: boolean;
+  accessLevel?: string | null;
+  moduleRole?: string | null;
+  tenantRole?: string | null;
+  tenantRoleAlias?: string | null;
+  subscriptionStatus?: string | null;
+  features?: Record<string, unknown> | null;
+  rawSnapshot?: unknown;
+  computedAt: Date;
+  revokedAt?: Date | null;
 }
 
 function normalizeRoleValue(value: string | null | undefined): string {
@@ -96,7 +100,7 @@ function mapOperatorOsRoleToPulseDeskRole(input: {
   role: OperatorOsRole;
   entitlement?: OperatorOsEntitlementClaims | null;
 }): PulseDeskMembershipRole {
-  if (input.role === "super_admin" || isOperatorOsMasterAdminEmail(input.email)) {
+  if (input.role === "super_admin" || isMasterAdminEmail(input.email)) {
     return "owner";
   }
   if (input.role === "admin") {
@@ -196,6 +200,32 @@ export interface IStorage {
     organizationId: string | null;
     entitlement?: OperatorOsEntitlementClaims | null;
   }): Promise<{ user: User; org: Org; userCreated: boolean; orgCreated: boolean }>;
+  upsertOperatorOsEntitlementSnapshot(input: UpsertOperatorOsEntitlementSnapshotInput): Promise<{
+    snapshot: OperatorOsEntitlementSnapshot;
+    staleIgnored: boolean;
+  }>;
+  getOperatorOsEntitlementSnapshotById(id: string): Promise<OperatorOsEntitlementSnapshot | undefined>;
+  getOperatorOsEntitlementSnapshot(
+    operatorOsUserId: string,
+    operatorOsTenantId: string,
+    moduleSlug: string
+  ): Promise<OperatorOsEntitlementSnapshot | undefined>;
+  getCurrentOperatorOsEntitlementSnapshot(
+    localUserId: string,
+    localOrgId: string,
+    moduleSlug: string
+  ): Promise<OperatorOsEntitlementSnapshot | undefined>;
+  getLatestOperatorOsEntitlementSnapshotForOrg(
+    localOrgId: string,
+    moduleSlug: string
+  ): Promise<OperatorOsEntitlementSnapshot | undefined>;
+  revokeOperatorOsEntitlementSnapshot(
+    operatorOsUserId: string,
+    operatorOsTenantId: string,
+    moduleSlug: string,
+    computedAt?: Date,
+    rawSnapshot?: unknown
+  ): Promise<{ snapshot: OperatorOsEntitlementSnapshot; staleIgnored: boolean }>;
 
   getOrgRoleMappings(orgId: string): Promise<OrgRoleMapping[]>;
   createOrgRoleMapping(orgId: string, entraGroupId: string, pulsedeskRole: string, displayLabel?: string): Promise<OrgRoleMapping>;
@@ -911,7 +941,7 @@ export class DatabaseStorage implements IStorage {
     entitlement?: OperatorOsEntitlementClaims | null;
   }): Promise<{ user: User; org: Org; userCreated: boolean; orgCreated: boolean }> {
     const normalizedEmail = normalizeEmail(input.email);
-    const isMasterAdmin = input.role === "super_admin" || isOperatorOsMasterAdminEmail(normalizedEmail);
+    const isMasterAdmin = input.role === "super_admin" || isMasterAdminEmail(normalizedEmail);
     const desiredOrgRole = mapOperatorOsRoleToPulseDeskRole({
       email: normalizedEmail,
       role: input.role,
@@ -1022,6 +1052,138 @@ export class DatabaseStorage implements IStorage {
     }
 
     return result;
+  }
+
+  async upsertOperatorOsEntitlementSnapshot(input: UpsertOperatorOsEntitlementSnapshotInput): Promise<{
+    snapshot: OperatorOsEntitlementSnapshot;
+    staleIgnored: boolean;
+  }> {
+    const moduleSlug = input.moduleSlug.trim().toLowerCase();
+    const existing = await this.getOperatorOsEntitlementSnapshot(
+      input.operatorOsUserId,
+      input.operatorOsTenantId,
+      moduleSlug
+    );
+
+    if (existing && existing.computedAt && input.computedAt < existing.computedAt) {
+      return { snapshot: existing, staleIgnored: true };
+    }
+
+    const values = {
+      operatorOsUserId: input.operatorOsUserId,
+      operatorOsTenantId: input.operatorOsTenantId,
+      localUserId: input.localUserId ?? existing?.localUserId ?? null,
+      localOrgId: input.localOrgId ?? existing?.localOrgId ?? null,
+      moduleSlug,
+      enabled: input.enabled,
+      accessLevel: input.accessLevel || "none",
+      moduleRole: input.moduleRole || "none",
+      tenantRole: input.tenantRole ?? null,
+      tenantRoleAlias: input.tenantRoleAlias ?? null,
+      subscriptionStatus: input.subscriptionStatus ?? null,
+      features: input.features ?? {},
+      rawSnapshot: input.rawSnapshot ?? {},
+      computedAt: input.computedAt,
+      receivedAt: new Date(),
+      revokedAt: input.enabled ? null : (input.revokedAt ?? new Date()),
+    };
+
+    if (!existing) {
+      const [created] = await db.insert(operatorOsEntitlementSnapshots).values(values).returning();
+      return { snapshot: created, staleIgnored: false };
+    }
+
+    const [updated] = await db
+      .update(operatorOsEntitlementSnapshots)
+      .set(values)
+      .where(eq(operatorOsEntitlementSnapshots.id, existing.id))
+      .returning();
+    return { snapshot: updated, staleIgnored: false };
+  }
+
+  async getOperatorOsEntitlementSnapshotById(id: string): Promise<OperatorOsEntitlementSnapshot | undefined> {
+    const [snapshot] = await db
+      .select()
+      .from(operatorOsEntitlementSnapshots)
+      .where(eq(operatorOsEntitlementSnapshots.id, id));
+    return snapshot;
+  }
+
+  async getOperatorOsEntitlementSnapshot(
+    operatorOsUserId: string,
+    operatorOsTenantId: string,
+    moduleSlug: string
+  ): Promise<OperatorOsEntitlementSnapshot | undefined> {
+    const [snapshot] = await db
+      .select()
+      .from(operatorOsEntitlementSnapshots)
+      .where(and(
+        eq(operatorOsEntitlementSnapshots.operatorOsUserId, operatorOsUserId),
+        eq(operatorOsEntitlementSnapshots.operatorOsTenantId, operatorOsTenantId),
+        eq(operatorOsEntitlementSnapshots.moduleSlug, moduleSlug.trim().toLowerCase())
+      ));
+    return snapshot;
+  }
+
+  async getCurrentOperatorOsEntitlementSnapshot(
+    localUserId: string,
+    localOrgId: string,
+    moduleSlug: string
+  ): Promise<OperatorOsEntitlementSnapshot | undefined> {
+    const [snapshot] = await db
+      .select()
+      .from(operatorOsEntitlementSnapshots)
+      .where(and(
+        eq(operatorOsEntitlementSnapshots.localUserId, localUserId),
+        eq(operatorOsEntitlementSnapshots.localOrgId, localOrgId),
+        eq(operatorOsEntitlementSnapshots.moduleSlug, moduleSlug.trim().toLowerCase())
+      ))
+      .orderBy(desc(operatorOsEntitlementSnapshots.computedAt))
+      .limit(1);
+    return snapshot;
+  }
+
+  async getLatestOperatorOsEntitlementSnapshotForOrg(
+    localOrgId: string,
+    moduleSlug: string
+  ): Promise<OperatorOsEntitlementSnapshot | undefined> {
+    const [snapshot] = await db
+      .select()
+      .from(operatorOsEntitlementSnapshots)
+      .where(and(
+        eq(operatorOsEntitlementSnapshots.localOrgId, localOrgId),
+        eq(operatorOsEntitlementSnapshots.moduleSlug, moduleSlug.trim().toLowerCase())
+      ))
+      .orderBy(desc(operatorOsEntitlementSnapshots.computedAt))
+      .limit(1);
+    return snapshot;
+  }
+
+  async revokeOperatorOsEntitlementSnapshot(
+    operatorOsUserId: string,
+    operatorOsTenantId: string,
+    moduleSlug: string,
+    computedAt: Date = new Date(),
+    rawSnapshot: unknown = {}
+  ): Promise<{ snapshot: OperatorOsEntitlementSnapshot; staleIgnored: boolean }> {
+    const existing = await this.getOperatorOsEntitlementSnapshot(operatorOsUserId, operatorOsTenantId, moduleSlug);
+    return this.upsertOperatorOsEntitlementSnapshot({
+      operatorOsUserId,
+      operatorOsTenantId,
+      localUserId: existing?.localUserId ?? null,
+      localOrgId: existing?.localOrgId ?? null,
+      moduleSlug,
+      enabled: false,
+      accessLevel: "none",
+      moduleRole: "none",
+      tenantRole: existing?.tenantRole ?? null,
+      tenantRoleAlias: existing?.tenantRoleAlias ?? null,
+      subscriptionStatus: existing?.subscriptionStatus ?? null,
+      features: {},
+      rawSnapshot,
+      computedAt,
+      revokedAt: new Date(),
+    });
   }
 
   async getOrgRoleMappings(orgId: string): Promise<OrgRoleMapping[]> {

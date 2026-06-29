@@ -2,19 +2,34 @@ import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
 import { requireAuth, requireSuperAdmin } from "../middleware";
 import { db } from "../db";
-import { users, memberships, orgs } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import {
+  users,
+  memberships,
+  orgs,
+  mailConnectors,
+  operatorOsEntitlementSnapshots,
+  authAuditLog,
+} from "@shared/schema";
+import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
-import { syncOrgPlanFromStripe } from "./billing";
 import { logAdminAction } from "../lib/adminAudit";
+import { getOperatorOsModuleSlug } from "../services/operatorosEntitlements";
+import { getMasterAdminEmails, isMasterAdminEmail } from "../config/masterAdmin";
 
 const router = Router();
 
-const VALID_PLANS = ["free", "pro", "pro_plus", "enterprise", "unlimited"] as const;
 const VALID_ROLES = ["owner", "admin", "supervisor", "staff", "technician", "readonly"] as const;
 
-const updatePlanSchema = z.object({
-  plan: z.enum(VALID_PLANS),
+const updateOrgProfileSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  slug: z.string().min(1).max(120).regex(/^[a-z0-9-]+$/).optional(),
+  phone: z.string().max(100).nullable().optional(),
+  email: z.string().email().or(z.literal("")).nullable().optional(),
+  address: z.string().max(500).nullable().optional(),
+  authMode: z.enum(["local", "m365", "hybrid"]).optional(),
+});
+const createInviteSchema = z.object({
+  role: z.enum(VALID_ROLES).default("staff"),
 });
 
 const purgeAuditSchema = z.object({
@@ -23,11 +38,80 @@ const purgeAuditSchema = z.object({
 
 const ADMIN_AUDIT_EVENT_TYPES = [
   "admin_org_deleted",
-  "admin_org_plan_changed",
+  "admin_org_profile_updated",
+  "admin_support_context_switched",
   "admin_membership_role_changed",
+  "admin_membership_removed",
+  "admin_invite_created",
   "org_membership_role_changed",
+  "org_membership_removed",
   "admin_audit_log_purged",
+  "admin_superadmin_toggled",
+  "admin_user_deleted",
+  "admin_email_settings_toggled",
+  "admin_email_alias_regenerated",
+  "admin_inbound_email_replayed",
+  "admin_imap_poller_reset",
+  "admin_imap_force_poll",
+  "admin_imap_disabled",
+  "admin_connector_force_poll",
+  "admin_connector_disabled",
+  "admin_connector_enabled",
 ] as const;
+
+async function getUserOr404(userId: string) {
+  const [user] = await db.select().from(users).where(eq(users.id, userId));
+  return user;
+}
+
+async function configuredMasterAdminCountExcluding(userId?: string): Promise<number> {
+  const allUsers = await storage.getAllUsers();
+  return allUsers.filter((user) => {
+    if (userId && user.id === userId) return false;
+    return user.isSuperAdmin && isMasterAdminEmail(user.email);
+  }).length;
+}
+
+async function getMembershipRowsForOrg(orgId: string) {
+  return db
+    .select({
+      id: memberships.id,
+      orgId: memberships.orgId,
+      userId: memberships.userId,
+      role: memberships.role,
+      createdAt: memberships.createdAt,
+      username: users.username,
+      fullName: users.fullName,
+      email: users.email,
+      isSuperAdmin: users.isSuperAdmin,
+    })
+    .from(memberships)
+    .innerJoin(users, eq(memberships.userId, users.id))
+    .where(eq(memberships.orgId, orgId))
+    .orderBy(desc(memberships.createdAt));
+}
+
+async function getOrgConnectorSummary(orgId: string) {
+  const rows = await db.select().from(mailConnectors).where(eq(mailConnectors.orgId, orgId));
+  return {
+    total: rows.length,
+    active: rows.filter((row) => row.enabled && row.status === "active").length,
+    error: rows.filter((row) => row.status === "error" || row.consecutiveFailures > 0).length,
+    disabled: rows.filter((row) => !row.enabled || row.status === "disabled").length,
+    pendingAuth: rows.filter((row) => row.status === "pending_auth").length,
+    lastError: rows.find((row) => row.lastError)?.lastError ?? null,
+  };
+}
+
+async function getOrgRecentActivityAt(orgId: string): Promise<Date | null> {
+  const [latest] = await db
+    .select({ createdAt: authAuditLog.createdAt })
+    .from(authAuditLog)
+    .where(eq(authAuditLog.orgId, orgId))
+    .orderBy(desc(authAuditLog.createdAt))
+    .limit(1);
+  return latest?.createdAt ?? null;
+}
 
 router.get("/api/admin/audit", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
@@ -113,6 +197,10 @@ const updateRoleSchema = z.object({
   role: z.enum(VALID_ROLES),
 });
 
+router.get("/api/admin/master-admins", requireAuth, requireSuperAdmin, async (_req, res) => {
+  res.json({ emails: getMasterAdminEmails() });
+});
+
 router.get("/api/admin/orgs", requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
     const allOrgs = await storage.getAllOrgs();
@@ -120,11 +208,148 @@ router.get("/api/admin/orgs", requireAuth, requireSuperAdmin, async (_req, res) 
       allOrgs.map(async (org) => {
         const counts = await storage.getOrgCounts(org.id);
         const mems = await storage.getOrgMemberships(org.id);
-        return { ...org, counts, memberCount: mems.length };
+        const authConfig = await storage.getOrgAuthConfig(org.id);
+        const entitlement = await storage.getLatestOperatorOsEntitlementSnapshotForOrg(org.id, getOperatorOsModuleSlug());
+        const connectorHealth = await getOrgConnectorSummary(org.id);
+        const recentActivityAt = await getOrgRecentActivityAt(org.id);
+        return {
+          ...org,
+          counts,
+          memberCount: mems.length,
+          ssoStatus: org.operatorOsOrgId ? "operatoros" : (authConfig?.authMode ?? "local"),
+          authMode: authConfig?.authMode ?? "local",
+          entitlement: entitlement ? {
+            id: entitlement.id,
+            enabled: entitlement.enabled,
+            accessLevel: entitlement.accessLevel,
+            moduleRole: entitlement.moduleRole,
+            tenantRole: entitlement.tenantRole,
+            subscriptionStatus: entitlement.subscriptionStatus,
+            computedAt: entitlement.computedAt,
+            receivedAt: entitlement.receivedAt,
+            revokedAt: entitlement.revokedAt,
+          } : null,
+          connectorHealth,
+          recentActivityAt,
+        };
       })
     );
     res.json(orgsWithCounts);
   } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch("/api/admin/orgs/:id", requireAuth, requireSuperAdmin, async (req, res) => {
+  const orgId = req.params.id as string;
+  try {
+    const parsed = updateOrgProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      await logAdminAction(req, {
+        eventType: "admin_org_profile_updated",
+        orgId,
+        success: false,
+        details: { reason: "invalid_input", body: req.body },
+      });
+      return res.status(400).json({ error: "Invalid input", details: parsed.error.flatten() });
+    }
+
+    const org = await storage.getOrg(orgId);
+    if (!org) {
+      await logAdminAction(req, {
+        eventType: "admin_org_profile_updated",
+        orgId,
+        success: false,
+        details: { reason: "not_found" },
+      });
+      return res.status(404).json({ error: "Organization not found" });
+    }
+
+    const { authMode, ...orgProfile } = parsed.data;
+    const beforeAuth = await storage.getOrgAuthConfig(orgId);
+    const orgUpdate: any = {};
+    for (const [key, value] of Object.entries(orgProfile)) {
+      if (value !== undefined) orgUpdate[key] = value ?? "";
+    }
+
+    const updated = Object.keys(orgUpdate).length > 0
+      ? await storage.updateOrg(orgId, orgUpdate)
+      : org;
+    const updatedAuth = authMode
+      ? await storage.upsertOrgAuthConfig(orgId, { authMode })
+      : beforeAuth ?? null;
+
+    await logAdminAction(req, {
+      eventType: "admin_org_profile_updated",
+      orgId,
+      success: true,
+      details: {
+        before: {
+          name: org.name,
+          slug: org.slug,
+          phone: org.phone,
+          email: org.email,
+          address: org.address,
+          authMode: beforeAuth?.authMode ?? "local",
+        },
+        after: {
+          name: updated?.name,
+          slug: updated?.slug,
+          phone: updated?.phone,
+          email: updated?.email,
+          address: updated?.address,
+          authMode: updatedAuth?.authMode ?? "local",
+        },
+      },
+    });
+    res.json({ org: updated, authConfig: updatedAuth });
+  } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_org_profile_updated",
+      orgId,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/api/admin/orgs/:id/switch", requireAuth, requireSuperAdmin, async (req, res) => {
+  const orgId = req.params.id as string;
+  try {
+    const org = await storage.getOrg(orgId);
+    if (!org) {
+      await logAdminAction(req, {
+        eventType: "admin_support_context_switched",
+        orgId,
+        success: false,
+        details: { reason: "not_found" },
+      });
+      return res.status(404).json({ error: "Organization not found" });
+    }
+
+    const previousOrgId = req.session.orgId ?? null;
+    req.session.orgId = orgId;
+    req.session.adminSupportOrgId = orgId;
+    req.session.adminSupportStartedAt = new Date().toISOString();
+
+    await logAdminAction(req, {
+      eventType: "admin_support_context_switched",
+      orgId,
+      success: true,
+      details: {
+        before: { orgId: previousOrgId },
+        after: { orgId, supportContext: true },
+      },
+    });
+    res.json({ ok: true, orgId, org });
+  } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_support_context_switched",
+      orgId,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: err.message });
   }
 });
@@ -163,52 +388,6 @@ router.delete("/api/admin/orgs/:id", requireAuth, requireSuperAdmin, async (req,
   }
 });
 
-router.patch("/api/admin/orgs/:id/plan", requireAuth, requireSuperAdmin, async (req, res) => {
-  try {
-    const parsed = updatePlanSchema.safeParse(req.body);
-    if (!parsed.success) {
-      await logAdminAction(req, {
-        eventType: "admin_org_plan_changed",
-        orgId: (req.params.id as string),
-        success: false,
-        details: { reason: "invalid_plan", body: req.body },
-      });
-      return res.status(400).json({ error: "Invalid plan", validPlans: VALID_PLANS });
-    }
-
-    const org = await storage.getOrg((req.params.id as string));
-    if (!org) {
-      await logAdminAction(req, {
-        eventType: "admin_org_plan_changed",
-        orgId: (req.params.id as string),
-        success: false,
-        details: { reason: "not_found", requestedPlan: parsed.data.plan },
-      });
-      return res.status(404).json({ error: "Organization not found" });
-    }
-
-    const updated = await storage.updateOrg((req.params.id as string), { plan: parsed.data.plan as any });
-    await logAdminAction(req, {
-      eventType: "admin_org_plan_changed",
-      orgId: (req.params.id as string),
-      success: true,
-      details: {
-        before: { plan: org.plan },
-        after: { plan: parsed.data.plan },
-      },
-    });
-    res.json(updated);
-  } catch (err: any) {
-    await logAdminAction(req, {
-      eventType: "admin_org_plan_changed",
-      orgId: (req.params.id as string),
-      success: false,
-      details: { error: err?.message ?? "unknown" },
-    });
-    res.status(500).json({ error: err.message });
-  }
-});
-
 router.get("/api/admin/users", requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
     const allUsers = await storage.getAllUsers();
@@ -232,6 +411,7 @@ router.get("/api/admin/users", requireAuth, requireSuperAdmin, async (_req, res)
           fullName: u.fullName,
           email: u.email,
           isSuperAdmin: u.isSuperAdmin,
+          isConfiguredMasterAdmin: isMasterAdminEmail(u.email),
           createdAt: (u as any).createdAt ?? null,
           memberships: userMemberships,
         };
@@ -271,6 +451,22 @@ router.patch("/api/admin/orgs/:orgId/members/:userId/role", requireAuth, require
       return res.status(404).json({ error: "Membership not found" });
     }
 
+    const targetUser = await getUserOr404(userId);
+    if (targetUser && isMasterAdminEmail(targetUser.email) && parsed.data.role !== "owner") {
+      await logAdminAction(req, {
+        eventType: "admin_membership_role_changed",
+        orgId,
+        targetUserId: userId,
+        success: false,
+        details: {
+          reason: "configured_master_admin_role_protected",
+          before: { role: mem.role },
+          requestedRole: parsed.data.role,
+        },
+      });
+      return res.status(400).json({ error: "Configured master admin must remain owner in tenant mappings" });
+    }
+
     await storage.updateMembershipRole(orgId, userId, parsed.data.role);
     await logAdminAction(req, {
       eventType: "admin_membership_role_changed",
@@ -295,72 +491,166 @@ router.patch("/api/admin/orgs/:orgId/members/:userId/role", requireAuth, require
   }
 });
 
-router.get("/api/admin/billing", requireAuth, requireSuperAdmin, async (_req, res) => {
+router.get("/api/admin/orgs/:orgId/members", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const allOrgs = await storage.getAllOrgs();
-    const rows = allOrgs.map((org) => ({
-      id: org.id,
-      name: org.name,
-      slug: org.slug,
-      plan: org.plan,
-      stripeCustomerId: org.stripeCustomerId || null,
-      stripeSubscriptionId: org.stripeSubscriptionId || null,
-      subscriptionStatus: org.subscriptionStatus || null,
-      cancelAtPeriodEnd: org.cancelAtPeriodEnd ?? false,
-      planExpiresAt: org.planExpiresAt || null,
-    }));
-    res.json(rows);
+    const orgId = req.params.orgId as string;
+    const org = await storage.getOrg(orgId);
+    if (!org) return res.status(404).json({ error: "Organization not found" });
+    res.json(await getMembershipRowsForOrg(orgId));
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post("/api/admin/billing/sync/:orgId", requireAuth, requireSuperAdmin, async (req, res) => {
+router.post("/api/admin/orgs/:orgId/invites", requireAuth, requireSuperAdmin, async (req, res) => {
   const orgId = req.params.orgId as string;
   try {
+    const parsed = createInviteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      await logAdminAction(req, {
+        eventType: "admin_invite_created",
+        orgId,
+        success: false,
+        details: { reason: "invalid_role", body: req.body },
+      });
+      return res.status(400).json({ error: "Invalid role", validRoles: VALID_ROLES });
+    }
     const org = await storage.getOrg(orgId);
     if (!org) {
       await logAdminAction(req, {
-        eventType: "admin_billing_resynced",
+        eventType: "admin_invite_created",
         orgId,
         success: false,
         details: { reason: "not_found" },
       });
       return res.status(404).json({ error: "Organization not found" });
     }
-    const before = { plan: org.plan, subscriptionStatus: org.subscriptionStatus ?? null };
-    await syncOrgPlanFromStripe(orgId);
-    const updated = await storage.getOrg(orgId);
+
+    const invite = await storage.createInviteCode(orgId, parsed.data.role, req.session.userId!);
     await logAdminAction(req, {
-      eventType: "admin_billing_resynced",
+      eventType: "admin_invite_created",
       orgId,
       success: true,
       details: {
-        before,
         after: {
-          plan: updated?.plan ?? null,
-          subscriptionStatus: updated?.subscriptionStatus ?? null,
+          inviteId: invite.id,
+          role: invite.role,
+          expiresAt: invite.expiresAt ?? null,
         },
       },
     });
-    res.json({ ok: true, plan: updated?.plan, subscriptionStatus: updated?.subscriptionStatus });
+    res.json(invite);
   } catch (err: any) {
-    let before: { plan: string | null; subscriptionStatus: string | null } | undefined;
-    try {
-      const snapshot = await storage.getOrg(orgId);
-      if (snapshot) {
-        before = {
-          plan: snapshot.plan,
-          subscriptionStatus: snapshot.subscriptionStatus ?? null,
-        };
-      }
-    } catch {}
     await logAdminAction(req, {
-      eventType: "admin_billing_resynced",
+      eventType: "admin_invite_created",
       orgId,
       success: false,
-      details: { error: err?.message ?? "unknown", ...(before ? { before } : {}) },
+      details: { error: err?.message ?? "unknown" },
     });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/api/admin/orgs/:orgId/members/:userId", requireAuth, requireSuperAdmin, async (req, res) => {
+  const orgId = req.params.orgId as string;
+  const userId = req.params.userId as string;
+  try {
+    const mem = await storage.getMembership(orgId, userId);
+    if (!mem) {
+      await logAdminAction(req, {
+        eventType: "admin_membership_removed",
+        orgId,
+        targetUserId: userId,
+        success: false,
+        details: { reason: "not_found" },
+      });
+      return res.status(404).json({ error: "Membership not found" });
+    }
+    const targetUser = await getUserOr404(userId);
+    if (targetUser && isMasterAdminEmail(targetUser.email)) {
+      await logAdminAction(req, {
+        eventType: "admin_membership_removed",
+        orgId,
+        targetUserId: userId,
+        success: false,
+        details: {
+          reason: "configured_master_admin_membership_protected",
+          before: { role: mem.role },
+        },
+      });
+      return res.status(400).json({ error: "Configured master admin membership cannot be removed" });
+    }
+
+    await storage.deleteMembership(orgId, userId);
+    await logAdminAction(req, {
+      eventType: "admin_membership_removed",
+      orgId,
+      targetUserId: userId,
+      success: true,
+      details: {
+        before: { role: mem.role },
+        after: { removed: true },
+      },
+    });
+    res.json({ ok: true });
+  } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_membership_removed",
+      orgId,
+      targetUserId: userId,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/api/admin/entitlements", requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const orgId = typeof req.query.orgId === "string" ? req.query.orgId : "";
+    const userId = typeof req.query.userId === "string" ? req.query.userId : "";
+    const state = typeof req.query.state === "string" ? req.query.state : "all";
+    const limit = Math.min(Number(req.query.limit) || 200, 500);
+
+    const rows = await db
+      .select({
+        id: operatorOsEntitlementSnapshots.id,
+        operatorOsUserId: operatorOsEntitlementSnapshots.operatorOsUserId,
+        operatorOsTenantId: operatorOsEntitlementSnapshots.operatorOsTenantId,
+        localUserId: operatorOsEntitlementSnapshots.localUserId,
+        localOrgId: operatorOsEntitlementSnapshots.localOrgId,
+        moduleSlug: operatorOsEntitlementSnapshots.moduleSlug,
+        enabled: operatorOsEntitlementSnapshots.enabled,
+        accessLevel: operatorOsEntitlementSnapshots.accessLevel,
+        moduleRole: operatorOsEntitlementSnapshots.moduleRole,
+        tenantRole: operatorOsEntitlementSnapshots.tenantRole,
+        tenantRoleAlias: operatorOsEntitlementSnapshots.tenantRoleAlias,
+        subscriptionStatus: operatorOsEntitlementSnapshots.subscriptionStatus,
+        features: operatorOsEntitlementSnapshots.features,
+        computedAt: operatorOsEntitlementSnapshots.computedAt,
+        receivedAt: operatorOsEntitlementSnapshots.receivedAt,
+        revokedAt: operatorOsEntitlementSnapshots.revokedAt,
+        userEmail: users.email,
+        userFullName: users.fullName,
+        orgName: orgs.name,
+        orgSlug: orgs.slug,
+      })
+      .from(operatorOsEntitlementSnapshots)
+      .leftJoin(users, eq(operatorOsEntitlementSnapshots.localUserId, users.id))
+      .leftJoin(orgs, eq(operatorOsEntitlementSnapshots.localOrgId, orgs.id))
+      .orderBy(desc(operatorOsEntitlementSnapshots.computedAt))
+      .limit(limit);
+
+    const filtered = rows.filter((row) => {
+      if (orgId && row.localOrgId !== orgId) return false;
+      if (userId && row.localUserId !== userId) return false;
+      if (state === "enabled" && (!row.enabled || row.revokedAt)) return false;
+      if (state === "disabled" && row.enabled && !row.revokedAt) return false;
+      return true;
+    });
+
+    res.json(filtered);
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -404,6 +694,34 @@ router.patch("/api/admin/users/:id/superadmin", requireAuth, requireSuperAdmin, 
       return res.status(404).json({ error: "User not found" });
     }
 
+    if (!isSuperAdmin && isMasterAdminEmail(existing.email)) {
+      await logAdminAction(req, {
+        eventType: "admin_superadmin_toggled",
+        targetUserId: id,
+        success: false,
+        details: {
+          reason: "configured_master_admin_protected",
+          before: { isSuperAdmin: existing.isSuperAdmin ?? false, email: existing.email ?? null },
+          requested: { isSuperAdmin },
+        },
+      });
+      return res.status(400).json({ error: "Configured master admin cannot be demoted" });
+    }
+
+    if (!isSuperAdmin && existing.isSuperAdmin && (await configuredMasterAdminCountExcluding(id)) < 1) {
+      await logAdminAction(req, {
+        eventType: "admin_superadmin_toggled",
+        targetUserId: id,
+        success: false,
+        details: {
+          reason: "last_configured_master_admin_blocked",
+          before: { isSuperAdmin: existing.isSuperAdmin ?? false, email: existing.email ?? null },
+          requested: { isSuperAdmin },
+        },
+      });
+      return res.status(400).json({ error: "Cannot remove the last configured master admin" });
+    }
+
     await db.update(users).set({ isSuperAdmin }).where(eq(users.id, id));
     await logAdminAction(req, {
       eventType: "admin_superadmin_toggled",
@@ -418,6 +736,69 @@ router.patch("/api/admin/users/:id/superadmin", requireAuth, requireSuperAdmin, 
   } catch (err: any) {
     await logAdminAction(req, {
       eventType: "admin_superadmin_toggled",
+      targetUserId: id,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/api/admin/users/:id", requireAuth, requireSuperAdmin, async (req, res) => {
+  const id = req.params.id as string;
+  try {
+    if (id === req.session.userId) {
+      await logAdminAction(req, {
+        eventType: "admin_user_deleted",
+        targetUserId: id,
+        success: false,
+        details: { reason: "self_delete_blocked" },
+      });
+      return res.status(400).json({ error: "Cannot delete your own user" });
+    }
+
+    const existing = await getUserOr404(id);
+    if (!existing) {
+      await logAdminAction(req, {
+        eventType: "admin_user_deleted",
+        targetUserId: id,
+        success: false,
+        details: { reason: "not_found" },
+      });
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (isMasterAdminEmail(existing.email)) {
+      await logAdminAction(req, {
+        eventType: "admin_user_deleted",
+        targetUserId: id,
+        success: false,
+        details: {
+          reason: "configured_master_admin_protected",
+          before: { email: existing.email, username: existing.username, isSuperAdmin: existing.isSuperAdmin },
+        },
+      });
+      return res.status(400).json({ error: "Configured master admin cannot be deleted" });
+    }
+
+    await storage.deleteUser(id);
+    await logAdminAction(req, {
+      eventType: "admin_user_deleted",
+      targetUserId: id,
+      success: true,
+      details: {
+        before: {
+          email: existing.email,
+          username: existing.username,
+          isSuperAdmin: existing.isSuperAdmin,
+        },
+        after: { deleted: true },
+      },
+    });
+    res.json({ ok: true });
+  } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_user_deleted",
       targetUserId: id,
       success: false,
       details: { error: err?.message ?? "unknown" },

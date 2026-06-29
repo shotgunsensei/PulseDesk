@@ -12,7 +12,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-export { PLAN_LIMITS } from "./billingConfig";
 
 export const membershipRoleEnum = pgEnum("membership_role", [
   "owner",
@@ -377,6 +376,29 @@ export const authAuditLog = pgTable("auth_audit_log", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const operatorOsEntitlementSnapshots = pgTable("operatoros_entitlement_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  operatorOsUserId: text("operatoros_user_id").notNull(),
+  operatorOsTenantId: text("operatoros_tenant_id").notNull(),
+  localUserId: varchar("local_user_id").references(() => users.id),
+  localOrgId: varchar("local_org_id").references(() => orgs.id),
+  moduleSlug: text("module_slug").notNull(),
+  enabled: boolean("enabled").default(false).notNull(),
+  accessLevel: text("access_level").default("none").notNull(),
+  moduleRole: text("module_role").default("none").notNull(),
+  tenantRole: text("tenant_role"),
+  tenantRoleAlias: text("tenant_role_alias"),
+  subscriptionStatus: text("subscription_status"),
+  features: jsonb("features").default({}).notNull(),
+  rawSnapshot: jsonb("raw_snapshot").default({}).notNull(),
+  computedAt: timestamp("computed_at").notNull(),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
+  revokedAt: timestamp("revoked_at"),
+}, (table) => ({
+  uniqueOperatorOsSnapshot: uniqueIndex("idx_operatoros_entitlement_snapshots_unique")
+    .on(table.operatorOsUserId, table.operatorOsTenantId, table.moduleSlug),
+}));
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -498,6 +520,7 @@ export type Notification = typeof notifications.$inferSelect;
 export type OrgAuthConfig = typeof orgAuthConfig.$inferSelect;
 export type OrgRoleMapping = typeof orgRoleMappings.$inferSelect;
 export type AuthAuditLogEntry = typeof authAuditLog.$inferSelect;
+export type OperatorOsEntitlementSnapshot = typeof operatorOsEntitlementSnapshots.$inferSelect;
 
 export const insertOrgAuthConfigSchema = createInsertSchema(orgAuthConfig).omit({
   id: true,

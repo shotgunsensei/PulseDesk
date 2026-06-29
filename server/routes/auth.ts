@@ -9,6 +9,10 @@ import { getAuthProvider, localProvider, encryptSecret, decryptSecret } from "..
 import { loginRateLimiter, registerRateLimiter } from "../middleware/rateLimit";
 import type { AuthProviderConfig } from "../auth";
 import type { InsertOrgAuthConfig } from "@shared/schema";
+import {
+  getCurrentEntitlementSnapshotForRequest,
+  snapshotAllowsFeature,
+} from "../services/operatorosEntitlements";
 
 const authConfigSchema = z.object({
   authMode: z.enum(["local", "m365", "hybrid"]),
@@ -850,13 +854,16 @@ router.put("/api/auth/config", requireAuth, requireOrg, requireMinRole("admin"),
     const body = parsed.data;
 
     if (body.authMode === "m365" || body.authMode === "hybrid") {
-      const org = await storage.getOrg(orgId);
-      const plan = (org as any)?.plan || "free";
-      const { PLAN_LIMITS } = await import("@shared/schema");
-      const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
-      if (!limits.entraEnabled) {
+      const snapshot = await getCurrentEntitlementSnapshotForRequest(req, {
+        refreshIfMissing: true,
+        refreshIfStale: true,
+      });
+      const devLocalBypass = !snapshot
+        && req.session.authSource !== "operatoros"
+        && process.env.PULSEDESK_LOCAL_AUTH_ENABLED === "true";
+      if (!devLocalBypass && !snapshotAllowsFeature(snapshot, "entraEnabled")) {
         return res.status(403).json({
-          error: "Microsoft 365/Entra login requires a Pro plan or higher. Please upgrade your subscription.",
+          error: "Microsoft 365/Entra login is not enabled by the current OperatorOS entitlement.",
         });
       }
     }

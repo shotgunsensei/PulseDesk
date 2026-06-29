@@ -18,28 +18,11 @@ app.use(
 );
 
 app.post(
-  '/api/stripe/webhook',
+  '/webhooks/operatoros/entitlements',
   express.raw({ type: 'application/json' }),
   async (req, res) => {
-    const signature = req.headers['stripe-signature'];
-    if (!signature) return res.status(400).json({ error: 'Missing signature' });
-    const sig = Array.isArray(signature) ? signature[0] : signature;
-    try {
-      const { WebhookHandlers } = await import('./webhookHandlers');
-      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
-      res.status(200).json({ received: true });
-    } catch (err: any) {
-      const isSignatureError =
-        err?.type === 'StripeSignatureVerificationError' ||
-        err?.message?.includes('No signatures found') ||
-        err?.message?.includes('STRIPE WEBHOOK ERROR');
-      if (isSignatureError) {
-        console.error('[stripe webhook] Signature verification failed:', err.message);
-        return res.status(400).json({ error: 'Webhook signature verification failed' });
-      }
-      console.error('[stripe webhook] Processing error (returning 200 to prevent retries):', err.message);
-      res.status(200).json({ received: true, warning: 'Processing error logged' });
-    }
+    const { handleOperatorOsEntitlementWebhook } = await import('./services/operatorosEntitlements');
+    return handleOperatorOsEntitlementWebhook(req, res);
   }
 );
 
@@ -120,25 +103,16 @@ app.use((req, res, next) => {
     log(`SESSION TABLE CHECK FAILED: ${sessErr.message}`, "startup");
   }
 
-  try {
-    const { runMigrations } = await import('stripe-replit-sync');
-    const databaseUrl = process.env.DATABASE_URL;
-    if (databaseUrl) {
-      await runMigrations({ databaseUrl });
-      const { getStripeSync } = await import('./stripeClient');
-      const stripeSync = await getStripeSync();
-      const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
-      await stripeSync.findOrCreateManagedWebhook(`${webhookBaseUrl}/api/stripe/webhook`);
-      await stripeSync.syncBackfill();
-      log("Stripe sync initialized");
-    }
-  } catch (err: any) {
-    log(`Stripe init skipped: ${err.message}`, "stripe");
-  }
-
   log("Registering routes and session middleware...", "startup");
   await registerRoutes(httpServer, app);
   log("Routes registered, accepting traffic", "startup");
+
+  try {
+    const { registerOperatorOsEntitlementWebhook } = await import("./services/operatorosEntitlements");
+    await registerOperatorOsEntitlementWebhook(log);
+  } catch (err: any) {
+    log(`OperatorOS entitlement webhook registration skipped: ${err?.message ?? "unavailable"}`, "operatoros");
+  }
 
   try {
     const { startImapPolling, setMigratedOrgFilter } = await import("./services/imapPoller");

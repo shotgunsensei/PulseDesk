@@ -45,9 +45,9 @@ export default function LandingPage() {
             <Link href="/login" data-testid="link-login">
               <Button variant="ghost" size="sm" className="min-h-[44px] sm:min-h-9">Sign in</Button>
             </Link>
-            <Link href="/login?signup=1" data-testid="link-signup">
+            <Link href="/login" data-testid="link-signup">
               <Button size="sm" className="gap-1.5 min-h-[44px] sm:min-h-9">
-                Get started <ArrowRight className="h-3.5 w-3.5" />
+                Launch from OperatorOS <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             </Link>
           </div>
@@ -68,9 +68,9 @@ export default function LandingPage() {
                 PulseDesk gives clinics and hospitals one place to triage every facilities, supply, IT, and vendor request — with email-to-ticket, role gates, and analytics built in.
               </p>
               <div className="flex flex-wrap gap-3">
-                <Link href="/login?signup=1" data-testid="cta-primary">
+                <Link href="/login" data-testid="cta-primary">
                   <Button size="lg" className="gap-2 min-h-[48px]">
-                    Start free <ArrowRight className="h-4 w-4" />
+                    Launch from OperatorOS <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
                 <Link href="/login" data-testid="cta-signin">
@@ -123,10 +123,10 @@ export default function LandingPage() {
         <section className="border-t bg-gradient-to-b from-background to-muted/30">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 text-center">
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">Ready to coordinate your facility?</h2>
-            <p className="text-muted-foreground mb-6">Spin up an organization in under a minute. Free tier covers small teams; paid plans add email-to-ticket and analytics.</p>
-            <Link href="/login?signup=1" data-testid="cta-bottom">
+            <p className="text-muted-foreground mb-6">PulseDesk organizations, seats, and module access are managed in OperatorOS. Contact your OperatorOS admin if you need access.</p>
+            <Link href="/login" data-testid="cta-bottom">
               <Button size="lg" className="gap-2 min-h-[48px]">
-                Get started <ArrowRight className="h-4 w-4" />
+                Launch from OperatorOS <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
           </div>

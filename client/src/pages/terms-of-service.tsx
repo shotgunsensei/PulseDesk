@@ -40,8 +40,8 @@ export default function TermsOfService() {
             <p className="text-muted-foreground leading-relaxed">
               PulseDesk is a multi-tenant healthcare operations management platform that provides
               ticketing, facility and supply request management, asset tracking, connected inboxes,
-              and analytics tools for healthcare organizations and their staff. Features available
-              to your organization depend on the subscription plan you select.
+              and analytics tools for healthcare organizations and their staff. Access is governed
+              by the PulseDesk module entitlement assigned through OperatorOS.
             </p>
           </section>
 
@@ -67,47 +67,39 @@ export default function TermsOfService() {
 
             <h3 className="text-base font-semibold mb-2 mt-4">3.3 Account Termination by You</h3>
             <p className="text-muted-foreground leading-relaxed">
-              You may cancel your subscription and delete your organization account at any time
-              through the billing settings or by contacting us. Cancellation takes effect at the
-              end of the current billing period; no partial refunds are provided.
+              You may request organization deletion by contacting us. PulseDesk module access,
+              seats, and subscription cancellation are managed through OperatorOS.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">4. Subscriptions & Payment</h2>
+            <h2 className="text-xl font-semibold mb-3">4. OperatorOS Access</h2>
 
-            <h3 className="text-base font-semibold mb-2 mt-4">4.1 Plans & Billing</h3>
+            <h3 className="text-base font-semibold mb-2 mt-4">4.1 Module Entitlements</h3>
             <p className="text-muted-foreground leading-relaxed">
-              The Service is offered on a subscription basis. Plan pricing, features, and billing
-              cycles are described on the billing page within the application. Subscriptions
-              automatically renew at the end of each billing period unless cancelled before the
-              renewal date. All fees are in US Dollars and are non-refundable except as required
-              by law or as explicitly stated in these Terms.
+              PulseDesk is accessed as an OperatorOS-managed module. OperatorOS is the source of
+              truth for subscription terms, seats, module assignment, and entitlement
+              state. PulseDesk validates access from OperatorOS SSO and entitlement snapshots.
             </p>
 
-            <h3 className="text-base font-semibold mb-2 mt-4">4.2 Payment Processing</h3>
+            <h3 className="text-base font-semibold mb-2 mt-4">4.2 Subscription Management</h3>
             <p className="text-muted-foreground leading-relaxed">
-              Payments are processed by Stripe, Inc. By providing payment information, you authorize
-              us (via Stripe) to charge your payment method on a recurring basis for your selected
-              plan. You agree to Stripe's{" "}
-              <a href="https://stripe.com/legal/ssa" target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                Services Agreement
-              </a>.
+              Subscription and payment changes must be made in OperatorOS or by contacting your
+              OperatorOS administrator. PulseDesk does not start payment flows, host subscription
+              management screens, or process payment credentials directly.
             </p>
 
-            <h3 className="text-base font-semibold mb-2 mt-4">4.3 Plan Changes</h3>
+            <h3 className="text-base font-semibold mb-2 mt-4">4.3 Access Changes</h3>
             <p className="text-muted-foreground leading-relaxed">
-              You may upgrade or downgrade your plan at any time. Upgrades take effect immediately
-              and are prorated. Downgrades take effect at the start of the next billing cycle.
-              Features associated with a higher-tier plan will become unavailable upon downgrade.
+              OperatorOS entitlement changes may enable, restrict, or revoke PulseDesk access.
+              Feature flags provided by OperatorOS may also enable or disable specific PulseDesk
+              capabilities for your organization.
             </p>
 
-            <h3 className="text-base font-semibold mb-2 mt-4">4.4 Unpaid Balances</h3>
+            <h3 className="text-base font-semibold mb-2 mt-4">4.4 Revoked Access</h3>
             <p className="text-muted-foreground leading-relaxed">
-              If a payment fails, we will attempt to notify you and retry the charge. After a
-              reasonable period of non-payment, your organization's access to paid features may be
-              suspended and, after continued non-payment, your account may be terminated and data
-              deleted in accordance with our data retention policy.
+              If OperatorOS reports that your PulseDesk module is disabled or revoked, PulseDesk may
+              reject protected requests until module access is restored through OperatorOS.
             </p>
           </section>
 
@@ -149,7 +141,7 @@ export default function TermsOfService() {
               PulseDesk, is the exclusive property of PulseDesk and is protected by intellectual
               property laws. These Terms do not grant you any right, title, or interest in the
               Service other than a limited, non-exclusive, non-transferable license to use the
-              Service for your internal business operations during the term of your subscription.
+              Service for your internal business operations while your OperatorOS entitlement remains active.
             </p>
             <p className="text-muted-foreground leading-relaxed mt-3">
               You retain ownership of all data and content your organization inputs into the Service
@@ -220,7 +212,7 @@ export default function TermsOfService() {
               we will update the "Last updated" date at the top of this page and notify organization
               administrators via email. Your continued use of the Service after changes take effect
               constitutes your acceptance of the revised Terms. If you do not agree to the new Terms,
-              you must stop using the Service and cancel your subscription.
+              you must stop using the Service and contact your OperatorOS administrator about access.
             </p>
           </section>
 

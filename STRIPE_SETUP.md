@@ -1,6 +1,15 @@
 # Stripe Setup for PulseDesk
 
-This document explains exactly how to configure Stripe products, prices, webhooks, and environment variables so that PulseDesk billing works end-to-end.
+> Deprecated legacy reference.
+>
+> PulseDesk no longer owns pricing, checkout, subscription management, seats, or
+> Stripe webhooks. OperatorOS is the billing and entitlement authority for the
+> PulseDesk module. The PulseDesk `/api/billing/*`, `/api/stripe/webhook`, and
+> `/billing` paths are not active production paths. Keep this document only for
+> historical rollback context.
+
+The steps below describe the retired standalone Stripe model and should not be
+used for current PulseDesk deployments.
 
 ---
 

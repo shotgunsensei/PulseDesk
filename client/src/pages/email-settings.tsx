@@ -18,7 +18,6 @@ import {
   Copy,
   Check,
   Lock,
-  Sparkles,
   Send,
   Shield,
   AlertTriangle,
@@ -27,7 +26,6 @@ import {
   Clock,
   MessageSquare,
   MailPlus,
-  ArrowRight,
   RefreshCw,
   Server,
   Plug,
@@ -45,7 +43,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { SiGoogle } from "react-icons/si";
-import { PLAN_LIMITS } from "@shared/schema";
 
 function MicrosoftIcon({ className }: { className?: string }) {
   return (
@@ -58,7 +55,6 @@ function MicrosoftIcon({ className }: { className?: string }) {
   );
 }
 import { canManageSettings } from "@/lib/permissions";
-import { Link } from "wouter";
 
 interface EmailSettingsData {
   id: string;
@@ -596,10 +592,10 @@ export default function EmailSettingsPage() {
               <div className="inline-flex items-center justify-center h-16 w-16 rounded-full bg-primary/10 mb-4">
                 <Lock className="h-8 w-8 text-primary" />
               </div>
-              <h3 className="text-xl font-semibold mb-2">Premium Feature</h3>
+              <h3 className="text-xl font-semibold mb-2">OperatorOS Access Required</h3>
               <p className="text-muted-foreground mb-4">
-                Connected Inboxes is available on <strong>Enterprise</strong> and <strong>Unlimited</strong> plans.
-                Connect Google Workspace, Microsoft 365, or any IMAP mailbox to automatically convert emails into support tickets.
+                Connected Inboxes is available to active PulseDesk tenants unless OperatorOS explicitly disables email automation.
+                Contact your OperatorOS admin to review this tenant's PulseDesk module entitlement.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 text-left">
                 <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50">
@@ -619,13 +615,9 @@ export default function EmailSettingsPage() {
                   <span className="text-sm">Automatic reply threading into tickets</span>
                 </div>
               </div>
-              <Link href="/billing">
-                <Button data-testid="button-upgrade-email" className="gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  View Plans & Upgrade
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
+              <Button data-testid="button-operatoros-email-access" className="gap-2" disabled>
+                Access managed by OperatorOS
+              </Button>
             </CardContent>
           </Card>
         </div>

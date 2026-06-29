@@ -1,67 +1,84 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  Activity,
+  AlertTriangle,
+  Building2,
+  CheckCircle2,
+  FileSearch,
+  Inbox,
+  KeyRound,
+  LogIn,
+  Play,
+  Power,
+  RefreshCw,
+  Search,
+  Server,
+  Settings,
+  Shield,
+  Trash2,
+  UserCog,
+  Users,
+  XCircle,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { PulseLoader } from "@/components/pulse-line";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PulseLoader } from "@/components/pulse-line";
-import {
-  Trash2,
-  Shield,
-  Crown,
-  Zap,
-  Users,
-  Building2,
-  ChevronDown,
-  ChevronRight,
-  Star,
-  Server,
-  RefreshCw,
-  AlertTriangle,
-  Play,
-  XCircle,
-  CheckCircle2,
-  Inbox,
-  Clock,
-  Power,
-  CreditCard,
-  CalendarX,
-  FileSearch,
-} from "lucide-react";
-import { SiGoogle } from "react-icons/si";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-function MicrosoftIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 21 21" fill="currentColor">
-      <rect x="1" y="1" width="9" height="9" fill="#f25022" />
-      <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
-      <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
-      <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
-    </svg>
-  );
+interface EntitlementSummary {
+  id: string;
+  enabled: boolean;
+  accessLevel: string;
+  moduleRole: string;
+  tenantRole: string | null;
+  subscriptionStatus: string | null;
+  computedAt: string;
+  receivedAt: string;
+  revokedAt: string | null;
 }
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useLocation } from "wouter";
-import { PLAN_LIMITS } from "@shared/schema";
 
 interface AdminOrg {
   id: string;
   name: string;
   slug: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
   plan: string;
   memberCount: number;
-  stripeCustomerId: string | null;
-  stripeSubscriptionId: string | null;
-  counts: {
-    tickets: number;
-    departments: number;
-    assets: number;
-    members: number;
+  authMode: string;
+  ssoStatus: string;
+  recentActivityAt: string | null;
+  counts: { tickets: number; departments: number; assets: number; members: number };
+  entitlement: EntitlementSummary | null;
+  connectorHealth: {
+    total: number;
+    active: number;
+    error: number;
+    disabled: number;
+    pendingAuth: number;
+    lastError: string | null;
   };
+}
+
+interface AdminMember {
+  id: string;
+  orgId: string;
+  userId: string;
+  role: string;
+  username: string;
+  fullName: string;
+  email: string | null;
+  isSuperAdmin: boolean;
 }
 
 interface UserMembership {
@@ -78,50 +95,32 @@ interface AdminUser {
   fullName: string;
   email: string | null;
   isSuperAdmin: boolean;
-  createdAt: string;
+  isConfiguredMasterAdmin: boolean;
+  createdAt: string | null;
   memberships: UserMembership[];
 }
 
-const PLAN_OPTIONS = [
-  { value: "free", label: "Free" },
-  { value: "pro", label: "Pro" },
-  { value: "pro_plus", label: "Pro Plus" },
-  { value: "enterprise", label: "Enterprise" },
-  { value: "unlimited", label: "Unlimited" },
-];
-
-const ROLE_OPTIONS = [
-  { value: "owner", label: "Owner" },
-  { value: "admin", label: "Admin" },
-  { value: "supervisor", label: "Supervisor" },
-  { value: "staff", label: "Staff" },
-  { value: "technician", label: "Technician" },
-  { value: "readonly", label: "Read-Only" },
-];
-
-const PLAN_BADGE_STYLES: Record<string, string> = {
-  free: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-  pro: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-  pro_plus: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
-  enterprise: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
-  unlimited: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-};
-
-const ROLE_BADGE_STYLES: Record<string, string> = {
-  owner: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  admin: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-  supervisor: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
-  staff: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-  technician: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
-  readonly: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
-};
-
-function getPlanIcon(plan: string) {
-  if (plan === "unlimited") return <Crown className="h-4 w-4 text-amber-600" />;
-  if (plan === "enterprise") return <Crown className="h-4 w-4 text-violet-600" />;
-  if (plan === "pro_plus") return <Zap className="h-4 w-4 text-indigo-600" />;
-  if (plan === "pro") return <Zap className="h-4 w-4 text-blue-600" />;
-  return <Shield className="h-4 w-4 text-slate-500" />;
+interface EntitlementRow {
+  id: string;
+  operatorOsUserId: string;
+  operatorOsTenantId: string;
+  localUserId: string | null;
+  localOrgId: string | null;
+  moduleSlug: string;
+  enabled: boolean;
+  accessLevel: string;
+  moduleRole: string;
+  tenantRole: string | null;
+  tenantRoleAlias: string | null;
+  subscriptionStatus: string | null;
+  features: Record<string, unknown>;
+  computedAt: string;
+  receivedAt: string;
+  revokedAt: string | null;
+  userEmail: string | null;
+  userFullName: string | null;
+  orgName: string | null;
+  orgSlug: string | null;
 }
 
 interface AdminConnector {
@@ -131,65 +130,294 @@ interface AdminConnector {
   label: string;
   status: string;
   emailAddress: string | null;
-  imapHost: string | null;
   lastPolledAt: string | null;
   lastError: string | null;
   consecutiveFailures: number;
   emailsProcessed: number;
   enabled: boolean;
-  hasCredentials: boolean;
   orgName: string;
-  orgPlan: string;
   pollerRunning: boolean;
-  pollerDisabled: boolean;
-  createdAt: string;
 }
 
-interface ConnectorEventItem {
+interface FailedEmail {
   id: string;
-  connectorId: string;
-  orgId: string;
-  eventType: string;
-  message: string;
-  createdAt: string;
+  orgId: string | null;
+  fromEmail: string;
+  subject: string | null;
+  provider: string | null;
+  receivedAt: string;
+  errorMessage: string | null;
 }
 
-const PROVIDER_ICON: Record<string, any> = {
-  google: SiGoogle,
-  microsoft: MicrosoftIcon,
-  imap: Server,
-  forwarding: Inbox,
-};
+interface AuditRow {
+  id: string;
+  orgId: string | null;
+  userId: string | null;
+  eventType: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  details: any;
+  success: boolean;
+  createdAt: string;
+  orgName: string | null;
+  orgSlug: string | null;
+  actorUsername: string | null;
+  actorFullName: string | null;
+}
 
-const PROVIDER_LABEL: Record<string, string> = {
-  google: "Google",
-  microsoft: "Microsoft",
-  imap: "IMAP",
-  forwarding: "Forwarding",
-};
+const ROLE_OPTIONS = ["owner", "admin", "supervisor", "staff", "technician", "readonly"];
+const AUTH_MODE_OPTIONS = ["local", "m365", "hybrid"];
+const AUDIT_PAGE_SIZE = 50;
 
-const STATUS_COLORS: Record<string, string> = {
-  active: "bg-emerald-500",
-  pending_auth: "bg-amber-500",
-  error: "bg-rose-500",
-  disabled: "bg-rose-500",
-};
+function formatDate(value?: string | null) {
+  return value ? new Date(value).toLocaleString() : "Never";
+}
+
+function StatusDot({ ok }: { ok: boolean }) {
+  return <span className={`h-2 w-2 rounded-full ${ok ? "bg-emerald-500" : "bg-rose-500"}`} />;
+}
+
+function entitlementState(entitlement: EntitlementSummary | EntitlementRow | null | undefined) {
+  if (!entitlement) return { label: "Missing", className: "border-slate-300 text-slate-600", ok: false };
+  if (!entitlement.enabled || entitlement.revokedAt) return { label: "Revoked", className: "border-rose-300 text-rose-700", ok: false };
+  return { label: "Enabled", className: "border-emerald-300 text-emerald-700", ok: true };
+}
+
+function invalidateAdminQueries() {
+  queryClient.invalidateQueries({ queryKey: ["/api/admin/orgs"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/admin/connectors"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/admin/imap/status"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/admin/email/failed"] });
+  queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/admin/entitlements") });
+  queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0]).startsWith("/api/admin/audit") });
+}
 
 export default function AdminPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const [expandedOrg, setExpandedOrg] = useState<string | null>(null);
-  const [expandedUser, setExpandedUser] = useState<string | null>(null);
-  const [connectorFilter, setConnectorFilter] = useState<string>("all");
-  const [connectorStatusFilter, setConnectorStatusFilter] = useState<string>("all");
-  const [connectorOrgSearch, setConnectorOrgSearch] = useState<string>("");
-  const [expandedConnectorEvents, setExpandedConnectorEvents] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("tenants");
+  const [tenantSearch, setTenantSearch] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const [selectedOrgId, setSelectedOrgId] = useState<string>("");
+  const [inviteRole, setInviteRole] = useState("staff");
+  const [entitlementStateFilter, setEntitlementStateFilter] = useState("all");
+  const [entitlementOrgFilter, setEntitlementOrgFilter] = useState("all");
+  const [connectorSearch, setConnectorSearch] = useState("");
+  const [auditEventType, setAuditEventType] = useState("all");
+  const [auditOffset, setAuditOffset] = useState(0);
+  const [expandedAuditRow, setExpandedAuditRow] = useState<string | null>(null);
+  const [orgForm, setOrgForm] = useState({ name: "", slug: "", phone: "", email: "", address: "", authMode: "local" });
 
-  if (!user?.isSuperAdmin) {
+  const enabled = !!user?.isSuperAdmin;
+  const orgsQuery = useQuery<AdminOrg[]>({ queryKey: ["/api/admin/orgs"], enabled });
+  const usersQuery = useQuery<AdminUser[]>({ queryKey: ["/api/admin/users"], enabled });
+  const masterAdminsQuery = useQuery<{ emails: string[] }>({ queryKey: ["/api/admin/master-admins"], enabled });
+  const membersQuery = useQuery<AdminMember[]>({
+    queryKey: [`/api/admin/orgs/${selectedOrgId}/members`],
+    enabled: enabled && !!selectedOrgId,
+  });
+  const connectorsQuery = useQuery<AdminConnector[]>({
+    queryKey: ["/api/admin/connectors"],
+    enabled,
+    refetchInterval: 15000,
+  });
+  const imapQuery = useQuery<{
+    pollers: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; imapEmailsProcessed?: number }>;
+    dbOnlyEnabled: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; imapEmailsProcessed?: number }>;
+  }>({ queryKey: ["/api/admin/imap/status"], enabled, refetchInterval: 15000 });
+  const failedEmailsQuery = useQuery<FailedEmail[]>({ queryKey: ["/api/admin/email/failed"], enabled, refetchInterval: 30000 });
+
+  const entitlementQueryKey = `/api/admin/entitlements?state=${entitlementStateFilter}${entitlementOrgFilter !== "all" ? `&orgId=${entitlementOrgFilter}` : ""}`;
+  const entitlementsQuery = useQuery<EntitlementRow[]>({ queryKey: [entitlementQueryKey], enabled });
+
+  const auditQueryParams = new URLSearchParams({
+    limit: String(AUDIT_PAGE_SIZE),
+    offset: String(auditOffset),
+  });
+  if (auditEventType !== "all") auditQueryParams.set("eventTypes", auditEventType);
+  const auditQueryKey = `/api/admin/audit?${auditQueryParams.toString()}`;
+  const auditQuery = useQuery<{
+    rows: AuditRow[];
+    total: number;
+    availableEventTypes: string[];
+  }>({ queryKey: [auditQueryKey], enabled });
+
+  const orgs = orgsQuery.data || [];
+  const selectedOrg = orgs.find((org) => org.id === selectedOrgId) || orgs[0] || null;
+
+  useEffect(() => {
+    if (!selectedOrgId && orgs[0]) setSelectedOrgId(orgs[0].id);
+  }, [orgs, selectedOrgId]);
+
+  useEffect(() => {
+    if (!selectedOrg) return;
+    setOrgForm({
+      name: selectedOrg.name || "",
+      slug: selectedOrg.slug || "",
+      phone: selectedOrg.phone || "",
+      email: selectedOrg.email || "",
+      address: selectedOrg.address || "",
+      authMode: selectedOrg.authMode || "local",
+    });
+  }, [selectedOrg?.id]);
+
+  const filteredOrgs = useMemo(() => {
+    const q = tenantSearch.trim().toLowerCase();
+    if (!q) return orgs;
+    return orgs.filter((org) =>
+      [org.name, org.slug, org.email || "", org.ssoStatus].some((value) => value.toLowerCase().includes(q))
+    );
+  }, [orgs, tenantSearch]);
+
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase();
+    const rows = usersQuery.data || [];
+    if (!q) return rows;
+    return rows.filter((row) =>
+      [row.username, row.fullName, row.email || ""].some((value) => value.toLowerCase().includes(q))
+    );
+  }, [usersQuery.data, userSearch]);
+
+  const filteredConnectors = useMemo(() => {
+    const q = connectorSearch.trim().toLowerCase();
+    const rows = connectorsQuery.data || [];
+    if (!q) return rows;
+    return rows.filter((row) =>
+      [row.orgName, row.provider, row.label, row.emailAddress || "", row.status].some((value) => value.toLowerCase().includes(q))
+    );
+  }, [connectorsQuery.data, connectorSearch]);
+
+  const updateOrgMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/admin/orgs/${selectedOrgId}`, orgForm);
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateAdminQueries();
+      toast({ title: "Tenant updated" });
+    },
+    onError: (err: Error) => toast({ title: "Tenant update failed", description: err.message, variant: "destructive" }),
+  });
+
+  const switchOrgMutation = useMutation({
+    mutationFn: async (orgId: string) => {
+      const res = await apiRequest("POST", `/api/admin/orgs/${orgId}/switch`);
+      return res.json();
+    },
+    onSuccess: (data: { org: AdminOrg }) => {
+      invalidateAdminQueries();
+      toast({ title: "Support context changed", description: data.org?.name || "Tenant selected" });
+    },
+    onError: (err: Error) => toast({ title: "Switch failed", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteOrgMutation = useMutation({
+    mutationFn: (orgId: string) => apiRequest("DELETE", `/api/admin/orgs/${orgId}`),
+    onSuccess: () => {
+      invalidateAdminQueries();
+      toast({ title: "Tenant deleted" });
+    },
+    onError: (err: Error) => toast({ title: "Delete failed", description: err.message, variant: "destructive" }),
+  });
+
+  const createInviteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/orgs/${selectedOrgId}/invites`, { role: inviteRole });
+      return res.json();
+    },
+    onSuccess: (invite: { code: string; role: string }) => {
+      toast({ title: "Invite created", description: `${invite.code} (${invite.role})` });
+      invalidateAdminQueries();
+    },
+    onError: (err: Error) => toast({ title: "Invite failed", description: err.message, variant: "destructive" }),
+  });
+
+  const updateRoleMutation = useMutation({
+    mutationFn: async ({ orgId, userId, role }: { orgId: string; userId: string; role: string }) => {
+      const res = await apiRequest("PATCH", `/api/admin/orgs/${orgId}/members/${userId}/role`, { role });
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateAdminQueries();
+      toast({ title: "Role updated" });
+    },
+    onError: (err: Error) => toast({ title: "Role update failed", description: err.message, variant: "destructive" }),
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: ({ orgId, userId }: { orgId: string; userId: string }) => apiRequest("DELETE", `/api/admin/orgs/${orgId}/members/${userId}`),
+    onSuccess: () => {
+      invalidateAdminQueries();
+      toast({ title: "Membership removed" });
+    },
+    onError: (err: Error) => toast({ title: "Remove failed", description: err.message, variant: "destructive" }),
+  });
+
+  const toggleSuperAdminMutation = useMutation({
+    mutationFn: async ({ userId, isSuperAdmin }: { userId: string; isSuperAdmin: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${userId}/superadmin`, { isSuperAdmin });
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateAdminQueries();
+      toast({ title: "Super admin status updated" });
+    },
+    onError: (err: Error) => toast({ title: "Super admin update blocked", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: (userId: string) => apiRequest("DELETE", `/api/admin/users/${userId}`),
+    onSuccess: () => {
+      invalidateAdminQueries();
+      toast({ title: "User deleted" });
+    },
+    onError: (err: Error) => toast({ title: "User delete failed", description: err.message, variant: "destructive" }),
+  });
+
+  const connectorActionMutation = useMutation({
+    mutationFn: ({ connectorId, action }: { connectorId: string; action: "force-poll" | "disable" | "enable" }) =>
+      apiRequest("POST", `/api/admin/connectors/${connectorId}/${action}`),
+    onSuccess: () => {
+      invalidateAdminQueries();
+      toast({ title: "Connector action completed" });
+    },
+    onError: (err: Error) => toast({ title: "Connector action failed", description: err.message, variant: "destructive" }),
+  });
+
+  const imapActionMutation = useMutation({
+    mutationFn: ({ orgId, action }: { orgId: string; action: "reset" | "force-poll" | "disable" }) =>
+      apiRequest("POST", `/api/admin/imap/${action}/${orgId}`),
+    onSuccess: () => {
+      invalidateAdminQueries();
+      toast({ title: "IMAP action completed" });
+    },
+    onError: (err: Error) => toast({ title: "IMAP action failed", description: err.message, variant: "destructive" }),
+  });
+
+  const replayEmailMutation = useMutation({
+    mutationFn: (eventId: string) => apiRequest("POST", `/api/admin/email/replay/${eventId}`),
+    onSuccess: () => {
+      invalidateAdminQueries();
+      toast({ title: "Email replayed" });
+    },
+    onError: (err: Error) => toast({ title: "Replay failed", description: err.message, variant: "destructive" }),
+  });
+
+  const regenerateAliasMutation = useMutation({
+    mutationFn: (orgId: string) => apiRequest("POST", `/api/admin/email/regenerate-alias/${orgId}`),
+    onSuccess: () => {
+      invalidateAdminQueries();
+      toast({ title: "Forwarding alias regenerated" });
+    },
+    onError: (err: Error) => toast({ title: "Alias action failed", description: err.message, variant: "destructive" }),
+  });
+
+  if (!enabled) {
     return (
       <div className="flex flex-col h-full">
-        <PageHeader title="System Admin" description="Access restricted" />
+        <PageHeader title="Master Admin" description="Access restricted" />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
@@ -201,1066 +429,536 @@ export default function AdminPage() {
     );
   }
 
-  const { data: orgs, isLoading: orgsLoading } = useQuery<AdminOrg[]>({ queryKey: ["/api/admin/orgs"] });
-  const { data: adminUsers, isLoading: usersLoading } = useQuery<AdminUser[]>({ queryKey: ["/api/admin/users"] });
-  const { data: adminConnectors } = useQuery<AdminConnector[]>({
-    queryKey: ["/api/admin/connectors"],
-    refetchInterval: 15000,
-  });
-
-  const { data: connectorEventsData } = useQuery<ConnectorEventItem[]>({
-    queryKey: ["/api/admin/connectors", expandedConnectorEvents, "events"],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/connectors/${expandedConnectorEvents}/events?limit=30`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch events");
-      return res.json();
-    },
-    enabled: !!expandedConnectorEvents,
-  });
-
-  const { data: imapDashboard } = useQuery<{
-    pollers: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; orgPlan: string; imapEmailsProcessed?: number }>;
-    dbOnlyEnabled: Array<{ orgId: string; running: boolean; lastPollAt: string | null; lastError: string | null; consecutiveFailures: number; disabled: boolean; orgName: string; orgPlan: string; imapEmailsProcessed?: number }>;
-  }>({ queryKey: ["/api/admin/imap/status"], refetchInterval: 15000 });
-
-  const { data: failedEmails, isLoading: failedEmailsLoading } = useQuery<Array<{
-    id: string;
-    fromEmail: string;
-    subject: string | null;
-    receivedAt: string;
-    errorMessage: string | null;
-    provider: string | null;
-  }>>({ queryKey: ["/api/admin/email/failed"], refetchInterval: 30000 });
-
-  const replayEmailMutation = useMutation({
-    mutationFn: async (eventId: string) => {
-      const res = await apiRequest("POST", `/api/admin/email/replay/${eventId}`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/email/failed"] });
-      toast({ title: "Email replayed", description: "Event re-processed successfully." });
-    },
-    onError: (err: any) => {
-      toast({ title: "Replay failed", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const [auditEventType, setAuditEventType] = useState<string>("all");
-  const [auditSince, setAuditSince] = useState<string>("");
-  const [auditUntil, setAuditUntil] = useState<string>("");
-  const [auditOffset, setAuditOffset] = useState<number>(0);
-  const [expandedAuditRow, setExpandedAuditRow] = useState<string | null>(null);
-  const AUDIT_PAGE_SIZE = 50;
-
-  const auditQueryParams = (() => {
-    const p = new URLSearchParams();
-    if (auditEventType !== "all") p.set("eventTypes", auditEventType);
-    if (auditSince) p.set("since", new Date(auditSince).toISOString());
-    if (auditUntil) p.set("until", new Date(auditUntil).toISOString());
-    p.set("limit", String(AUDIT_PAGE_SIZE));
-    p.set("offset", String(auditOffset));
-    return p.toString();
-  })();
-
-  const { data: auditData, isLoading: auditLoading } = useQuery<{
-    rows: Array<{
-      id: string;
-      orgId: string | null;
-      userId: string | null;
-      eventType: string;
-      authSource: string | null;
-      ipAddress: string | null;
-      userAgent: string | null;
-      details: any;
-      success: boolean;
-      createdAt: string;
-      orgName: string | null;
-      orgSlug: string | null;
-      actorUsername: string | null;
-      actorFullName: string | null;
-    }>;
-    total: number;
-    limit: number;
-    offset: number;
-    availableEventTypes: string[];
-  }>({ queryKey: ["/api/admin/audit", auditQueryParams] , queryFn: async () => {
-    const res = await fetch(`/api/admin/audit?${auditQueryParams}`, { credentials: "include" });
-    if (!res.ok) throw new Error("Failed to fetch admin audit log");
-    return res.json();
-  }});
-
-  const purgeAuditMutation = useMutation({
-    mutationFn: async (days: number) => {
-      const res = await apiRequest("POST", "/api/admin/audit/purge", { days });
-      return res.json();
-    },
-    onSuccess: (data: { deleted: number; days: number }) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/audit"] });
-      toast({
-        title: "Audit log purged",
-        description: `Removed ${data.deleted} entries older than ${data.days} days.`,
-      });
-    },
-    onError: (err: any) => {
-      toast({ title: "Purge failed", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const deleteOrgMutation = useMutation({
-    mutationFn: (id: string) => apiRequest("DELETE", `/api/admin/orgs/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/orgs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      toast({ title: "Organization deleted" });
-    },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const updatePlanMutation = useMutation({
-    mutationFn: async ({ orgId, plan }: { orgId: string; plan: string }) => {
-      const res = await apiRequest("PATCH", `/api/admin/orgs/${orgId}/plan`, { plan });
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/orgs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      toast({ title: "Plan updated", description: `Organization plan changed to ${data.plan}` });
-    },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const updateRoleMutation = useMutation({
-    mutationFn: async ({ orgId, userId, role }: { orgId: string; userId: string; role: string }) => {
-      const res = await apiRequest("PATCH", `/api/admin/orgs/${orgId}/members/${userId}/role`, { role });
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/orgs"] });
-      toast({ title: "Role updated", description: `User role changed to ${data.role}` });
-    },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const adminImapResetMutation = useMutation({
-    mutationFn: async (orgId: string) => {
-      await apiRequest("POST", `/api/admin/imap/reset/${orgId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/imap/status"] });
-      toast({ title: "Poller reset" });
-    },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const adminImapForcePollMutation = useMutation({
-    mutationFn: async (orgId: string) => {
-      await apiRequest("POST", `/api/admin/imap/force-poll/${orgId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/imap/status"] });
-      toast({ title: "Force poll completed" });
-    },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const adminImapDisableMutation = useMutation({
-    mutationFn: async (orgId: string) => {
-      await apiRequest("POST", `/api/admin/imap/disable/${orgId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/imap/status"] });
-      toast({ title: "IMAP disabled for organization" });
-    },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const adminConnectorForcePollMutation = useMutation({
-    mutationFn: async (connectorId: string) => {
-      await apiRequest("POST", `/api/admin/connectors/${connectorId}/force-poll`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/connectors"] });
-      toast({ title: "Force poll completed" });
-    },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const adminConnectorDisableMutation = useMutation({
-    mutationFn: async (connectorId: string) => {
-      await apiRequest("POST", `/api/admin/connectors/${connectorId}/disable`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/connectors"] });
-      toast({ title: "Connector disabled" });
-    },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const adminConnectorEnableMutation = useMutation({
-    mutationFn: async (connectorId: string) => {
-      await apiRequest("POST", `/api/admin/connectors/${connectorId}/enable`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/connectors"] });
-      toast({ title: "Connector enabled" });
-    },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const regenerateAliasMutation = useMutation({
-    mutationFn: async (orgId: string) => {
-      const res = await apiRequest("POST", `/api/admin/email/regenerate-alias/${orgId}`);
-      return await res.json();
-    },
-    onSuccess: (data: any) => {
-      toast({ title: "Alias regenerated", description: `New alias: ${data.inboundAlias}@pulsedesk.support` });
-    },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const toggleSuperAdminMutation = useMutation({
-    mutationFn: async ({ userId, isSuperAdmin }: { userId: string; isSuperAdmin: boolean }) => {
-      const res = await apiRequest("PATCH", `/api/admin/users/${userId}/superadmin`, { isSuperAdmin });
-      return res.json();
-    },
-    onSuccess: (_data: any, vars: { userId: string; isSuperAdmin: boolean }) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      toast({ title: vars.isSuperAdmin ? "Super admin granted" : "Super admin revoked" });
-    },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  interface AdminBillingOrg {
-    id: string;
-    name: string;
-    slug: string;
-    plan: string;
-    stripeCustomerId: string | null;
-    stripeSubscriptionId: string | null;
-    subscriptionStatus: string | null;
-    cancelAtPeriodEnd: boolean;
-    planExpiresAt: string | null;
-  }
-
-  const { data: adminBilling, isLoading: billingLoading } = useQuery<AdminBillingOrg[]>({
-    queryKey: ["/api/admin/billing"],
-  });
-
-  const [syncingOrgId, setSyncingOrgId] = useState<string | null>(null);
-  const adminBillingSyncMutation = useMutation({
-    mutationFn: async (orgId: string) => {
-      setSyncingOrgId(orgId);
-      const res = await apiRequest("POST", `/api/admin/billing/sync/${orgId}`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/billing"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/orgs"] });
-      toast({ title: "Billing synced" });
-    },
-    onError: (err: any) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
-    onSettled: () => setSyncingOrgId(null),
-  });
+  const activeEntitlements = orgs.filter((org) => entitlementState(org.entitlement).ok).length;
+  const connectorIssues = orgs.reduce((sum, org) => sum + org.connectorHealth.error + org.connectorHealth.disabled, 0);
+  const failedEmailCount = failedEmailsQuery.data?.length || 0;
 
   return (
     <div className="flex flex-col h-full">
-      <PageHeader title="System Admin" description="Manage all organizations, plans, and user roles across tenants" />
-      <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-6">
+      <PageHeader title="Master Admin" description="Global tenant operations, OperatorOS entitlements, and system health" />
+      <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
+        <div className="grid gap-3 md:grid-cols-4">
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Tenants</p>
+              <p className="text-2xl font-semibold">{orgs.length}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Enabled Entitlements</p>
+              <p className="text-2xl font-semibold">{activeEntitlements}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Connector Issues</p>
+              <p className="text-2xl font-semibold">{connectorIssues}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Failed Inbound</p>
+              <p className="text-2xl font-semibold">{failedEmailCount}</p>
+            </CardContent>
+          </Card>
+        </div>
 
-        <Card data-testid="card-admin-orgs">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Building2 className="h-4 w-4" />
-              Organizations ({orgs?.length || 0})
-            </CardTitle>
-            <CardDescription>Manage subscription plans and organization settings</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {orgsLoading ? (
-              <div className="flex items-center justify-center py-8"><PulseLoader /></div>
-            ) : !orgs || orgs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No organizations</p>
-            ) : (
-              <div className="space-y-2">
-                {orgs.map((o) => {
-                  const isExpanded = expandedOrg === o.id;
-                  const planLimits = PLAN_LIMITS[o.plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
-                  return (
-                    <div key={o.id} className="rounded-lg border" data-testid={`admin-org-${o.id}`}>
-                      <div
-                        className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
-                        onClick={() => setExpandedOrg(isExpanded ? null : o.id)}
-                      >
-                        {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-medium">{o.name}</p>
-                            <Badge className={`text-[10px] ${PLAN_BADGE_STYLES[o.plan] || PLAN_BADGE_STYLES.free}`} variant="secondary">
-                              {getPlanIcon(o.plan)}
-                              <span className="ml-1">{planLimits.label}</span>
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {o.slug} · {o.memberCount} members · {o.counts.tickets} tickets
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${o.name}" and all its data?`)) deleteOrgMutation.mutate(o.id); }}
-                          data-testid={`button-delete-org-${o.id}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                        </Button>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="flex h-auto flex-wrap justify-start">
+            <TabsTrigger value="tenants" className="gap-1.5"><Building2 className="h-3.5 w-3.5" />Tenants</TabsTrigger>
+            <TabsTrigger value="users" className="gap-1.5"><Users className="h-3.5 w-3.5" />Users</TabsTrigger>
+            <TabsTrigger value="entitlements" className="gap-1.5"><KeyRound className="h-3.5 w-3.5" />Entitlements</TabsTrigger>
+            <TabsTrigger value="inboxes" className="gap-1.5"><Inbox className="h-3.5 w-3.5" />Inboxes</TabsTrigger>
+            <TabsTrigger value="audit" className="gap-1.5"><FileSearch className="h-3.5 w-3.5" />Audit</TabsTrigger>
+            <TabsTrigger value="health" className="gap-1.5"><Activity className="h-3.5 w-3.5" />System Health</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="tenants" className="mt-4">
+            <div className="grid gap-4 xl:grid-cols-[minmax(360px,480px)_1fr]">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2"><Building2 className="h-4 w-4" />Tenants</CardTitle>
+                  <CardDescription>Search by tenant, slug, email, or SSO mode.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="relative">
+                    <Search className="h-4 w-4 absolute left-2 top-2.5 text-muted-foreground" />
+                    <Input className="pl-8" placeholder="Search tenants" value={tenantSearch} onChange={(event) => setTenantSearch(event.target.value)} />
+                  </div>
+                  {orgsQuery.isLoading ? <PulseLoader /> : (
+                    <div className="space-y-2 max-h-[620px] overflow-auto pr-1">
+                      {filteredOrgs.map((org) => {
+                        const state = entitlementState(org.entitlement);
+                        return (
+                          <button
+                            key={org.id}
+                            className={`w-full rounded-md border p-3 text-left transition-colors hover:bg-muted/40 ${selectedOrgId === org.id ? "border-primary bg-muted/30" : ""}`}
+                            onClick={() => setSelectedOrgId(org.id)}
+                            data-testid={`admin-tenant-${org.id}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{org.name}</p>
+                                <p className="text-xs text-muted-foreground truncate">{org.slug} · {org.memberCount} members · {org.counts.tickets} tickets</p>
+                              </div>
+                              <Badge variant="outline" className={`text-[10px] ${state.className}`}><StatusDot ok={state.ok} /> <span className="ml-1">{state.label}</span></Badge>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              <Badge variant="secondary" className="text-[10px]">{org.ssoStatus}</Badge>
+                              <Badge variant="secondary" className="text-[10px]">{org.connectorHealth.active}/{org.connectorHealth.total} inboxes active</Badge>
+                              {org.connectorHealth.error > 0 && <Badge variant="destructive" className="text-[10px]">{org.connectorHealth.error} inbox errors</Badge>}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <CardTitle className="text-sm flex items-center gap-2"><Settings className="h-4 w-4" />Tenant Profile</CardTitle>
+                        <CardDescription>{selectedOrg ? `Editing ${selectedOrg.name}` : "Select a tenant"}</CardDescription>
                       </div>
+                      {selectedOrg && (
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => switchOrgMutation.mutate(selectedOrg.id)} disabled={switchOrgMutation.isPending}>
+                            <LogIn className="h-3.5 w-3.5" />Support Context
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 text-rose-600 hover:text-rose-700"
+                            disabled={deleteOrgMutation.isPending}
+                            onClick={() => {
+                              if (confirm(`Delete tenant ${selectedOrg.name}? This removes tenant data and cannot be undone.`)) deleteOrgMutation.mutate(selectedOrg.id);
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />Delete
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {!selectedOrg ? <p className="text-sm text-muted-foreground">No tenant selected.</p> : (
+                      <>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <Input value={orgForm.name} onChange={(event) => setOrgForm({ ...orgForm, name: event.target.value })} placeholder="Tenant name" />
+                          <Input value={orgForm.slug} onChange={(event) => setOrgForm({ ...orgForm, slug: event.target.value })} placeholder="Slug" />
+                          <Input value={orgForm.email} onChange={(event) => setOrgForm({ ...orgForm, email: event.target.value })} placeholder="Operations email" />
+                          <Input value={orgForm.phone} onChange={(event) => setOrgForm({ ...orgForm, phone: event.target.value })} placeholder="Phone" />
+                          <Input className="md:col-span-2" value={orgForm.address} onChange={(event) => setOrgForm({ ...orgForm, address: event.target.value })} placeholder="Address" />
+                          <Select value={orgForm.authMode} onValueChange={(authMode) => setOrgForm({ ...orgForm, authMode })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {AUTH_MODE_OPTIONS.map((mode) => <SelectItem key={mode} value={mode}>{mode}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button size="sm" onClick={() => updateOrgMutation.mutate()} disabled={updateOrgMutation.isPending}>Save Tenant Settings</Button>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
 
-                      {isExpanded && (
-                        <div className="border-t px-3 py-3 bg-muted/10 space-y-3">
-                          <div className="flex items-center gap-3">
-                            <label className="text-xs font-medium text-muted-foreground w-24 shrink-0">Subscription</label>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2"><Users className="h-4 w-4" />Tenant Members</CardTitle>
+                    <CardDescription>Manage tenant roles and invite codes without impersonating regular users.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {selectedOrg && (
+                      <div className="flex flex-wrap gap-2">
+                        <Select value={inviteRole} onValueChange={setInviteRole}>
+                          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                          <SelectContent>{ROLE_OPTIONS.map((role) => <SelectItem key={role} value={role}>{role}</SelectItem>)}</SelectContent>
+                        </Select>
+                        <Button size="sm" variant="outline" disabled={createInviteMutation.isPending} onClick={() => createInviteMutation.mutate()}>Create Invite</Button>
+                      </div>
+                    )}
+                    {membersQuery.isLoading ? <PulseLoader /> : (
+                      <div className="space-y-2">
+                        {(membersQuery.data || []).map((member) => (
+                          <div key={member.id} className="flex flex-wrap items-center gap-3 rounded-md border p-3">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium truncate">{member.fullName || member.username}</p>
+                              <p className="text-xs text-muted-foreground truncate">{member.email || member.username}</p>
+                            </div>
                             <Select
-                              value={o.plan}
-                              onValueChange={(plan) => {
-                                if (plan !== o.plan && confirm(`Change "${o.name}" from ${o.plan} to ${plan}?`)) {
-                                  updatePlanMutation.mutate({ orgId: o.id, plan });
-                                }
-                              }}
+                              value={member.role}
+                              disabled={member.email ? masterAdminsQuery.data?.emails.includes(member.email.toLowerCase()) : false}
+                              onValueChange={(role) => updateRoleMutation.mutate({ orgId: member.orgId, userId: member.userId, role })}
                             >
-                              <SelectTrigger className="h-8 text-xs w-48" data-testid={`select-plan-${o.id}`}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {PLAN_OPTIONS.map((p) => (
-                                  <SelectItem key={p.value} value={p.value}>
-                                    {p.label}
-                                    {p.value !== "free" && ` ($${PLAN_LIMITS[p.value as keyof typeof PLAN_LIMITS]?.price}/mo)`}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
+                              <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>{ROLE_OPTIONS.map((role) => <SelectItem key={role} value={role}>{role}</SelectItem>)}</SelectContent>
                             </Select>
-                          </div>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                            <div className="rounded border p-2">
-                              <span className="text-muted-foreground">Members</span>
-                              <p className="font-medium">{o.memberCount} / {planLimits.maxMembers === Infinity ? "∞" : planLimits.maxMembers}</p>
-                            </div>
-                            <div className="rounded border p-2">
-                              <span className="text-muted-foreground">Tickets</span>
-                              <p className="font-medium">{o.counts.tickets}</p>
-                            </div>
-                            <div className="rounded border p-2">
-                              <span className="text-muted-foreground">Entra SSO</span>
-                              <p className="font-medium">{planLimits.entraEnabled ? "Yes" : "No"}</p>
-                            </div>
-                            <div className="rounded border p-2">
-                              <span className="text-muted-foreground">Email-to-Ticket</span>
-                              <p className="font-medium">{planLimits.emailToTicket ? "Yes" : "No"}</p>
-                            </div>
-                          </div>
-                          {o.stripeCustomerId && (
-                            <p className="text-[11px] text-muted-foreground">
-                              Stripe: {o.stripeCustomerId}
-                              {o.stripeSubscriptionId && ` · Sub: ${o.stripeSubscriptionId}`}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card data-testid="card-admin-users">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Users ({adminUsers?.length || 0})
-            </CardTitle>
-            <CardDescription>Manage user roles across organizations and super admin access</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {usersLoading ? (
-              <div className="flex items-center justify-center py-8"><PulseLoader /></div>
-            ) : !adminUsers || adminUsers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No users</p>
-            ) : (
-              <div className="space-y-2">
-                {adminUsers.map((u) => {
-                  const isExpanded = expandedUser === u.id;
-                  const isSelf = u.id === user?.id;
-                  return (
-                    <div key={u.id} className="rounded-lg border" data-testid={`admin-user-${u.id}`}>
-                      <div
-                        className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
-                        onClick={() => setExpandedUser(isExpanded ? null : u.id)}
-                      >
-                        {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-medium">
-                              {u.fullName}
-                              <span className="text-muted-foreground font-normal ml-1">@{u.username}</span>
-                            </p>
-                            {u.isSuperAdmin && (
-                              <Badge className="text-[10px] bg-primary/10 text-primary" variant="secondary">
-                                <Star className="h-3 w-3 mr-0.5" />
-                                Super Admin
-                              </Badge>
-                            )}
-                            {isSelf && (
-                              <Badge variant="outline" className="text-[10px]">You</Badge>
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {u.email || "No email"} · {u.memberships.length} org{u.memberships.length !== 1 ? "s" : ""}
-                          </p>
-                        </div>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="border-t px-3 py-3 bg-muted/10 space-y-3">
-                          <div className="flex items-center gap-3">
-                            <label className="text-xs font-medium text-muted-foreground w-24 shrink-0">Super Admin</label>
                             <Button
-                              variant={u.isSuperAdmin ? "destructive" : "outline"}
                               size="sm"
-                              className="text-xs h-7"
-                              disabled={isSelf || toggleSuperAdminMutation.isPending}
+                              variant="outline"
+                              className="h-8 text-xs text-rose-600 hover:text-rose-700"
+                              disabled={removeMemberMutation.isPending || !!(member.email && masterAdminsQuery.data?.emails.includes(member.email.toLowerCase()))}
                               onClick={() => {
-                                const action = u.isSuperAdmin ? "revoke" : "grant";
-                                if (confirm(`${action === "grant" ? "Grant" : "Revoke"} super admin for ${u.fullName}?`)) {
-                                  toggleSuperAdminMutation.mutate({ userId: u.id, isSuperAdmin: !u.isSuperAdmin });
+                                if (confirm(`Remove ${member.fullName || member.username} from this tenant?`)) removeMemberMutation.mutate({ orgId: member.orgId, userId: member.userId });
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="users" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2"><UserCog className="h-4 w-4" />Users</CardTitle>
+                <CardDescription>Manage global super-admin access and tenant roles across PulseDesk.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="relative max-w-lg">
+                  <Search className="h-4 w-4 absolute left-2 top-2.5 text-muted-foreground" />
+                  <Input className="pl-8" placeholder="Search users by name, username, or email" value={userSearch} onChange={(event) => setUserSearch(event.target.value)} />
+                </div>
+                {usersQuery.isLoading ? <PulseLoader /> : (
+                  <div className="space-y-3">
+                    {filteredUsers.map((row) => (
+                      <div key={row.id} className="rounded-md border p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-medium">{row.fullName || row.username}</p>
+                              {row.isSuperAdmin && <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">Super Admin</Badge>}
+                              {row.isConfiguredMasterAdmin && <Badge variant="outline" className="text-[10px] border-emerald-300 text-emerald-700">Configured Master</Badge>}
+                            </div>
+                            <p className="text-xs text-muted-foreground">{row.email || row.username} · {row.memberships.length} tenant memberships</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={toggleSuperAdminMutation.isPending || row.isConfiguredMasterAdmin || row.id === user?.id}
+                              onClick={() => {
+                                const action = row.isSuperAdmin ? "revoke" : "grant";
+                                if (confirm(`${action === "grant" ? "Grant" : "Revoke"} super admin for ${row.email || row.username}?`)) {
+                                  toggleSuperAdminMutation.mutate({ userId: row.id, isSuperAdmin: !row.isSuperAdmin });
                                 }
                               }}
-                              data-testid={`button-toggle-superadmin-${u.id}`}
                             >
-                              <Shield className="h-3 w-3 mr-1" />
-                              {u.isSuperAdmin ? "Revoke Super Admin" : "Grant Super Admin"}
+                              {row.isSuperAdmin ? "Revoke Super Admin" : "Grant Super Admin"}
                             </Button>
-                            {isSelf && <span className="text-[11px] text-muted-foreground">(Cannot modify own status)</span>}
-                          </div>
-
-                          {u.memberships.length > 0 ? (
-                            <div>
-                              <p className="text-xs font-medium text-muted-foreground mb-2">Organization Memberships</p>
-                              <div className="space-y-2">
-                                {u.memberships.map((m) => (
-                                  <div key={m.orgId} className="flex items-center gap-3 rounded border p-2.5 bg-background" data-testid={`membership-${u.id}-${m.orgId}`}>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-sm font-medium">{m.orgName}</span>
-                                        <Badge className={`text-[10px] ${PLAN_BADGE_STYLES[m.orgPlan] || PLAN_BADGE_STYLES.free}`} variant="secondary">
-                                          {m.orgPlan}
-                                        </Badge>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <Select
-                                        value={m.role}
-                                        onValueChange={(role) => {
-                                          if (role !== m.role && confirm(`Change ${u.fullName}'s role in "${m.orgName}" from ${m.role} to ${role}?`)) {
-                                            updateRoleMutation.mutate({ orgId: m.orgId, userId: u.id, role });
-                                          }
-                                        }}
-                                      >
-                                        <SelectTrigger className="h-7 text-xs w-32" data-testid={`select-role-${u.id}-${m.orgId}`}>
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {ROLE_OPTIONS.map((r) => (
-                                            <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-muted-foreground">No organization memberships</p>
-                          )}
-
-                          <p className="text-[11px] text-muted-foreground">
-                            Joined: {new Date(u.createdAt).toLocaleDateString()} · ID: {u.id.slice(0, 8)}...
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card data-testid="card-admin-connectors">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Inbox className="h-4 w-4" />
-              Mail Connector Dashboard
-            </CardTitle>
-            <CardDescription>Monitor and manage all mail connectors across tenants</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <Input
-                value={connectorOrgSearch}
-                onChange={(e) => setConnectorOrgSearch(e.target.value)}
-                placeholder="Search by org name..."
-                className="w-48 h-8 text-xs"
-                data-testid="input-connector-org-search"
-              />
-              <Select value={connectorFilter} onValueChange={setConnectorFilter}>
-                <SelectTrigger className="w-36 h-8 text-xs" data-testid="select-connector-provider-filter">
-                  <SelectValue placeholder="All Providers" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Providers</SelectItem>
-                  <SelectItem value="google">Google</SelectItem>
-                  <SelectItem value="microsoft">Microsoft</SelectItem>
-                  <SelectItem value="imap">IMAP</SelectItem>
-                  <SelectItem value="forwarding">Forwarding</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={connectorStatusFilter} onValueChange={setConnectorStatusFilter}>
-                <SelectTrigger className="w-32 h-8 text-xs" data-testid="select-connector-status-filter">
-                  <SelectValue placeholder="All Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="error">Error</SelectItem>
-                  <SelectItem value="pending_auth">Pending Auth</SelectItem>
-                  <SelectItem value="disabled">Disabled</SelectItem>
-                </SelectContent>
-              </Select>
-              <span className="text-xs text-muted-foreground ml-auto">
-                {adminConnectors?.length || 0} total connectors
-              </span>
-            </div>
-
-            {(() => {
-              let filtered = adminConnectors || [];
-              if (connectorOrgSearch.trim()) {
-                const search = connectorOrgSearch.trim().toLowerCase();
-                filtered = filtered.filter(c => c.orgName.toLowerCase().includes(search) || (c.emailAddress && c.emailAddress.toLowerCase().includes(search)));
-              }
-              if (connectorFilter !== "all") {
-                filtered = filtered.filter(c => c.provider === connectorFilter);
-              }
-              if (connectorStatusFilter !== "all") {
-                if (connectorStatusFilter === "error") {
-                  filtered = filtered.filter(c => c.status === "error" || c.consecutiveFailures > 0);
-                } else if (connectorStatusFilter === "disabled") {
-                  filtered = filtered.filter(c => !c.enabled || c.status === "disabled");
-                } else {
-                  filtered = filtered.filter(c => c.status === connectorStatusFilter);
-                }
-              }
-
-              if (filtered.length === 0) {
-                return <p className="text-sm text-muted-foreground text-center py-4">No connectors found</p>;
-              }
-
-              return (
-                <div className="space-y-2">
-                  {filtered.map((c) => {
-                    const ProviderIcon = PROVIDER_ICON[c.provider] || Server;
-                    const isEventsExpanded = expandedConnectorEvents === c.id;
-                    return (
-                      <div key={c.id} className="rounded-lg border" data-testid={`admin-connector-${c.id}`}>
-                        <div className="flex items-center gap-3 p-3">
-                          <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                            c.enabled && c.status === "active" && c.consecutiveFailures === 0 ? "bg-emerald-500 animate-pulse" :
-                            c.consecutiveFailures > 0 ? "bg-amber-500" :
-                            c.status === "error" || c.status === "disabled" || !c.enabled ? "bg-rose-500" :
-                            c.status === "pending_auth" ? "bg-amber-500" :
-                            "bg-slate-400"
-                          }`} />
-                          <ProviderIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-medium">{c.orgName}</span>
-                              <Badge className={`text-[10px] ${PLAN_BADGE_STYLES[c.orgPlan] || PLAN_BADGE_STYLES.free}`} variant="secondary">
-                                {c.orgPlan}
-                              </Badge>
-                              <Badge variant="outline" className="text-[10px]">
-                                {PROVIDER_LABEL[c.provider] || c.provider}
-                              </Badge>
-                              <Badge variant="outline" className={`text-[10px] ${
-                                c.status === "active" && c.enabled ? "border-emerald-300 text-emerald-600" :
-                                c.status === "error" ? "border-rose-300 text-rose-600" :
-                                c.status === "pending_auth" ? "border-amber-300 text-amber-600" :
-                                ""
-                              }`}>
-                                {!c.enabled ? "Disabled" : c.status === "active" ? "Active" : c.status === "pending_auth" ? "Pending Auth" : c.status}
-                              </Badge>
-                            </div>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">
-                              {c.emailAddress || c.imapHost || "No address"}
-                              {' · '}Last sync: {c.lastPolledAt ? new Date(c.lastPolledAt).toLocaleString() : "Never"}
-                              {' · '}{c.emailsProcessed} emails
-                              {c.consecutiveFailures > 0 && ` · ${c.consecutiveFailures} failures`}
-                            </p>
-                            {c.lastError && (
-                              <div className="flex items-center gap-1 mt-1">
-                                <AlertTriangle className="h-3 w-3 text-rose-500 shrink-0" />
-                                <span className="text-[11px] text-rose-600 truncate">{c.lastError}</span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            {c.provider !== "forwarding" && (
-                              <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => adminConnectorForcePollMutation.mutate(c.id)} disabled={adminConnectorForcePollMutation.isPending || c.status === "pending_auth"} data-testid={`button-admin-connector-poll-${c.id}`}>
-                                <Play className="h-3 w-3" /> Poll
-                              </Button>
-                            )}
-                            {c.provider === "forwarding" && (
-                              <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => { if (confirm("Regenerate forwarding alias? The old address will stop working.")) regenerateAliasMutation.mutate(c.orgId); }} disabled={regenerateAliasMutation.isPending} data-testid={`button-admin-connector-regen-alias-${c.id}`}>
-                                <RefreshCw className="h-3 w-3" /> Regen Alias
-                              </Button>
-                            )}
-                            <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => setExpandedConnectorEvents(isEventsExpanded ? null : c.id)} data-testid={`button-admin-connector-events-${c.id}`}>
-                              <Clock className="h-3 w-3" /> Events
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-rose-600 hover:text-rose-700"
+                              disabled={deleteUserMutation.isPending || row.isConfiguredMasterAdmin || row.id === user?.id}
+                              onClick={() => {
+                                if (confirm(`Delete user ${row.email || row.username}?`)) deleteUserMutation.mutate(row.id);
+                              }}
+                            >
+                              Delete
                             </Button>
-                            {c.enabled ? (
-                              <Button variant="outline" size="sm" className="text-xs h-7 gap-1 text-rose-600 hover:text-rose-700" onClick={() => adminConnectorDisableMutation.mutate(c.id)} disabled={adminConnectorDisableMutation.isPending} data-testid={`button-admin-connector-disable-${c.id}`}>
-                                <XCircle className="h-3 w-3" /> Disable
-                              </Button>
-                            ) : (
-                              <Button variant="outline" size="sm" className="text-xs h-7 gap-1 text-emerald-600 hover:text-emerald-700" onClick={() => adminConnectorEnableMutation.mutate(c.id)} disabled={adminConnectorEnableMutation.isPending} data-testid={`button-admin-connector-enable-${c.id}`}>
-                                <Power className="h-3 w-3" /> Enable
-                              </Button>
-                            )}
                           </div>
                         </div>
-                        {isEventsExpanded && (
-                          <div className="border-t px-3 py-3 bg-muted/10 space-y-1.5 max-h-60 overflow-auto">
-                            {!connectorEventsData || connectorEventsData.length === 0 ? (
-                              <p className="text-xs text-muted-foreground text-center py-2">No events</p>
-                            ) : (
-                              connectorEventsData.map((evt) => (
-                                <div key={evt.id} className="flex items-start gap-2 text-[11px]" data-testid={`admin-event-${evt.id}`}>
-                                  <Badge variant="outline" className="text-[9px] shrink-0 mt-0.5">
-                                    {evt.eventType}
-                                  </Badge>
-                                  <span className="flex-1 text-muted-foreground">{evt.message}</span>
-                                  <span className="text-muted-foreground/60 shrink-0">{new Date(evt.createdAt).toLocaleString()}</span>
-                                </div>
-                              ))
-                            )}
+                        {row.memberships.length > 0 && (
+                          <div className="mt-3 grid gap-2 md:grid-cols-2">
+                            {row.memberships.map((membership) => (
+                              <div key={`${row.id}-${membership.orgId}`} className="rounded-md bg-muted/30 p-2 text-xs flex items-center gap-2">
+                                <span className="min-w-0 flex-1 truncate">{membership.orgName}</span>
+                                <Select
+                                  value={membership.role}
+                                  disabled={row.isConfiguredMasterAdmin}
+                                  onValueChange={(role) => updateRoleMutation.mutate({ orgId: membership.orgId, userId: row.id, role })}
+                                >
+                                  <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>{ROLE_OPTIONS.map((role) => <SelectItem key={role} value={role}>{role}</SelectItem>)}</SelectContent>
+                                </Select>
+                              </div>
+                            ))}
                           </div>
                         )}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-
-            {(() => {
-              const allPollers = [
-                ...(imapDashboard?.pollers || []),
-                ...(imapDashboard?.dbOnlyEnabled || []),
-              ];
-              if (allPollers.length === 0) return null;
-
-              return (
-                <div className="mt-6">
-                  <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
-                    <Server className="h-3 w-3" /> Legacy IMAP Pollers
-                  </p>
-                  <div className="space-y-2">
-                    {allPollers.map((p) => (
-                      <div key={p.orgId} className="flex items-center gap-3 rounded-lg border border-amber-200 dark:border-amber-800 p-3" data-testid={`imap-poller-${p.orgId}`}>
-                        <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${p.running ? "bg-emerald-500 animate-pulse" : p.disabled ? "bg-rose-500" : "bg-slate-400"}`} />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{p.orgName}</span>
-                            <Badge className={`text-[10px] ${PLAN_BADGE_STYLES[p.orgPlan] || PLAN_BADGE_STYLES.free}`} variant="secondary">{p.orgPlan}</Badge>
-                            <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600">Legacy</Badge>
-                            <Badge variant="outline" className="text-[10px]">{p.running ? "Running" : p.disabled ? "Disabled" : "Stopped"}</Badge>
-                          </div>
-                          {p.lastError && (
-                            <div className="flex items-center gap-1 mt-1">
-                              <AlertTriangle className="h-3 w-3 text-rose-500 shrink-0" />
-                              <span className="text-[11px] text-rose-600 truncate">{p.lastError}</span>
-                              <span className="text-[11px] text-muted-foreground shrink-0">({p.consecutiveFailures} failures)</span>
-                            </div>
-                          )}
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
-                            Last poll: {p.lastPollAt ? new Date(p.lastPollAt).toLocaleString() : "Never"}
-                            {' · '}{p.imapEmailsProcessed || 0} emails
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => adminImapForcePollMutation.mutate(p.orgId)} disabled={adminImapForcePollMutation.isPending} data-testid={`button-admin-imap-force-poll-${p.orgId}`}>
-                            <Play className="h-3 w-3" /> Poll
-                          </Button>
-                          {(p.disabled || p.consecutiveFailures > 0) && (
-                            <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => adminImapResetMutation.mutate(p.orgId)} disabled={adminImapResetMutation.isPending} data-testid={`button-admin-imap-reset-${p.orgId}`}>
-                              <RefreshCw className="h-3 w-3" /> Reset
-                            </Button>
-                          )}
-                          {!p.disabled && (
-                            <Button variant="outline" size="sm" className="text-xs h-7 gap-1 text-rose-600 hover:text-rose-700" onClick={() => adminImapDisableMutation.mutate(p.orgId)} disabled={adminImapDisableMutation.isPending} data-testid={`button-admin-imap-disable-${p.orgId}`}>
-                              <XCircle className="h-3 w-3" /> Disable
-                            </Button>
-                          )}
-                        </div>
                       </div>
                     ))}
                   </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="entitlements" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2"><KeyRound className="h-4 w-4" />OperatorOS Entitlements</CardTitle>
+                <CardDescription>Cached entitlement snapshots by tenant and user.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <Select value={entitlementStateFilter} onValueChange={setEntitlementStateFilter}>
+                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All states</SelectItem>
+                      <SelectItem value="enabled">Enabled</SelectItem>
+                      <SelectItem value="disabled">Disabled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={entitlementOrgFilter} onValueChange={setEntitlementOrgFilter}>
+                    <SelectTrigger className="w-72"><SelectValue placeholder="Tenant" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All tenants</SelectItem>
+                      {orgs.map((org) => <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
-              );
-            })()}
-          </CardContent>
-        </Card>
-
-        <Card data-testid="card-admin-billing">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <CreditCard className="h-4 w-4" />
-              Billing Overview
-            </CardTitle>
-            <CardDescription>Stripe subscription state for all organizations</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {billingLoading ? (
-              <div className="flex items-center justify-center py-8"><PulseLoader /></div>
-            ) : !adminBilling || adminBilling.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No organizations</p>
-            ) : (
-              <div className="space-y-2">
-                {adminBilling.map((o) => (
-                  <div key={o.id} className="rounded-lg border p-3 flex items-center gap-3" data-testid={`billing-row-${o.id}`}>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium">{o.name}</span>
-                        <Badge className={`text-[10px] ${PLAN_BADGE_STYLES[o.plan] || PLAN_BADGE_STYLES.free}`} variant="secondary">
-                          {getPlanIcon(o.plan)}
-                          <span className="ml-1">{PLAN_LIMITS[o.plan as keyof typeof PLAN_LIMITS]?.label || o.plan}</span>
-                        </Badge>
-                        {o.subscriptionStatus && (
-                          <Badge
-                            variant="outline"
-                            className={`text-[10px] ${
-                              o.subscriptionStatus === "active"
-                                ? "border-emerald-300 text-emerald-700 dark:text-emerald-400"
-                                : o.subscriptionStatus === "past_due"
-                                  ? "border-rose-300 text-rose-700 dark:text-rose-400"
-                                  : "border-amber-300 text-amber-700"
-                            }`}
-                            data-testid={`billing-status-badge-${o.id}`}
-                          >
-                            <div className={`h-1.5 w-1.5 rounded-full mr-1 ${
-                              o.subscriptionStatus === "active" ? "bg-emerald-500"
-                              : o.subscriptionStatus === "past_due" ? "bg-rose-500"
-                              : "bg-amber-500"
-                            }`} />
-                            {o.subscriptionStatus === "past_due" ? "Past Due" : o.subscriptionStatus}
-                          </Badge>
-                        )}
-                        {o.cancelAtPeriodEnd && (
-                          <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
-                            <CalendarX className="h-3 w-3 mr-1" />
-                            Cancels
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground mt-1 space-y-0.5">
-                        {o.stripeCustomerId && <p>Customer: {o.stripeCustomerId}</p>}
-                        {o.stripeSubscriptionId && <p>Sub: {o.stripeSubscriptionId}</p>}
-                        {o.planExpiresAt && (
-                          <p>
-                            {o.cancelAtPeriodEnd ? "Cancels" : "Renews"} {new Date(o.planExpiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5 text-xs h-8 shrink-0"
-                      onClick={() => adminBillingSyncMutation.mutate(o.id)}
-                      disabled={adminBillingSyncMutation.isPending && syncingOrgId === o.id}
-                      data-testid={`button-billing-sync-${o.id}`}
-                    >
-                      <RefreshCw className={`h-3 w-3 ${adminBillingSyncMutation.isPending && syncingOrgId === o.id ? "animate-spin" : ""}`} />
-                      Sync
-                    </Button>
+                {entitlementsQuery.isLoading ? <PulseLoader /> : (
+                  <div className="border rounded-md overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50">
+                        <tr className="text-left">
+                          <th className="px-2 py-2 font-medium">Tenant</th>
+                          <th className="px-2 py-2 font-medium">User</th>
+                          <th className="px-2 py-2 font-medium">State</th>
+                          <th className="px-2 py-2 font-medium">Module Role</th>
+                          <th className="px-2 py-2 font-medium">Tenant Role</th>
+                          <th className="px-2 py-2 font-medium">Subscription</th>
+                          <th className="px-2 py-2 font-medium">Computed</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(entitlementsQuery.data || []).map((row) => {
+                          const state = entitlementState(row);
+                          return (
+                            <tr key={row.id} className="border-t">
+                              <td className="px-2 py-2">{row.orgName || row.operatorOsTenantId}</td>
+                              <td className="px-2 py-2">{row.userEmail || row.operatorOsUserId}</td>
+                              <td className="px-2 py-2"><Badge variant="outline" className={`text-[10px] ${state.className}`}>{state.label}</Badge></td>
+                              <td className="px-2 py-2">{row.moduleRole}</td>
+                              <td className="px-2 py-2">{row.tenantRole || row.tenantRoleAlias || "-"}</td>
+                              <td className="px-2 py-2">{row.subscriptionStatus || "-"}</td>
+                              <td className="px-2 py-2 whitespace-nowrap">{formatDate(row.computedAt)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        <Card data-testid="card-failed-emails">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Inbox className="h-4 w-4" />
-              Failed Inbound Emails ({failedEmails?.length || 0})
-            </CardTitle>
-            <CardDescription>Emails that failed processing — replay to re-attempt ticket creation.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {failedEmailsLoading ? (
-              <div className="flex items-center justify-center py-6"><PulseLoader /></div>
-            ) : !failedEmails || failedEmails.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">No failed emails — all good.</p>
-            ) : (
-              <div className="space-y-2">
-                {failedEmails.map((ev) => (
-                  <div key={ev.id} className="flex items-start gap-3 rounded-lg border p-3" data-testid={`failed-email-${ev.id}`}>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">{ev.subject || "(no subject)"}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                        from {ev.fromEmail} · {ev.provider || "unknown"} · {new Date(ev.receivedAt).toLocaleString()}
-                      </p>
-                      {ev.errorMessage && (
-                        <p className="text-[10px] text-rose-600 dark:text-rose-400 mt-1 truncate" title={ev.errorMessage}>
-                          {ev.errorMessage}
-                        </p>
-                      )}
+          <TabsContent value="inboxes" className="mt-4">
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2"><Server className="h-4 w-4" />Connectors</CardTitle>
+                  <CardDescription>Force poll, disable, or enable tenant inbox connectors.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Input placeholder="Search tenant, provider, email, or status" value={connectorSearch} onChange={(event) => setConnectorSearch(event.target.value)} />
+                  {connectorsQuery.isLoading ? <PulseLoader /> : (
+                    <div className="space-y-2 max-h-[620px] overflow-auto pr-1">
+                      {filteredConnectors.map((connector) => (
+                        <div key={connector.id} className="rounded-md border p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <StatusDot ok={connector.enabled && connector.status === "active"} />
+                                <p className="text-sm font-medium truncate">{connector.orgName}</p>
+                                <Badge variant="secondary" className="text-[10px]">{connector.provider}</Badge>
+                                <Badge variant="outline" className="text-[10px]">{connector.status}</Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">{connector.emailAddress || connector.label || connector.id}</p>
+                              {connector.lastError && <p className="text-xs text-rose-600 mt-1 truncate">{connector.lastError}</p>}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              <Button size="sm" variant="outline" className="h-8 text-xs gap-1" disabled={connectorActionMutation.isPending || connector.status === "pending_auth"} onClick={() => connectorActionMutation.mutate({ connectorId: connector.id, action: "force-poll" })}><Play className="h-3 w-3" />Poll</Button>
+                              {connector.enabled ? (
+                                <Button size="sm" variant="outline" className="h-8 text-xs gap-1 text-rose-600 hover:text-rose-700" disabled={connectorActionMutation.isPending} onClick={() => connectorActionMutation.mutate({ connectorId: connector.id, action: "disable" })}><Power className="h-3 w-3" />Disable</Button>
+                              ) : (
+                                <Button size="sm" variant="outline" className="h-8 text-xs gap-1 text-emerald-600 hover:text-emerald-700" disabled={connectorActionMutation.isPending} onClick={() => connectorActionMutation.mutate({ connectorId: connector.id, action: "enable" })}><Power className="h-3 w-3" />Enable</Button>
+                              )}
+                              {connector.provider === "forwarding" && <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => regenerateAliasMutation.mutate(connector.orgId)}>Regen Alias</Button>}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5 text-xs h-8 shrink-0"
-                      disabled={replayEmailMutation.isPending}
-                      onClick={() => replayEmailMutation.mutate(ev.id)}
-                      data-testid={`button-replay-${ev.id}`}
-                    >
-                      <RefreshCw className={`h-3 w-3 ${replayEmailMutation.isPending ? "animate-spin" : ""}`} />
-                      Replay
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  )}
+                </CardContent>
+              </Card>
 
-        <Card data-testid="card-admin-audit-log">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-2">
-                <FileSearch className="h-4 w-4 text-muted-foreground" />
-                <CardTitle className="text-sm font-medium">Admin Action Audit Log</CardTitle>
-              </div>
-              <span className="text-xs text-muted-foreground" data-testid="text-audit-total">
-                {auditData ? `${auditData.total} total event${auditData.total === 1 ? "" : "s"}` : ""}
-              </span>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2"><Inbox className="h-4 w-4" />Inbound Failures & IMAP</CardTitle>
+                  <CardDescription>Replay failed inbound messages and manage legacy IMAP pollers.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Failed inbound emails</p>
+                    {failedEmailsQuery.isLoading ? <PulseLoader /> : (failedEmailsQuery.data || []).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No failed inbound messages.</p>
+                    ) : (failedEmailsQuery.data || []).map((event) => (
+                      <div key={event.id} className="rounded-md border p-3 flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{event.subject || "(no subject)"}</p>
+                          <p className="text-xs text-muted-foreground truncate">{event.fromEmail} · {event.provider || "unknown"} · {formatDate(event.receivedAt)}</p>
+                          {event.errorMessage && <p className="text-xs text-rose-600 mt-1 truncate">{event.errorMessage}</p>}
+                        </div>
+                        <Button size="sm" variant="outline" disabled={replayEmailMutation.isPending} onClick={() => replayEmailMutation.mutate(event.id)}><RefreshCw className="h-3.5 w-3.5 mr-1" />Replay</Button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Legacy IMAP pollers</p>
+                    {[...(imapQuery.data?.pollers || []), ...(imapQuery.data?.dbOnlyEnabled || [])].map((poller) => (
+                      <div key={poller.orgId} className="rounded-md border p-3 flex flex-wrap items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium">{poller.orgName}</p>
+                          <p className="text-xs text-muted-foreground">Last poll: {formatDate(poller.lastPollAt)} · failures: {poller.consecutiveFailures}</p>
+                          {poller.lastError && <p className="text-xs text-rose-600 truncate">{poller.lastError}</p>}
+                        </div>
+                        <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => imapActionMutation.mutate({ orgId: poller.orgId, action: "force-poll" })}>Poll</Button>
+                        <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => imapActionMutation.mutate({ orgId: poller.orgId, action: "reset" })}>Reset</Button>
+                        <Button size="sm" variant="outline" className="h-8 text-xs text-rose-600 hover:text-rose-700" onClick={() => imapActionMutation.mutate({ orgId: poller.orgId, action: "disable" })}>Disable</Button>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-            <CardDescription>
-              Cross-tenant trail of destructive admin actions (org deletes, plan changes, role changes, audit purges).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Event type</label>
-                <Select
-                  value={auditEventType}
-                  onValueChange={(v) => { setAuditEventType(v); setAuditOffset(0); }}
-                >
-                  <SelectTrigger className="w-[260px] h-8 text-xs" data-testid="select-audit-event-type">
-                    <SelectValue />
-                  </SelectTrigger>
+          </TabsContent>
+
+          <TabsContent value="audit" className="mt-4">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-sm flex items-center gap-2"><FileSearch className="h-4 w-4" />Audit</CardTitle>
+                    <CardDescription>Cross-tenant audit trail for master-admin actions.</CardDescription>
+                  </div>
+                  <Badge variant="secondary">{auditQuery.data?.total || 0} events</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Select value={auditEventType} onValueChange={(value) => { setAuditEventType(value); setAuditOffset(0); }}>
+                  <SelectTrigger className="w-80"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All admin events</SelectItem>
-                    <SelectItem value="admin_org_deleted">Org deleted</SelectItem>
-                    <SelectItem value="admin_org_plan_changed">Org plan changed</SelectItem>
-                    <SelectItem value="admin_membership_role_changed">Membership role changed (super-admin)</SelectItem>
-                    <SelectItem value="org_membership_role_changed">Membership role changed (org-admin)</SelectItem>
-                    <SelectItem value="admin_audit_log_purged">Audit log purged</SelectItem>
+                    {(auditQuery.data?.availableEventTypes || []).map((eventType) => (
+                      <SelectItem key={eventType} value={eventType}>{eventType}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">From</label>
-                <Input
-                  type="datetime-local"
-                  value={auditSince}
-                  onChange={(e) => { setAuditSince(e.target.value); setAuditOffset(0); }}
-                  className="h-8 text-xs w-[200px]"
-                  data-testid="input-audit-since"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">To</label>
-                <Input
-                  type="datetime-local"
-                  value={auditUntil}
-                  onChange={(e) => { setAuditUntil(e.target.value); setAuditOffset(0); }}
-                  className="h-8 text-xs w-[200px]"
-                  data-testid="input-audit-until"
-                />
-              </div>
-              {(auditEventType !== "all" || auditSince || auditUntil) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={() => { setAuditEventType("all"); setAuditSince(""); setAuditUntil(""); setAuditOffset(0); }}
-                  data-testid="button-audit-clear-filters"
-                >
-                  Clear
-                </Button>
-              )}
-            </div>
-
-            {auditLoading ? (
-              <div className="flex items-center justify-center py-8"><PulseLoader /></div>
-            ) : !auditData || auditData.rows.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center" data-testid="text-audit-empty">
-                No admin events match the current filters.
-              </p>
-            ) : (
-              <div className="border rounded-md overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/50">
-                    <tr className="text-left">
-                      <th className="px-2 py-2 font-medium">When</th>
-                      <th className="px-2 py-2 font-medium">Event</th>
-                      <th className="px-2 py-2 font-medium">Actor</th>
-                      <th className="px-2 py-2 font-medium">Target org</th>
-                      <th className="px-2 py-2 font-medium">Target user</th>
-                      <th className="px-2 py-2 font-medium">IP</th>
-                      <th className="px-2 py-2 font-medium">OK</th>
-                      <th className="px-2 py-2 font-medium"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {auditData.rows.map((row) => {
-                      const isOpen = expandedAuditRow === row.id;
-                      const details = row.details || {};
-                      const targetUserId = details.targetUserId || null;
-                      return (
-                        <Fragment key={row.id}>
-                          <tr className="border-t hover:bg-muted/30" data-testid={`row-audit-${row.id}`}>
-                            <td className="px-2 py-2 whitespace-nowrap">{new Date(row.createdAt).toLocaleString()}</td>
-                            <td className="px-2 py-2"><code className="text-[11px]">{row.eventType}</code></td>
-                            <td className="px-2 py-2">
-                              {row.actorUsername || row.actorFullName || (row.userId ? <span className="text-muted-foreground">{row.userId.slice(0, 8)}…</span> : <span className="text-muted-foreground">—</span>)}
-                            </td>
-                            <td className="px-2 py-2">
-                              {row.orgName ? (
-                                <span>{row.orgName}{row.orgSlug ? <span className="text-muted-foreground"> ({row.orgSlug})</span> : null}</span>
-                              ) : details.deletedOrgId ? (
-                                <span className="text-muted-foreground">{details.before?.name || details.deletedOrgId} (deleted)</span>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
+                {auditQuery.isLoading ? <PulseLoader /> : (
+                  <div className="border rounded-md overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50">
+                        <tr className="text-left">
+                          <th className="px-2 py-2 font-medium">When</th>
+                          <th className="px-2 py-2 font-medium">Event</th>
+                          <th className="px-2 py-2 font-medium">Actor</th>
+                          <th className="px-2 py-2 font-medium">Tenant</th>
+                          <th className="px-2 py-2 font-medium">Result</th>
+                          <th className="px-2 py-2 font-medium"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(auditQuery.data?.rows || []).map((row) => {
+                          const open = expandedAuditRow === row.id;
+                          return (
+                            <Fragment key={row.id}>
+                              <tr className="border-t">
+                                <td className="px-2 py-2 whitespace-nowrap">{formatDate(row.createdAt)}</td>
+                                <td className="px-2 py-2"><code>{row.eventType}</code></td>
+                                <td className="px-2 py-2">{row.details?.actorEmail || row.actorUsername || row.actorFullName || "-"}</td>
+                                <td className="px-2 py-2">{row.orgName || row.orgSlug || row.orgId || "-"}</td>
+                                <td className="px-2 py-2">{row.success ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-rose-600" />}</td>
+                                <td className="px-2 py-2"><Button variant="ghost" size="sm" onClick={() => setExpandedAuditRow(open ? null : row.id)}>Details</Button></td>
+                              </tr>
+                              {open && (
+                                <tr className="border-t bg-muted/20">
+                                  <td colSpan={6} className="p-3">
+                                    <pre className="rounded-md border bg-background p-2 whitespace-pre-wrap break-all">{JSON.stringify(row.details || {}, null, 2)}</pre>
+                                  </td>
+                                </tr>
                               )}
-                            </td>
-                            <td className="px-2 py-2">
-                              {targetUserId ? <span className="text-muted-foreground">{String(targetUserId).slice(0, 8)}…</span> : <span className="text-muted-foreground">—</span>}
-                            </td>
-                            <td className="px-2 py-2 whitespace-nowrap">{row.ipAddress || <span className="text-muted-foreground">—</span>}</td>
-                            <td className="px-2 py-2">
-                              {row.success ? (
-                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                              ) : (
-                                <XCircle className="h-3.5 w-3.5 text-rose-600" />
-                              )}
-                            </td>
-                            <td className="px-2 py-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 px-1.5"
-                                onClick={() => setExpandedAuditRow(isOpen ? null : row.id)}
-                                data-testid={`button-audit-toggle-${row.id}`}
-                              >
-                                {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                              </Button>
-                            </td>
-                          </tr>
-                          {isOpen && (
-                            <tr className="bg-muted/20 border-t" data-testid={`row-audit-details-${row.id}`}>
-                              <td colSpan={8} className="px-3 py-2">
-                                <div className="space-y-1 text-[11px]">
-                                  {row.userAgent && (
-                                    <div><span className="text-muted-foreground">UA:</span> {row.userAgent}</div>
-                                  )}
-                                  <pre className="bg-background border rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(details, null, 2)}</pre>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {auditQuery.data && auditQuery.data.total > AUDIT_PAGE_SIZE && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Showing {auditOffset + 1}-{Math.min(auditOffset + AUDIT_PAGE_SIZE, auditQuery.data.total)} of {auditQuery.data.total}</span>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" disabled={auditOffset === 0} onClick={() => setAuditOffset(Math.max(0, auditOffset - AUDIT_PAGE_SIZE))}>Previous</Button>
+                      <Button size="sm" variant="outline" disabled={auditOffset + AUDIT_PAGE_SIZE >= auditQuery.data.total} onClick={() => setAuditOffset(auditOffset + AUDIT_PAGE_SIZE)}>Next</Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-            {auditData && auditData.total > AUDIT_PAGE_SIZE && (
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-xs text-muted-foreground" data-testid="text-audit-page-info">
-                  Showing {auditOffset + 1}–{Math.min(auditOffset + AUDIT_PAGE_SIZE, auditData.total)} of {auditData.total}
-                </span>
-                <div className="flex gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                    disabled={auditOffset === 0}
-                    onClick={() => setAuditOffset(Math.max(0, auditOffset - AUDIT_PAGE_SIZE))}
-                    data-testid="button-audit-prev"
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                    disabled={auditOffset + AUDIT_PAGE_SIZE >= auditData.total}
-                    onClick={() => setAuditOffset(auditOffset + AUDIT_PAGE_SIZE)}
-                    data-testid="button-audit-next"
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card data-testid="card-audit-retention">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Audit Log Retention</CardTitle>
-            <CardDescription>Purge auth audit log entries older than the selected window. Useful for keeping the table lean.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap items-center gap-2">
-              {[30, 90, 180, 365].map((d) => (
-                <Button
-                  key={d}
-                  variant="outline"
-                  size="sm"
-                  disabled={purgeAuditMutation.isPending}
-                  onClick={() => {
-                    if (confirm(`Permanently delete all audit log entries older than ${d} days across all orgs?`)) {
-                      purgeAuditMutation.mutate(d);
-                    }
-                  }}
-                  data-testid={`button-purge-audit-${d}`}
-                >
-                  Purge &gt; {d} days
-                </Button>
-              ))}
+          <TabsContent value="health" className="mt-4">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2"><Shield className="h-4 w-4" />Master Admin Identities</CardTitle>
+                  <CardDescription>Configured through PULSEDESK_MASTER_ADMIN_EMAIL with John retained as the default.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {(masterAdminsQuery.data?.emails || []).map((email) => (
+                    <div key={email} className="rounded-md border p-3 flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      <span className="text-sm">{email}</span>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2"><AlertTriangle className="h-4 w-4" />Attention Queue</CardTitle>
+                  <CardDescription>Tenants with revoked entitlements, inbox issues, or inbound failures.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {orgs.filter((org) => !entitlementState(org.entitlement).ok || org.connectorHealth.error > 0 || org.connectorHealth.disabled > 0).length === 0 && failedEmailCount === 0 ? (
+                    <p className="text-sm text-muted-foreground">No current control-plane issues.</p>
+                  ) : (
+                    <>
+                      {orgs.filter((org) => !entitlementState(org.entitlement).ok || org.connectorHealth.error > 0 || org.connectorHealth.disabled > 0).map((org) => (
+                        <button key={org.id} className="w-full rounded-md border p-3 text-left hover:bg-muted/40" onClick={() => { setSelectedOrgId(org.id); setActiveTab("tenants"); }}>
+                          <p className="text-sm font-medium">{org.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Entitlement: {entitlementState(org.entitlement).label} · inbox errors: {org.connectorHealth.error} · disabled: {org.connectorHealth.disabled}
+                          </p>
+                        </button>
+                      ))}
+                      {failedEmailCount > 0 && (
+                        <button className="w-full rounded-md border p-3 text-left hover:bg-muted/40" onClick={() => setActiveTab("inboxes")}>
+                          <p className="text-sm font-medium">Failed inbound email queue</p>
+                          <p className="text-xs text-muted-foreground">{failedEmailCount} message(s) need review or replay.</p>
+                        </button>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

@@ -362,6 +362,45 @@ export async function ensureSchema() {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS operatoros_entitlement_snapshots (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        operatoros_user_id text NOT NULL,
+        operatoros_tenant_id text NOT NULL,
+        local_user_id varchar REFERENCES users(id) ON DELETE SET NULL,
+        local_org_id varchar REFERENCES orgs(id) ON DELETE SET NULL,
+        module_slug text NOT NULL,
+        enabled boolean NOT NULL DEFAULT false,
+        access_level text NOT NULL DEFAULT 'none',
+        module_role text NOT NULL DEFAULT 'none',
+        tenant_role text,
+        tenant_role_alias text,
+        subscription_status text,
+        features jsonb NOT NULL DEFAULT '{}'::jsonb,
+        raw_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+        computed_at timestamp NOT NULL,
+        received_at timestamp NOT NULL DEFAULT now(),
+        revoked_at timestamp
+      );
+    `);
+
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_operatoros_entitlement_snapshots_unique
+        ON operatoros_entitlement_snapshots(operatoros_user_id, operatoros_tenant_id, module_slug);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_operatoros_entitlement_snapshots_local_user
+        ON operatoros_entitlement_snapshots(local_user_id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_operatoros_entitlement_snapshots_local_org
+        ON operatoros_entitlement_snapshots(local_org_id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_operatoros_entitlement_snapshots_computed_at
+        ON operatoros_entitlement_snapshots(computed_at);
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS "session" (
         "sid" varchar NOT NULL COLLATE "default",
         "sess" json NOT NULL,

@@ -1,8 +1,10 @@
 import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
 import { requireAuth, requireOrg, requireRole } from "../middleware";
-import { DEFAULT_DEPARTMENTS, PLAN_LIMITS } from "@shared/schema";
+import { DEFAULT_DEPARTMENTS } from "@shared/schema";
 import { logAdminAction } from "../lib/adminAudit";
+import { getOperatorOsNumericLimitForOrg } from "../services/operatorosEntitlements";
+import { isMasterAdminEmail } from "../config/masterAdmin";
 
 const router = Router();
 
@@ -53,13 +55,11 @@ router.post("/api/orgs/join", requireAuth, async (req, res) => {
     const existing = await storage.getMembership(invite.orgId, req.session.userId!);
     if (existing) return res.status(400).json({ error: "Already a member" });
 
-    const org = await storage.getOrg(invite.orgId);
-    const plan = (org as any)?.plan || "free";
-    const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
-    if (limits.maxMembers !== Infinity) {
+    const maxMembers = await getOperatorOsNumericLimitForOrg(invite.orgId, "maxMembers");
+    if (maxMembers !== null) {
       const counts = await storage.getOrgCounts(invite.orgId);
-      if (counts.members >= limits.maxMembers) {
-        return res.status(403).json({ error: `Member limit reached (${limits.maxMembers}). Organization needs to upgrade their plan.` });
+      if (counts.members >= maxMembers) {
+        return res.status(403).json({ error: `Member limit reached (${maxMembers}). Update the OperatorOS entitlement for more seats.` });
       }
     }
 
@@ -141,6 +141,21 @@ router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, requireRo
       });
       return res.status(404).json({ error: "Membership not found" });
     }
+    const targetUser = await storage.getUser(userId);
+    if (targetUser && isMasterAdminEmail(targetUser.email)) {
+      await logAdminAction(req, {
+        eventType: "org_membership_role_changed",
+        orgId,
+        targetUserId: userId,
+        success: false,
+        details: {
+          reason: "configured_master_admin_role_protected",
+          before: { role: existing.role },
+          requestedRole: role,
+        },
+      });
+      return res.status(400).json({ error: "Configured master admin role cannot be changed from tenant settings" });
+    }
     await storage.updateMembershipRole(orgId, userId, role);
     await logAdminAction(req, {
       eventType: "org_membership_role_changed",
@@ -168,12 +183,62 @@ router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, requireRo
 router.delete("/api/memberships/:userId", requireAuth, requireOrg, requireRole("admin"), async (req, res) => {
   try {
     const userId = (req.params.userId as string);
+    const orgId = req.session.orgId!;
     if (userId === req.session.userId) {
+      await logAdminAction(req, {
+        eventType: "org_membership_removed",
+        orgId,
+        targetUserId: userId,
+        success: false,
+        details: { reason: "self_remove_blocked" },
+      });
       return res.status(400).json({ error: "Cannot remove yourself" });
     }
-    await storage.deleteMembership(req.session.orgId!, userId);
+    const existing = await storage.getMembership(orgId, userId);
+    if (!existing) {
+      await logAdminAction(req, {
+        eventType: "org_membership_removed",
+        orgId,
+        targetUserId: userId,
+        success: false,
+        details: { reason: "not_found" },
+      });
+      return res.status(404).json({ error: "Membership not found" });
+    }
+    const targetUser = await storage.getUser(userId);
+    if (targetUser && isMasterAdminEmail(targetUser.email)) {
+      await logAdminAction(req, {
+        eventType: "org_membership_removed",
+        orgId,
+        targetUserId: userId,
+        success: false,
+        details: {
+          reason: "configured_master_admin_membership_protected",
+          before: { role: existing.role },
+        },
+      });
+      return res.status(400).json({ error: "Configured master admin membership cannot be removed" });
+    }
+    await storage.deleteMembership(orgId, userId);
+    await logAdminAction(req, {
+      eventType: "org_membership_removed",
+      orgId,
+      targetUserId: userId,
+      success: true,
+      details: {
+        before: { role: existing.role },
+        after: { removed: true },
+      },
+    });
     res.json({ ok: true });
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "org_membership_removed",
+      orgId: req.session.orgId ?? null,
+      targetUserId: (req.params.userId as string),
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: err.message });
   }
 });

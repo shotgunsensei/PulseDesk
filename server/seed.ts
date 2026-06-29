@@ -4,6 +4,11 @@ import { users, memberships, DEFAULT_DEPARTMENTS } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
+import {
+  getMasterAdminEmails,
+  isDemoSeedsEnabled,
+  isLocalReviewerEnabled,
+} from "./config/masterAdmin";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -11,27 +16,38 @@ async function hashPasswordBcrypt(password: string): Promise<string> {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
 
+function getRequiredSeedPassword(label: string, envVar: string): string | null {
+  const password = process.env[envVar];
+  if (!password) {
+    console.warn(`${label} seed skipped: ${envVar} must be set when the seed is explicitly enabled.`);
+    return null;
+  }
+  return password;
+}
+
 export async function ensureSuperAdmin() {
   try {
-    const existing = await storage.getUserByUsername("Johntwms355");
-    if (!existing) {
-      await db.insert(users).values({
-        id: crypto.randomUUID(),
-        username: "Johntwms355",
-        password: await hashPasswordBcrypt("Admin2026!"),
-        fullName: "John",
-        phone: "",
-        email: "",
-        isSuperAdmin: true,
-      });
-      console.log("Super admin created: Johntwms355 / Admin2026!");
+    const masterEmails = getMasterAdminEmails();
+    let promoted = 0;
+    for (const email of masterEmails) {
+      const [existing] = await db.select().from(users).where(eq(users.email, email));
+      if (existing && !existing.isSuperAdmin) {
+        await db.update(users).set({ isSuperAdmin: true }).where(eq(users.id, existing.id));
+        promoted++;
+      }
+    }
+    if (promoted > 0) {
+      console.log(`Configured master admin identities reconciled: ${promoted} user(s) promoted by email.`);
     }
   } catch (err) {
-    console.error("Error ensuring super admin:", err);
+    console.error("Error reconciling configured master admins:", err);
   }
 }
 
 export async function ensureDemoAccount() {
+  if (!isDemoSeedsEnabled()) {
+    return;
+  }
   try {
     const existing = await storage.getUserByUsername("demo");
     if (existing) {
@@ -54,13 +70,18 @@ export async function ensureDemoAccount() {
       console.log("Demo org created for existing demo user.");
       return;
     }
-    await seedFullDemo();
+    const demoPassword = getRequiredSeedPassword("Demo", "PULSEDESK_DEMO_PASSWORD");
+    if (!demoPassword) return;
+    await seedFullDemo(demoPassword);
   } catch (err) {
     console.error("Error ensuring demo account:", err);
   }
 }
 
 export async function ensureReviewerAccount() {
+  if (!isLocalReviewerEnabled()) {
+    return;
+  }
   try {
     const existing = await storage.getUserByUsername("reviewer");
     if (existing) {
@@ -80,10 +101,12 @@ export async function ensureReviewerAccount() {
       }
       return;
     }
+    const reviewerPassword = getRequiredSeedPassword("Reviewer", "PULSEDESK_REVIEWER_PASSWORD");
+    if (!reviewerPassword) return;
     const reviewerUser = await db.insert(users).values({
       id: crypto.randomUUID(),
       username: "reviewer",
-      password: await hashPasswordBcrypt("Reviewer2026!"),
+      password: await hashPasswordBcrypt(reviewerPassword),
       fullName: "App Reviewer",
       phone: "",
       email: "",
@@ -96,16 +119,16 @@ export async function ensureReviewerAccount() {
         await storage.createMembership(demoMems[0].orgId, reviewerUser[0].id, "admin");
       }
     }
-    console.log("Reviewer account created: reviewer / Reviewer2026!");
+    console.log("Reviewer account created for explicitly enabled local review workflow.");
   } catch (err) {
     console.error("Error ensuring reviewer account:", err);
   }
 }
 
-async function seedFullDemo() {
+async function seedFullDemo(demoPassword: string) {
   const demoUser = await storage.createUser({
     username: "demo",
-    password: await hashPasswordBcrypt("demo123"),
+    password: await hashPasswordBcrypt(demoPassword),
     fullName: "Sarah Mitchell",
     phone: "(555) 234-5678",
     email: "sarah.mitchell@metrohealth.org",
@@ -113,7 +136,7 @@ async function seedFullDemo() {
 
   const techUser = await storage.createUser({
     username: "jmorales",
-    password: await hashPasswordBcrypt("demo123"),
+    password: await hashPasswordBcrypt(demoPassword),
     fullName: "James Morales",
     phone: "(555) 345-6789",
     email: "james.morales@metrohealth.org",
@@ -121,7 +144,7 @@ async function seedFullDemo() {
 
   const staffUser = await storage.createUser({
     username: "knguyen",
-    password: await hashPasswordBcrypt("demo123"),
+    password: await hashPasswordBcrypt(demoPassword),
     fullName: "Karen Nguyen",
     phone: "(555) 456-7890",
     email: "karen.nguyen@metrohealth.org",
@@ -455,11 +478,13 @@ async function seedFullDemo() {
     authMode: "local",
   });
 
-  console.log("PulseDesk demo data seeded successfully!");
-  console.log("Demo login: username=demo, password=demo123");
+  console.log("PulseDesk demo data seeded successfully for explicitly enabled demo workflow.");
 }
 
 export async function seedDatabase() {
+  if (!isDemoSeedsEnabled()) {
+    return;
+  }
   try {
     const existingUser = await storage.getUserByUsername("demo");
     if (existingUser) {
@@ -467,7 +492,9 @@ export async function seedDatabase() {
       return;
     }
     console.log("Seeding PulseDesk database with demo data...");
-    await seedFullDemo();
+    const demoPassword = getRequiredSeedPassword("Demo", "PULSEDESK_DEMO_PASSWORD");
+    if (!demoPassword) return;
+    await seedFullDemo(demoPassword);
   } catch (err) {
     console.error("Seed error:", err);
   }

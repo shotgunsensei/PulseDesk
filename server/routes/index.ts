@@ -16,7 +16,6 @@ import vendorsRouter from "./vendors";
 import analyticsRouter from "./analytics";
 import adminRouter from "./admin";
 import notificationsRouter from "./notifications";
-import billingRouter from "./billing";
 import onboardingRouter from "./onboarding";
 import emailRouter from "./email";
 import connectorsRouter from "./connectors";
@@ -34,6 +33,12 @@ declare module "express-session" {
     connectorOAuthState?: string;
     connectorOAuthId?: string;
     connectorOAuthProvider?: string;
+    operatorOsUserId?: string;
+    operatorOsTenantId?: string;
+    operatorOsModuleSlug?: string;
+    operatorOsEntitlementSnapshotId?: string;
+    adminSupportOrgId?: string;
+    adminSupportStartedAt?: string;
   }
 }
 
@@ -79,7 +84,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use(analyticsRouter);
   app.use(adminRouter);
   app.use(notificationsRouter);
-  app.use(billingRouter);
   app.use(onboardingRouter);
   app.use(emailRouter);
   app.use(connectorsRouter);

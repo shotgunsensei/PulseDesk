@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { mailConnectors, connectorEvents, emailSettings, PLAN_LIMITS } from "@shared/schema";
+import { mailConnectors, connectorEvents, emailSettings } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 
 function connectorWhere(id: string) {
@@ -9,6 +9,7 @@ import { storage } from "../storage";
 import { decryptSecret, encryptSecret } from "../auth/crypto";
 import { getConnectorService } from "./connectors/registry";
 import type { ConnectorCredentials, ConnectorProvider, OAuthAppCredentials } from "./connectors/types";
+import { isOperatorOsFeatureEnabledForOrg } from "./operatorosEntitlements";
 
 function extractGoogleAppCreds(settings: any): OAuthAppCredentials | null {
   if (!settings?.googleClientId || !settings?.googleClientSecretEncrypted) return null;
@@ -98,9 +99,8 @@ export async function startConnectorPolling() {
       const org = await storage.getOrg(connector.orgId);
       if (!org) continue;
 
-      const plan = (org && "plan" in org ? String((org as Record<string, unknown>).plan) : "free") || "free";
-      const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
-      if (!limits.emailToTicket) continue;
+      const emailToTicketEnabled = await isOperatorOsFeatureEnabledForOrg(connector.orgId, "emailToTicket");
+      if (!emailToTicketEnabled) continue;
 
       startPollerForConnector(connector);
     }
@@ -196,9 +196,8 @@ async function executePoll(connectorId: string, expectedVersion: number) {
     const org = await storage.getOrg(connector.orgId);
     if (!org) { stopPollerForConnector(connectorId); return; }
 
-    const plan = (org && "plan" in org ? String((org as Record<string, unknown>).plan) : "free") || "free";
-    const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
-    if (!limits.emailToTicket) { stopPollerForConnector(connectorId); return; }
+    const emailToTicketEnabled = await isOperatorOsFeatureEnabledForOrg(connector.orgId, "emailToTicket");
+    if (!emailToTicketEnabled) { stopPollerForConnector(connectorId); return; }
 
     if (!connector.credentialsEncrypted) {
       state.lastError = "No credentials configured";

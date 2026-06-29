@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Check, Trash2, UserCog, Clock, Building2, Shield, Bell, KeyRound, Plus, CheckCircle2, XCircle, AlertTriangle, Globe, RefreshCw, Users, Info, CreditCard, Zap, Crown, ExternalLink } from "lucide-react";
+import { Copy, Check, Trash2, UserCog, Clock, Building2, Shield, Bell, KeyRound, Plus, CheckCircle2, XCircle, AlertTriangle, Globe, RefreshCw, Users } from "lucide-react";
 const MicrosoftIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
     <rect x="1" y="1" width="9" height="9" fill="#F25022" />
@@ -21,7 +21,6 @@ const MicrosoftIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 import { ROLE_LABELS, canManageSettings } from "@/lib/permissions";
-import { PLAN_LIMITS } from "@shared/schema";
 import { RelatedProducts } from "@/components/related-products";
 
 interface MemberWithUser {
@@ -206,7 +205,7 @@ export default function SettingsPage() {
               <TabsTrigger value="profile" data-testid="tab-profile">Profile</TabsTrigger>
               {isAdmin && <TabsTrigger value="organization" data-testid="tab-organization">Organization</TabsTrigger>}
               {isAdmin && <TabsTrigger value="team" data-testid="tab-team">Team</TabsTrigger>}
-              {isAdmin && <TabsTrigger value="billing" data-testid="tab-billing">Billing</TabsTrigger>}
+              {isAdmin && <TabsTrigger value="access" data-testid="tab-access">Access</TabsTrigger>}
               {isAdmin && <TabsTrigger value="authentication" data-testid="tab-authentication">Auth</TabsTrigger>}
               <TabsTrigger value="preferences" data-testid="tab-preferences">Preferences</TabsTrigger>
             </TabsList>
@@ -429,8 +428,8 @@ export default function SettingsPage() {
             )}
 
             {isAdmin && (
-              <TabsContent value="billing" className="space-y-4 mt-4">
-                <BillingSettings />
+              <TabsContent value="access" className="space-y-4 mt-4">
+                <OperatorOsAccessSettings />
               </TabsContent>
             )}
 
@@ -498,312 +497,36 @@ export default function SettingsPage() {
   );
 }
 
-interface BillingStatus {
-  plan: string;
-  stripeCustomerId: string | null;
-  stripeSubscriptionId: string | null;
-  planExpiresAt: string | null;
-  subscriptionStatus: string | null;
-  stripeSyncStatus: string;
-  limits: { maxMembers: number | null; maxTickets: number | null; entraEnabled: boolean };
-  usage: { members: number; tickets: number };
-}
-
-interface StripePlan {
-  product_id: string;
-  product_name: string;
-  product_description: string;
-  product_metadata: any;
-  price_id: string;
-  unit_amount: number;
-  currency: string;
-  interval: string;
-}
-
-function BillingSettings() {
-  const { toast } = useToast();
-
-  const { data: billing, isLoading: billingLoading } = useQuery<BillingStatus>({
-    queryKey: ["/api/billing/status"],
-  });
-
-  const { data: plans = [] } = useQuery<StripePlan[]>({
-    queryKey: ["/api/billing/plans"],
-  });
-
-  const checkoutMutation = useMutation({
-    mutationFn: async (priceId: string) => {
-      const res = await apiRequest("POST", "/api/billing/checkout", { priceId });
-      return await res.json();
-    },
-    onSuccess: (data: { url: string }) => {
-      if (data.url) window.location.href = data.url;
-    },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const portalMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/billing/portal");
-      return await res.json();
-    },
-    onSuccess: (data: { url: string }) => {
-      if (data.url) window.location.href = data.url;
-    },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  if (billingLoading) {
-    return (
-      <Card>
-        <CardContent className="py-8 text-center">
-          <p className="text-sm text-muted-foreground">Loading billing information...</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const currentPlan = billing?.plan || "free";
-  const planConfig = PLAN_LIMITS[currentPlan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
-
-  const planOrder = ["pro", "pro_plus", "enterprise", "unlimited"];
-  const currentPlanIndex = planOrder.indexOf(currentPlan);
-
-  const groupedPlans: Record<string, StripePlan[]> = {};
-  for (const p of plans) {
-    const key = p.product_id;
-    if (!groupedPlans[key]) groupedPlans[key] = [];
-    groupedPlans[key].push(p);
-  }
-
-  const sortedGroupedPlans = Object.entries(groupedPlans).sort(([, a], [, b]) => {
-    const aMin = Math.min(...a.map(p => p.unit_amount));
-    const bMin = Math.min(...b.map(p => p.unit_amount));
-    return aMin - bMin;
-  });
-
-  const getPlanIcon = (plan: string) => {
-    if (plan === "unlimited") return <Crown className="h-5 w-5 text-amber-600" />;
-    if (plan === "enterprise") return <Crown className="h-5 w-5 text-violet-600" />;
-    if (plan === "pro_plus") return <Zap className="h-5 w-5 text-indigo-600" />;
-    if (plan === "pro") return <Zap className="h-5 w-5 text-blue-600" />;
-    return <CreditCard className="h-5 w-5 text-slate-500" />;
-  };
-
-  const getPlanBg = (plan: string) => {
-    if (plan === "unlimited") return "bg-amber-100 dark:bg-amber-900/30";
-    if (plan === "enterprise") return "bg-violet-100 dark:bg-violet-900/30";
-    if (plan === "pro_plus") return "bg-indigo-100 dark:bg-indigo-900/30";
-    if (plan === "pro") return "bg-blue-100 dark:bg-blue-900/30";
-    return "bg-slate-100 dark:bg-slate-800";
-  };
-
-  const getPlanDescription = (plan: string) => {
-    if (plan === "unlimited") return "All features, Email-to-Ticket, unlimited users";
-    if (plan === "enterprise") return "All features, Email-to-Ticket, up to 200 users";
-    if (plan === "pro_plus") return "365/Entra login, up to 100 users";
-    if (plan === "pro") return "365/Entra login, up to 50 users";
-    return "Local login only, up to 5 users";
-  };
-
+function OperatorOsAccessSettings() {
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <CreditCard className="h-4 w-4" />
-            Current Plan
-          </CardTitle>
-          <CardDescription>Your organization's subscription and usage</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
-            <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${getPlanBg(currentPlan)}`}>
-              {getPlanIcon(currentPlan)}
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium">{planConfig.label} Plan</p>
-              <p className="text-xs text-muted-foreground">{getPlanDescription(currentPlan)}</p>
-            </div>
-            {billing?.stripeSubscriptionId && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => portalMutation.mutate()}
-                disabled={portalMutation.isPending}
-                data-testid="button-manage-billing"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                Manage
-              </Button>
-            )}
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Shield className="h-4 w-4" />
+          OperatorOS Access
+        </CardTitle>
+        <CardDescription>PulseDesk access is managed by OperatorOS entitlements</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <p className="text-sm font-medium">Launch and subscription control live in OperatorOS.</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            PulseDesk validates your active OperatorOS module entitlement before protected app requests.
+            Subscription changes, seats, payment flows, and module assignment are handled by your OperatorOS admin.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="rounded-lg border p-3">
+            <p className="text-xs font-medium text-muted-foreground">Module</p>
+            <p className="text-sm font-semibold mt-1">pulsedesk</p>
           </div>
-
-          {billing?.subscriptionStatus && (
-            <div className="flex items-center gap-2 text-xs">
-              <div className={`h-2 w-2 rounded-full ${billing.subscriptionStatus === "active" ? "bg-emerald-500" : billing.subscriptionStatus === "trialing" ? "bg-blue-500" : "bg-amber-500"}`} />
-              <span className="text-muted-foreground">
-                Subscription: <span className="font-medium capitalize">{billing.subscriptionStatus}</span>
-                {billing.planExpiresAt && (
-                  <> · Renews {new Date(billing.planExpiresAt).toLocaleDateString()}</>
-                )}
-              </span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg border p-3">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] text-muted-foreground">Members</span>
-                <span className="text-xs font-medium tabular-nums">
-                  {billing?.usage.members || 0} / {billing?.limits.maxMembers ?? "\u221E"}
-                </span>
-              </div>
-              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    billing?.limits.maxMembers && (billing?.usage.members || 0) >= billing.limits.maxMembers
-                      ? "bg-rose-500"
-                      : "bg-primary"
-                  }`}
-                  style={{
-                    width: `${billing?.limits.maxMembers
-                      ? Math.min(((billing?.usage.members || 0) / billing.limits.maxMembers) * 100, 100)
-                      : 5}%`,
-                  }}
-                />
-              </div>
-            </div>
-            <div className="rounded-lg border p-3">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] text-muted-foreground">Tickets</span>
-                <span className="text-xs font-medium tabular-nums">
-                  {billing?.usage.tickets || 0} / {billing?.limits.maxTickets ?? "\u221E"}
-                </span>
-              </div>
-              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-primary transition-all"
-                  style={{ width: `${billing?.limits.maxTickets ? Math.min(((billing?.usage.tickets || 0) / billing.limits.maxTickets) * 100, 100) : 5}%` }}
-                />
-              </div>
-            </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-xs font-medium text-muted-foreground">Access Source</p>
+            <p className="text-sm font-semibold mt-1">OperatorOS SSO</p>
           </div>
-
-          {billing?.stripeSyncStatus === "unavailable" && (
-            <div className="flex items-start gap-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-3">
-              <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs font-medium text-blue-800 dark:text-blue-200">Stripe sync pending</p>
-                <p className="text-[11px] text-blue-600 dark:text-blue-400">Billing data is syncing. Your plan status may update shortly.</p>
-              </div>
-            </div>
-          )}
-
-          {!planConfig.entraEnabled && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
-              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs font-medium text-amber-800 dark:text-amber-200">Microsoft 365/Entra login locked</p>
-                <p className="text-[11px] text-amber-600 dark:text-amber-400">Upgrade to Pro or higher to enable SSO with Microsoft 365 / Entra ID.</p>
-              </div>
-            </div>
-          )}
-
-          {!planConfig.emailToTicket && (
-            <div className="flex items-start gap-2 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 p-3">
-              <AlertTriangle className="h-4 w-4 text-violet-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs font-medium text-violet-800 dark:text-violet-200">Email-to-Ticket automation locked</p>
-                <p className="text-[11px] text-violet-600 dark:text-violet-400">Upgrade to Enterprise or higher to convert inbound emails into tickets automatically.</p>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {sortedGroupedPlans.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Zap className="h-4 w-4" />
-              {currentPlan === "free" ? "Upgrade Your Plan" : "Change Plan"}
-            </CardTitle>
-            <CardDescription>
-              {currentPlan === "free"
-                ? "Unlock 365/Entra login and more users"
-                : "Switch to a different plan"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {sortedGroupedPlans.map(([productId, prices]) => {
-              const product = prices[0];
-              const monthly = prices.find(p => p.interval === "month");
-              const planMeta = typeof product.product_metadata === 'string'
-                ? JSON.parse(product.product_metadata)
-                : product.product_metadata;
-              const planKey = planMeta?.plan || "";
-              const planIdx = planOrder.indexOf(planKey);
-              const isCurrentPlan = planKey === currentPlan;
-              const isDowngrade = planIdx < currentPlanIndex;
-
-              return (
-                <div key={productId} className={`rounded-lg border p-4 space-y-3 ${isCurrentPlan ? "border-primary bg-primary/5" : ""}`}>
-                  <div className="flex items-center gap-2">
-                    {getPlanIcon(planKey)}
-                    <span className="font-medium text-sm">{product.product_name}</span>
-                    {isCurrentPlan && (
-                      <span className="ml-auto text-[10px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">Current</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">{product.product_description}</p>
-                  {monthly && !isCurrentPlan && (
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant={isDowngrade ? "outline" : "default"}
-                        className="gap-1"
-                        onClick={() => checkoutMutation.mutate(monthly.price_id)}
-                        disabled={checkoutMutation.isPending}
-                        data-testid={`button-subscribe-${planKey}-monthly`}
-                      >
-                        {isDowngrade ? "Downgrade" : "Subscribe"} — ${(monthly.unit_amount / 100).toFixed(0)}/mo
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {currentPlan !== "free" && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center space-y-2">
-              <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto" />
-              <p className="text-sm font-medium">You're on the {planConfig.label} plan</p>
-              <p className="text-xs text-muted-foreground">
-                Manage your subscription, update payment method, or view invoices.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 mt-2"
-                onClick={() => portalMutation.mutate()}
-                disabled={portalMutation.isPending}
-                data-testid="button-billing-portal"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                Open Billing Portal
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -812,13 +535,6 @@ function AuthenticationSettings() {
   const [newMapping, setNewMapping] = useState({ entraGroupId: "", pulsedeskRole: "staff", displayLabel: "" });
   const [clientSecretField, setClientSecretField] = useState("");
   const [showAuditLog, setShowAuditLog] = useState(false);
-
-  const { data: billingStatus } = useQuery<BillingStatus>({
-    queryKey: ["/api/billing/status"],
-  });
-  const orgPlan = billingStatus?.plan || "free";
-  const planLimits = PLAN_LIMITS[orgPlan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
-  const entraLocked = !planLimits.entraEnabled;
 
   const { data: authConfig, isLoading: configLoading } = useQuery<AuthConfig>({
     queryKey: ["/api/auth/config"],
@@ -932,17 +648,19 @@ function AuthenticationSettings() {
           <CardDescription>Configure how users sign in to your organization</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs text-muted-foreground">
+              OperatorOS entitlements control whether Microsoft Entra SSO is available for this tenant.
+              If the entitlement explicitly disables the feature, PulseDesk will reject the saved configuration server-side.
+            </p>
+          </div>
           <div className="space-y-2">
             {AUTH_MODE_OPTIONS.map((opt) => {
-              const isEntraMode = opt.value === "m365" || opt.value === "hybrid";
-              const isDisabled = isEntraMode && entraLocked;
               return (
                 <label
                   key={opt.value}
-                  className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
-                    isDisabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
-                  } ${
-                    form?.authMode === opt.value ? "border-primary bg-primary/5" : isDisabled ? "" : "hover:bg-muted/50"
+                  className={`flex items-start gap-3 rounded-lg border p-3 transition-colors cursor-pointer ${
+                    form?.authMode === opt.value ? "border-primary bg-primary/5" : "hover:bg-muted/50"
                   }`}
                   data-testid={`radio-auth-mode-${opt.value}`}
                 >
@@ -951,16 +669,12 @@ function AuthenticationSettings() {
                     name="authMode"
                     value={opt.value}
                     checked={form?.authMode === opt.value}
-                    onChange={() => !isDisabled && updateField("authMode", opt.value)}
-                    disabled={isDisabled}
+                    onChange={() => updateField("authMode", opt.value)}
                     className="mt-0.5"
                   />
                   <div>
                     <p className="text-sm font-medium">{opt.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {opt.description}
-                      {isDisabled && " — requires Pro plan or higher"}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{opt.description}</p>
                   </div>
                 </label>
               );

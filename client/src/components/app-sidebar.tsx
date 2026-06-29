@@ -24,7 +24,6 @@ import {
   LogOut,
   ChevronDown,
   Shield,
-  CreditCard,
   Inbox,
 } from "lucide-react";
 import pulsedeskLogo from "@assets/pulsedesklogo_1775753913991.png";
@@ -157,7 +156,6 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {(canViewAnalytics(role) || role === "admin") && renderNavItem({ title: "Analytics", url: "/analytics", icon: BarChart3 })}
-              {canManageSettings(role) && renderNavItem({ title: "Billing", url: "/billing", icon: CreditCard })}
               {canManageSettings(role) && renderNavItem({ title: "Connected Inboxes", url: "/email-settings", icon: Inbox })}
               {!isReadOnly(role) && renderNavItem({ title: "Settings", url: "/settings", icon: Settings })}
             </SidebarMenu>

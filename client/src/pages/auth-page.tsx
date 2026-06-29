@@ -329,7 +329,7 @@ export default function AuthPage() {
                       </form>
                       <div className="mt-4 p-3 rounded-lg bg-muted/50 border text-xs text-muted-foreground">
                         <p className="font-medium mb-1">Demo access:</p>
-                        <p>Username: <code className="font-mono text-foreground/70">demo</code> / Password: <code className="font-mono text-foreground/70">demo123</code></p>
+                        <p>Local demo credentials are available only when demo seeds are explicitly enabled for review.</p>
                       </div>
                     </CardContent>
                   </Card>

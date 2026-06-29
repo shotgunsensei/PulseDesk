@@ -1,5 +1,11 @@
 # Stripe Setup
 
+> OperatorOS-owned billing reference.
+>
+> This file describes the parent OperatorOS Stripe setup. PulseDesk must not
+> create Stripe checkout or billing portal sessions directly. PulseDesk receives
+> access through OperatorOS SSO and entitlement snapshots.
+
 OperatorOS uses Stripe Checkout Sessions in subscription mode. Create five
 recurring monthly Prices in Stripe and set these deployment secrets:
 

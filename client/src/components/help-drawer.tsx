@@ -5,12 +5,12 @@ import { HelpCircle } from "lucide-react";
 
 const FAQ = [
   {
-    q: "How does billing work?",
-    a: "PulseDesk uses Stripe for subscriptions. Choose a plan in Settings → Billing. Plan limits (users, tickets, assets) are enforced in real time. Upgrades take effect immediately; downgrades take effect at the end of the current billing period. Failed payments give you a 7-day grace period before features are read-only.",
+    q: "How is access managed?",
+    a: "PulseDesk access is managed by OperatorOS. Launch PulseDesk from OperatorOS, and contact your OperatorOS admin for subscription, seat, or module entitlement changes.",
   },
   {
     q: "How do I invite teammates?",
-    a: "Settings → Team → Invite member. Enter their email and pick a role. They receive an invite link valid for 7 days. Roles can be changed or revoked from the same page at any time. Member count counts toward your plan limit.",
+    a: "Settings → Team → Invite member. Enter their email and pick a role. They receive an invite link valid for 7 days. Roles can be changed or revoked from the same page at any time.",
   },
   {
     q: "How does email-to-ticket forwarding work?",
@@ -18,7 +18,7 @@ const FAQ = [
   },
   {
     q: "What can each role do?",
-    a: "Admin: full control including billing and team. Manager: tickets, assignments, analytics. Technician: tickets and assets. Submitter: create tickets only. Read-only: view but no changes. Detailed permission matrix is in Settings → Team.",
+    a: "Admin: tenant settings and team management. Manager: tickets, assignments, analytics. Technician: tickets and assets. Submitter: create tickets only. Read-only: view but no changes. Detailed permission matrix is in Settings → Team.",
   },
   {
     q: "Is my data isolated from other organizations?",
@@ -30,7 +30,7 @@ const FAQ = [
   },
   {
     q: "What happens if I cancel?",
-    a: "Your data stays available read-only for 30 days. After that, it is permanently deleted. You can re-subscribe at any time during the 30-day window to restore full access.",
+    a: "OperatorOS controls subscription cancellation and entitlement state. If your PulseDesk module access is removed, protected app access is revoked while your operational data remains governed by the current retention policy.",
   },
 ];
 

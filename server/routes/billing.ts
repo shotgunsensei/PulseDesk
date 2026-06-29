@@ -4,9 +4,13 @@ import { requireAuth, requireOrg, requireMinRole } from "../middleware";
 import { getUncachableStripeClient, getStripePublishableKey } from "../stripeClient";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
-import { PLAN_LIMITS } from "@shared/schema";
 import type { Org } from "@shared/schema";
 import { ALLOWED_PLAN_META_KEYS, getAllowedPlanMetaKeys } from "../config/billingConfig";
+import {
+  getCurrentEntitlementSnapshotForRequest,
+  snapshotAllowsFeature,
+  snapshotNumericLimit,
+} from "../services/operatorosEntitlements";
 
 type OrgPlan = Org['plan'];
 
@@ -200,55 +204,41 @@ async function getApprovedPriceIds(): Promise<Set<string>> {
 
 router.get("/api/billing/status", requireAuth, requireOrg, async (req, res) => {
   try {
-    let stripeSyncStatus = "connected";
-    try {
-      await syncOrgPlanFromStripe(req.session.orgId!);
-    } catch {
-      stripeSyncStatus = "unavailable";
-    }
-
     const org = await storage.getOrg(req.session.orgId!);
     if (!org) return res.status(404).json({ error: "Org not found" });
 
     const counts = await storage.getOrgCounts(req.session.orgId!);
-    const plan = org.plan || "free";
-    const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
-
-    let subscriptionStatus: string | null = org.subscriptionStatus ?? null;
-
-    if (!subscriptionStatus && org.stripeSubscriptionId) {
-      try {
-        const subResult = await db.execute(sql`
-          SELECT s.status FROM stripe.subscriptions s
-          WHERE s.id = ${org.stripeSubscriptionId}
-          LIMIT 1
-        `);
-        subscriptionStatus = subResult.rows.length > 0 ? (subResult.rows[0] as any).status : null;
-      } catch {}
-
-      if (!subscriptionStatus) {
-        try {
-          const stripe = await getUncachableStripeClient();
-          const sub = await stripe.subscriptions.retrieve(org.stripeSubscriptionId);
-          subscriptionStatus = sub.status;
-        } catch {
-          subscriptionStatus = null;
-        }
-      }
-    }
+    const snapshot = await getCurrentEntitlementSnapshotForRequest(req, {
+      refreshIfMissing: true,
+      refreshIfStale: true,
+    });
+    const maxMembers = snapshotNumericLimit(snapshot, "maxMembers");
+    const maxTickets = snapshotNumericLimit(snapshot, "maxTickets");
 
     res.json({
-      plan,
+      plan: org.operatorOsOrgId ? "operatoros" : org.plan || "free",
+      entitlement: snapshot ? {
+        id: snapshot.id,
+        moduleSlug: snapshot.moduleSlug,
+        enabled: snapshot.enabled && !snapshot.revokedAt,
+        accessLevel: snapshot.accessLevel,
+        moduleRole: snapshot.moduleRole,
+        tenantRole: snapshot.tenantRole,
+        tenantRoleAlias: snapshot.tenantRoleAlias,
+        computedAt: snapshot.computedAt,
+        receivedAt: snapshot.receivedAt,
+        revokedAt: snapshot.revokedAt,
+      } : null,
       stripeCustomerId: org.stripeCustomerId || null,
       stripeSubscriptionId: org.stripeSubscriptionId || null,
       planExpiresAt: org.planExpiresAt || null,
-      subscriptionStatus,
+      subscriptionStatus: snapshot?.subscriptionStatus ?? org.subscriptionStatus ?? null,
       cancelAtPeriodEnd: org.cancelAtPeriodEnd ?? false,
-      stripeSyncStatus,
+      stripeSyncStatus: "operatoros",
       limits: {
-        maxMembers: limits.maxMembers === Infinity ? null : limits.maxMembers,
-        maxTickets: limits.maxTickets === Infinity ? null : limits.maxTickets,
-        entraEnabled: limits.entraEnabled,
+        maxMembers,
+        maxTickets,
+        entraEnabled: snapshotAllowsFeature(snapshot, "entraEnabled"),
       },
       usage: {
         members: counts.members,

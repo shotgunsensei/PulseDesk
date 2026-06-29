@@ -7,7 +7,6 @@ import {
   emailSettings,
   emailContacts,
   inboundEmailLog,
-  PLAN_LIMITS,
 } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import {
@@ -28,6 +27,11 @@ import {
   disablePollerForOrg,
 } from "../services/imapPoller";
 import { verifyInboundRequest } from "../middleware/inboundEmailAuth";
+import {
+  getCurrentEntitlementSnapshotForRequest,
+  snapshotAllowsFeature,
+} from "../services/operatorosEntitlements";
+import { logAdminAction } from "../lib/adminAudit";
 
 const router = Router();
 
@@ -73,21 +77,24 @@ const testInboundSchema = z.object({
 router.get("/api/email/settings", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
-    const org = await storage.getOrg(orgId);
-    const plan = ((org as any)?.plan || "free") as keyof typeof PLAN_LIMITS;
-    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+    const snapshot = await getCurrentEntitlementSnapshotForRequest(req, {
+      refreshIfMissing: true,
+      refreshIfStale: true,
+    });
+    const eligible = snapshotAllowsFeature(snapshot, "emailToTicket")
+      || (!snapshot && req.session.authSource !== "operatoros" && process.env.PULSEDESK_LOCAL_AUTH_ENABLED === "true");
 
-    if (!limits.emailToTicket) {
-      return res.json({ eligible: false, plan, settings: null });
+    if (!eligible) {
+      return res.json({ eligible: false, source: "operatoros", settings: null });
     }
 
     const results = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
     const settings = results[0] || null;
     if (settings) {
       const { imapPasswordEncrypted, ...sanitized } = settings;
-      return res.json({ eligible: true, plan, settings: { ...sanitized, imapPasswordSet: !!imapPasswordEncrypted } });
+      return res.json({ eligible: true, source: "operatoros", settings: { ...sanitized, imapPasswordSet: !!imapPasswordEncrypted } });
     }
-    return res.json({ eligible: true, plan, settings: null });
+    return res.json({ eligible: true, source: "operatoros", settings: null });
   } catch (err: any) {
     res.status(500).json({ error: safeError(err) });
   }
@@ -430,9 +437,10 @@ router.get("/api/admin/email/events", requireAuth, requireSuperAdmin, async (req
 });
 
 router.post("/api/admin/email/toggle/:orgId", requireAuth, requireSuperAdmin, async (req, res) => {
+  const orgId = req.params.orgId as string;
   try {
-    const orgId = req.params.orgId as string;
     const { enabled } = req.body;
+    const [existing] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
 
     const [updated] = await db
       .update(emailSettings)
@@ -440,18 +448,50 @@ router.post("/api/admin/email/toggle/:orgId", requireAuth, requireSuperAdmin, as
       .where(eq(emailSettings.orgId, orgId))
       .returning();
 
-    if (!updated) return res.status(404).json({ error: "Settings not found" });
+    if (!updated) {
+      await logAdminAction(req, {
+        eventType: "admin_email_settings_toggled",
+        orgId,
+        success: false,
+        details: { reason: "not_found", requested: { enabled: !!enabled } },
+      });
+      return res.status(404).json({ error: "Settings not found" });
+    }
+    await logAdminAction(req, {
+      eventType: "admin_email_settings_toggled",
+      orgId,
+      success: true,
+      details: {
+        before: { enabled: existing?.enabled ?? null },
+        after: { enabled: updated.enabled },
+      },
+    });
     res.json(updated);
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_email_settings_toggled",
+      orgId,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: safeError(err) });
   }
 });
 
 router.post("/api/admin/email/regenerate-alias/:orgId", requireAuth, requireSuperAdmin, async (req, res) => {
+  const orgId = req.params.orgId as string;
   try {
-    const orgId = req.params.orgId as string;
     const org = await storage.getOrg(orgId);
-    if (!org) return res.status(404).json({ error: "Org not found" });
+    if (!org) {
+      await logAdminAction(req, {
+        eventType: "admin_email_alias_regenerated",
+        orgId,
+        success: false,
+        details: { reason: "org_not_found" },
+      });
+      return res.status(404).json({ error: "Org not found" });
+    }
+    const [existing] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
 
     const newAlias = `${generateAlias(org.slug)}-${Date.now().toString(36).slice(-4)}`;
 
@@ -461,9 +501,32 @@ router.post("/api/admin/email/regenerate-alias/:orgId", requireAuth, requireSupe
       .where(eq(emailSettings.orgId, orgId))
       .returning();
 
-    if (!updated) return res.status(404).json({ error: "Settings not found" });
+    if (!updated) {
+      await logAdminAction(req, {
+        eventType: "admin_email_alias_regenerated",
+        orgId,
+        success: false,
+        details: { reason: "settings_not_found" },
+      });
+      return res.status(404).json({ error: "Settings not found" });
+    }
+    await logAdminAction(req, {
+      eventType: "admin_email_alias_regenerated",
+      orgId,
+      success: true,
+      details: {
+        before: { inboundAlias: existing?.inboundAlias ?? null },
+        after: { inboundAlias: updated.inboundAlias },
+      },
+    });
     res.json(updated);
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_email_alias_regenerated",
+      orgId,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: safeError(err) });
   }
 });
@@ -499,18 +562,38 @@ router.post("/api/email/outbound/test", requireAuth, requireOrg, requireMinRole(
 router.get("/api/admin/email/failed", requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
     const events = await storage.getFailedInboundEmails(50);
-    res.json(events);
+    res.json(events.map((event) => ({
+      ...event,
+      receivedAt: event.createdAt,
+      errorMessage: event.statusReason,
+    })));
   } catch (err: any) {
     res.status(500).json({ error: safeError(err) });
   }
 });
 
 router.post("/api/admin/email/replay/:eventId", requireAuth, requireSuperAdmin, async (req, res) => {
+  const eventId = req.params.eventId as string;
   try {
-    const eventId = req.params.eventId as string;
     const [event] = await db.select().from(inboundEmailLog).where(eq(inboundEmailLog.id, eventId));
-    if (!event) return res.status(404).json({ error: "Event not found" });
-    if (event.status !== "failed") return res.status(400).json({ error: "Only failed events can be replayed" });
+    if (!event) {
+      await logAdminAction(req, {
+        eventType: "admin_inbound_email_replayed",
+        orgId: null,
+        success: false,
+        details: { reason: "not_found", eventId },
+      });
+      return res.status(404).json({ error: "Event not found" });
+    }
+    if (event.status !== "failed") {
+      await logAdminAction(req, {
+        eventType: "admin_inbound_email_replayed",
+        orgId: event.orgId,
+        success: false,
+        details: { reason: "not_failed", eventId, status: event.status },
+      });
+      return res.status(400).json({ error: "Only failed events can be replayed" });
+    }
 
     const email: ParsedEmail = {
       messageId: event.messageId || undefined,
@@ -526,8 +609,24 @@ router.post("/api/admin/email/replay/:eventId", requireAuth, requireSuperAdmin, 
     };
 
     const result = await processInboundEmail(email);
+    await logAdminAction(req, {
+      eventType: "admin_inbound_email_replayed",
+      orgId: event.orgId,
+      success: true,
+      details: {
+        eventId,
+        before: { status: event.status, statusReason: event.statusReason },
+        after: result,
+      },
+    });
     res.json({ replayed: true, result });
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_inbound_email_replayed",
+      orgId: null,
+      success: false,
+      details: { eventId, error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: safeError(err) });
   }
 });
@@ -816,34 +915,76 @@ router.get("/api/admin/imap/status", requireAuth, requireSuperAdmin, async (_req
 });
 
 router.post("/api/admin/imap/reset/:orgId", requireAuth, requireSuperAdmin, async (req, res) => {
+  const orgId = req.params.orgId as string;
   try {
-    const orgId = req.params.orgId as string;
     await resetPollerForOrg(orgId);
+    await logAdminAction(req, {
+      eventType: "admin_imap_poller_reset",
+      orgId,
+      success: true,
+      details: { after: { reset: true } },
+    });
     res.json({ success: true, message: `Poller reset for org ${orgId}` });
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_imap_poller_reset",
+      orgId,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: safeError(err) });
   }
 });
 
 router.post("/api/admin/imap/force-poll/:orgId", requireAuth, requireSuperAdmin, async (req, res) => {
+  const orgId = req.params.orgId as string;
   try {
-    const orgId = req.params.orgId as string;
     const result = await forcePollForOrg(orgId);
     if (!result.success) {
+      await logAdminAction(req, {
+        eventType: "admin_imap_force_poll",
+        orgId,
+        success: false,
+        details: { result },
+      });
       return res.status(400).json({ error: result.error });
     }
+    await logAdminAction(req, {
+      eventType: "admin_imap_force_poll",
+      orgId,
+      success: true,
+      details: { result },
+    });
     res.json({ success: true, message: `Force poll completed for org ${orgId}` });
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_imap_force_poll",
+      orgId,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: safeError(err) });
   }
 });
 
 router.post("/api/admin/imap/disable/:orgId", requireAuth, requireSuperAdmin, async (req, res) => {
+  const orgId = req.params.orgId as string;
   try {
-    const orgId = req.params.orgId as string;
     await disablePollerForOrg(orgId);
+    await logAdminAction(req, {
+      eventType: "admin_imap_disabled",
+      orgId,
+      success: true,
+      details: { after: { disabled: true } },
+    });
     res.json({ success: true, message: `IMAP disabled for org ${orgId}` });
   } catch (err: any) {
+    await logAdminAction(req, {
+      eventType: "admin_imap_disabled",
+      orgId,
+      success: false,
+      details: { error: err?.message ?? "unknown" },
+    });
     res.status(500).json({ error: safeError(err) });
   }
 });

@@ -7,9 +7,9 @@ import {
   ticketEmailMetadata,
   tickets,
   ticketEvents,
-  PLAN_LIMITS,
 } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
+import { isOperatorOsFeatureEnabledForOrg } from "./operatorosEntitlements";
 
 export interface ParsedEmail {
   messageId?: string;
@@ -299,11 +299,10 @@ export async function processInboundEmail(email: ParsedEmail, connectorId?: stri
     return { status: "rejected", reason: "Organization not found", logId };
   }
 
-  const plan = (org as any).plan || "free";
-  const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free;
-  if (!limits.emailToTicket) {
-    const logId = await logInboundEmail(orgId, email, "rejected", "Plan does not include email-to-ticket", undefined, connectorId);
-    return { status: "rejected", reason: "Plan not eligible", logId };
+  const emailToTicketEnabled = await isOperatorOsFeatureEnabledForOrg(orgId, "emailToTicket");
+  if (!emailToTicketEnabled) {
+    const logId = await logInboundEmail(orgId, email, "rejected", "OperatorOS entitlement does not include email-to-ticket", undefined, connectorId);
+    return { status: "rejected", reason: "Feature not entitled", logId };
   }
 
   if (settings.allowedSenderDomains && settings.allowedSenderDomains.length > 0) {
