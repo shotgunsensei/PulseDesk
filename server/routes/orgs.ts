@@ -6,7 +6,7 @@ import { logAdminAction } from "../lib/adminAudit";
 
 const router = Router();
 
-router.post("/api/orgs", requireAuth, async (req: Request, res: Response) => {
+router.post("/api/orgs", requireAuth, async (req, res) => {
   try {
     const { name, slug, phone, email, address } = req.body;
     if (!name) return res.status(400).json({ error: "Organization name required" });
@@ -32,19 +32,19 @@ router.post("/api/orgs", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.patch("/api/orgs/:id", requireAuth, requireOrg, requireRole("admin"), async (req: Request, res: Response) => {
+router.patch("/api/orgs/:id", requireAuth, requireOrg, requireRole("admin"), async (req, res) => {
   try {
-    if (req.params.id !== req.session.orgId) {
+    if ((req.params.id as string) !== req.session.orgId) {
       return res.status(403).json({ error: "Cannot edit another organization" });
     }
-    const org = await storage.updateOrg(req.params.id, req.body);
+    const org = await storage.updateOrg((req.params.id as string), req.body);
     res.json(org);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post("/api/orgs/join", requireAuth, async (req: Request, res: Response) => {
+router.post("/api/orgs/join", requireAuth, async (req, res) => {
   try {
     const { code } = req.body;
     const invite = await storage.getInviteCodeByCode(code);
@@ -71,7 +71,7 @@ router.post("/api/orgs/join", requireAuth, async (req: Request, res: Response) =
   }
 });
 
-router.get("/api/invite-codes", requireAuth, requireOrg, requireRole("admin", "supervisor"), async (req: Request, res: Response) => {
+router.get("/api/invite-codes", requireAuth, requireOrg, requireRole("admin", "supervisor"), async (req, res) => {
   try {
     const codes = await storage.getOrgInviteCodes(req.session.orgId!);
     res.json(codes);
@@ -80,7 +80,7 @@ router.get("/api/invite-codes", requireAuth, requireOrg, requireRole("admin", "s
   }
 });
 
-router.post("/api/invite-codes", requireAuth, requireOrg, requireRole("admin", "supervisor"), async (req: Request, res: Response) => {
+router.post("/api/invite-codes", requireAuth, requireOrg, requireRole("admin", "supervisor"), async (req, res) => {
   try {
     const { role } = req.body;
     const code = await storage.createInviteCode(req.session.orgId!, role || "staff", req.session.userId!);
@@ -90,7 +90,7 @@ router.post("/api/invite-codes", requireAuth, requireOrg, requireRole("admin", "
   }
 });
 
-router.get("/api/memberships", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/memberships", requireAuth, requireOrg, async (req, res) => {
   try {
     const mems = await storage.getOrgMemberships(req.session.orgId!);
     const membersWithUsers = await Promise.all(
@@ -105,9 +105,9 @@ router.get("/api/memberships", requireAuth, requireOrg, async (req: Request, res
   }
 });
 
-router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, requireRole("admin"), async (req: Request, res: Response) => {
+router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, requireRole("admin"), async (req, res) => {
   try {
-    const userId = req.params.userId;
+    const userId = (req.params.userId as string);
     const orgId = req.session.orgId!;
     const { role } = req.body;
     if (!["admin", "supervisor", "staff", "technician", "readonly"].includes(role)) {
@@ -157,7 +157,7 @@ router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, requireRo
     await logAdminAction(req, {
       eventType: "org_membership_role_changed",
       orgId: req.session.orgId ?? null,
-      targetUserId: req.params.userId,
+      targetUserId: (req.params.userId as string),
       success: false,
       details: { error: err?.message ?? "unknown" },
     });
@@ -165,9 +165,9 @@ router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, requireRo
   }
 });
 
-router.delete("/api/memberships/:userId", requireAuth, requireOrg, requireRole("admin"), async (req: Request, res: Response) => {
+router.delete("/api/memberships/:userId", requireAuth, requireOrg, requireRole("admin"), async (req, res) => {
   try {
-    const userId = req.params.userId;
+    const userId = (req.params.userId as string);
     if (userId === req.session.userId) {
       return res.status(400).json({ error: "Cannot remove yourself" });
     }

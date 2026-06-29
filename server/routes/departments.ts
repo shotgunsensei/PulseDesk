@@ -4,7 +4,7 @@ import { requireAuth, requireOrg, requireMinRole } from "../middleware";
 
 const router = Router();
 
-router.get("/api/departments", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/departments", requireAuth, requireOrg, async (req, res) => {
   try {
     const result = await storage.getDepartments(req.session.orgId!);
     res.json(result);
@@ -13,9 +13,9 @@ router.get("/api/departments", requireAuth, requireOrg, async (req: Request, res
   }
 });
 
-router.get("/api/departments/:id", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/departments/:id", requireAuth, requireOrg, async (req, res) => {
   try {
-    const d = await storage.getDepartment(req.session.orgId!, req.params.id);
+    const d = await storage.getDepartment(req.session.orgId!, (req.params.id as string));
     if (!d) return res.status(404).json({ error: "Department not found" });
     res.json(d);
   } catch (err: any) {
@@ -23,7 +23,7 @@ router.get("/api/departments/:id", requireAuth, requireOrg, async (req: Request,
   }
 });
 
-router.post("/api/departments", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
+router.post("/api/departments", requireAuth, requireOrg, requireMinRole("supervisor"), async (req, res) => {
   try {
     if (!req.body.name?.trim()) return res.status(400).json({ error: "Department name required" });
     const d = await storage.createDepartment(req.session.orgId!, req.body);
@@ -33,9 +33,9 @@ router.post("/api/departments", requireAuth, requireOrg, requireMinRole("supervi
   }
 });
 
-router.patch("/api/departments/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
+router.patch("/api/departments/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req, res) => {
   try {
-    const d = await storage.updateDepartment(req.session.orgId!, req.params.id, req.body);
+    const d = await storage.updateDepartment(req.session.orgId!, (req.params.id as string), req.body);
     if (!d) return res.status(404).json({ error: "Department not found" });
     res.json(d);
   } catch (err: any) {
@@ -43,9 +43,9 @@ router.patch("/api/departments/:id", requireAuth, requireOrg, requireMinRole("su
   }
 });
 
-router.delete("/api/departments/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.delete("/api/departments/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
-    const deleted = await storage.deleteDepartment(req.session.orgId!, req.params.id);
+    const deleted = await storage.deleteDepartment(req.session.orgId!, (req.params.id as string));
     if (!deleted) return res.status(404).json({ error: "Department not found" });
     res.json({ ok: true });
   } catch (err: any) {

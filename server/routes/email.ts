@@ -70,7 +70,7 @@ const testInboundSchema = z.object({
   body: z.string().max(10000).optional().default(""),
 });
 
-router.get("/api/email/settings", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.get("/api/email/settings", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const org = await storage.getOrg(orgId);
@@ -93,7 +93,7 @@ router.get("/api/email/settings", requireAuth, requireOrg, requireMinRole("admin
   }
 });
 
-router.post("/api/email/settings/initialize", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.post("/api/email/settings/initialize", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
 
@@ -133,7 +133,7 @@ const oauthAppConfigSchema = z.object({
   clientSecret: z.string().max(500).optional(),
 });
 
-router.get("/api/email/oauth-app-config", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.get("/api/email/oauth-app-config", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const [settings] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
@@ -149,7 +149,7 @@ router.get("/api/email/oauth-app-config", requireAuth, requireOrg, requireMinRol
   }
 });
 
-router.patch("/api/email/oauth-app-config", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.patch("/api/email/oauth-app-config", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const parsed = oauthAppConfigSchema.safeParse(req.body);
@@ -186,10 +186,10 @@ router.patch("/api/email/oauth-app-config", requireAuth, requireOrg, requireMinR
   }
 });
 
-router.delete("/api/email/oauth-app-config/:provider", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.delete("/api/email/oauth-app-config/:provider", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
-    const { provider } = req.params;
+    const provider = req.params.provider as string;
     if (provider !== "google" && provider !== "microsoft") {
       return res.status(400).json({ error: "Invalid provider" });
     }
@@ -213,7 +213,7 @@ router.delete("/api/email/oauth-app-config/:provider", requireAuth, requireOrg, 
   }
 });
 
-router.patch("/api/email/settings", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.patch("/api/email/settings", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const parsed = updateSettingsSchema.safeParse(req.body);
@@ -245,7 +245,7 @@ router.patch("/api/email/settings", requireAuth, requireOrg, requireMinRole("adm
   }
 });
 
-router.get("/api/email/events", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.get("/api/email/events", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
@@ -270,7 +270,7 @@ router.get("/api/email/events", requireAuth, requireOrg, requireMinRole("admin")
   }
 });
 
-router.get("/api/email/contacts", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.get("/api/email/contacts", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const contacts = await db
@@ -284,9 +284,9 @@ router.get("/api/email/contacts", requireAuth, requireOrg, requireMinRole("admin
   }
 });
 
-router.post("/api/email/inbound/:provider", async (req: Request, res: Response) => {
+router.post("/api/email/inbound/:provider", async (req, res) => {
   try {
-    const providerName = req.params.provider;
+    const providerName = (req.params.provider as string);
 
     if (!providerName || !ALLOWED_PROVIDERS.has(providerName)) {
       return res.status(400).json({ error: "Unsupported provider" });
@@ -345,7 +345,7 @@ router.post("/api/email/inbound/:provider", async (req: Request, res: Response) 
   }
 });
 
-router.post("/api/email/test-inbound", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.post("/api/email/test-inbound", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const settings = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
@@ -377,7 +377,7 @@ router.post("/api/email/test-inbound", requireAuth, requireOrg, requireMinRole("
   }
 });
 
-router.get("/api/admin/email/settings", requireAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
+router.get("/api/admin/email/settings", requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
     const allSettings = await db
       .select({
@@ -404,7 +404,7 @@ router.get("/api/admin/email/settings", requireAuth, requireSuperAdmin, async (_
   }
 });
 
-router.get("/api/admin/email/events", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.get("/api/admin/email/events", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
     const events = await db
@@ -429,9 +429,9 @@ router.get("/api/admin/email/events", requireAuth, requireSuperAdmin, async (req
   }
 });
 
-router.post("/api/admin/email/toggle/:orgId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.post("/api/admin/email/toggle/:orgId", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const { orgId } = req.params;
+    const orgId = req.params.orgId as string;
     const { enabled } = req.body;
 
     const [updated] = await db
@@ -447,9 +447,9 @@ router.post("/api/admin/email/toggle/:orgId", requireAuth, requireSuperAdmin, as
   }
 });
 
-router.post("/api/admin/email/regenerate-alias/:orgId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.post("/api/admin/email/regenerate-alias/:orgId", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const { orgId } = req.params;
+    const orgId = req.params.orgId as string;
     const org = await storage.getOrg(orgId);
     if (!org) return res.status(404).json({ error: "Org not found" });
 
@@ -468,12 +468,12 @@ router.post("/api/admin/email/regenerate-alias/:orgId", requireAuth, requireSupe
   }
 });
 
-router.get("/api/email/outbound/status", requireAuth, requireOrg, async (_req: Request, res: Response) => {
+router.get("/api/email/outbound/status", requireAuth, requireOrg, async (_req, res) => {
   const { isOutboundEnabled } = await import("../email/outbound");
   res.json({ enabled: isOutboundEnabled() });
 });
 
-router.post("/api/email/outbound/test", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.post("/api/email/outbound/test", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const { to } = req.body as { to?: string };
     if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
@@ -496,7 +496,7 @@ router.post("/api/email/outbound/test", requireAuth, requireOrg, requireMinRole(
   }
 });
 
-router.get("/api/admin/email/failed", requireAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
+router.get("/api/admin/email/failed", requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
     const events = await storage.getFailedInboundEmails(50);
     res.json(events);
@@ -505,9 +505,9 @@ router.get("/api/admin/email/failed", requireAuth, requireSuperAdmin, async (_re
   }
 });
 
-router.post("/api/admin/email/replay/:eventId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.post("/api/admin/email/replay/:eventId", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const { eventId } = req.params;
+    const eventId = req.params.eventId as string;
     const [event] = await db.select().from(inboundEmailLog).where(eq(inboundEmailLog.id, eventId));
     if (!event) return res.status(404).json({ error: "Event not found" });
     if (event.status !== "failed") return res.status(400).json({ error: "Only failed events can be replayed" });
@@ -553,7 +553,7 @@ const imapUpdateSchema = z.object({
   imapFolder: z.string().min(1).max(253).optional(),
 });
 
-router.get("/api/email/imap/status", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.get("/api/email/imap/status", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const [settings] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
@@ -582,7 +582,7 @@ router.get("/api/email/imap/status", requireAuth, requireOrg, requireMinRole("ad
   }
 });
 
-router.post("/api/email/imap/configure", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.post("/api/email/imap/configure", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const parsed = imapConfigSchema.safeParse(req.body);
@@ -635,7 +635,7 @@ router.post("/api/email/imap/configure", requireAuth, requireOrg, requireMinRole
   }
 });
 
-router.patch("/api/email/imap", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.patch("/api/email/imap", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const parsed = imapUpdateSchema.safeParse(req.body);
@@ -699,7 +699,7 @@ router.patch("/api/email/imap", requireAuth, requireOrg, requireMinRole("admin")
   }
 });
 
-router.post("/api/email/imap/test", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.post("/api/email/imap/test", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
 
@@ -747,7 +747,7 @@ router.post("/api/email/imap/test", requireAuth, requireOrg, requireMinRole("adm
   }
 });
 
-router.post("/api/email/imap/reset", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.post("/api/email/imap/reset", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     await resetPollerForOrg(orgId);
@@ -757,7 +757,7 @@ router.post("/api/email/imap/reset", requireAuth, requireOrg, requireMinRole("ad
   }
 });
 
-router.get("/api/admin/imap/status", requireAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
+router.get("/api/admin/imap/status", requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
     const pollerStatuses = getPollerStatus();
 
@@ -815,9 +815,9 @@ router.get("/api/admin/imap/status", requireAuth, requireSuperAdmin, async (_req
   }
 });
 
-router.post("/api/admin/imap/reset/:orgId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.post("/api/admin/imap/reset/:orgId", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const { orgId } = req.params;
+    const orgId = req.params.orgId as string;
     await resetPollerForOrg(orgId);
     res.json({ success: true, message: `Poller reset for org ${orgId}` });
   } catch (err: any) {
@@ -825,9 +825,9 @@ router.post("/api/admin/imap/reset/:orgId", requireAuth, requireSuperAdmin, asyn
   }
 });
 
-router.post("/api/admin/imap/force-poll/:orgId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.post("/api/admin/imap/force-poll/:orgId", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const { orgId } = req.params;
+    const orgId = req.params.orgId as string;
     const result = await forcePollForOrg(orgId);
     if (!result.success) {
       return res.status(400).json({ error: result.error });
@@ -838,9 +838,9 @@ router.post("/api/admin/imap/force-poll/:orgId", requireAuth, requireSuperAdmin,
   }
 });
 
-router.post("/api/admin/imap/disable/:orgId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.post("/api/admin/imap/disable/:orgId", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const { orgId } = req.params;
+    const orgId = req.params.orgId as string;
     await disablePollerForOrg(orgId);
     res.json({ success: true, message: `IMAP disabled for org ${orgId}` });
   } catch (err: any) {

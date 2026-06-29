@@ -29,7 +29,7 @@ const ADMIN_AUDIT_EVENT_TYPES = [
   "admin_audit_log_purged",
 ] as const;
 
-router.get("/api/admin/audit", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.get("/api/admin/audit", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const querySchema = z.object({
       eventTypes: z.string().optional(),
@@ -78,7 +78,7 @@ router.get("/api/admin/audit", requireAuth, requireSuperAdmin, async (req: Reque
   }
 });
 
-router.post("/api/admin/audit/purge", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.post("/api/admin/audit/purge", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const parsed = purgeAuditSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -113,7 +113,7 @@ const updateRoleSchema = z.object({
   role: z.enum(VALID_ROLES),
 });
 
-router.get("/api/admin/orgs", requireAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
+router.get("/api/admin/orgs", requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
     const allOrgs = await storage.getAllOrgs();
     const orgsWithCounts = await Promise.all(
@@ -129,19 +129,19 @@ router.get("/api/admin/orgs", requireAuth, requireSuperAdmin, async (_req: Reque
   }
 });
 
-router.delete("/api/admin/orgs/:id", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.delete("/api/admin/orgs/:id", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const existing = await storage.getOrg(req.params.id);
+    const existing = await storage.getOrg((req.params.id as string));
     if (!existing) {
       await logAdminAction(req, {
         eventType: "admin_org_deleted",
-        orgId: req.params.id,
+        orgId: (req.params.id as string),
         success: false,
         details: { reason: "not_found" },
       });
       return res.status(404).json({ error: "Organization not found" });
     }
-    await storage.deleteOrg(req.params.id);
+    await storage.deleteOrg((req.params.id as string));
     await logAdminAction(req, {
       eventType: "admin_org_deleted",
       orgId: null,
@@ -155,7 +155,7 @@ router.delete("/api/admin/orgs/:id", requireAuth, requireSuperAdmin, async (req:
   } catch (err: any) {
     await logAdminAction(req, {
       eventType: "admin_org_deleted",
-      orgId: req.params.id,
+      orgId: (req.params.id as string),
       success: false,
       details: { error: err?.message ?? "unknown" },
     });
@@ -163,34 +163,34 @@ router.delete("/api/admin/orgs/:id", requireAuth, requireSuperAdmin, async (req:
   }
 });
 
-router.patch("/api/admin/orgs/:id/plan", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.patch("/api/admin/orgs/:id/plan", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const parsed = updatePlanSchema.safeParse(req.body);
     if (!parsed.success) {
       await logAdminAction(req, {
         eventType: "admin_org_plan_changed",
-        orgId: req.params.id,
+        orgId: (req.params.id as string),
         success: false,
         details: { reason: "invalid_plan", body: req.body },
       });
       return res.status(400).json({ error: "Invalid plan", validPlans: VALID_PLANS });
     }
 
-    const org = await storage.getOrg(req.params.id);
+    const org = await storage.getOrg((req.params.id as string));
     if (!org) {
       await logAdminAction(req, {
         eventType: "admin_org_plan_changed",
-        orgId: req.params.id,
+        orgId: (req.params.id as string),
         success: false,
         details: { reason: "not_found", requestedPlan: parsed.data.plan },
       });
       return res.status(404).json({ error: "Organization not found" });
     }
 
-    const updated = await storage.updateOrg(req.params.id, { plan: parsed.data.plan as any });
+    const updated = await storage.updateOrg((req.params.id as string), { plan: parsed.data.plan as any });
     await logAdminAction(req, {
       eventType: "admin_org_plan_changed",
-      orgId: req.params.id,
+      orgId: (req.params.id as string),
       success: true,
       details: {
         before: { plan: org.plan },
@@ -201,7 +201,7 @@ router.patch("/api/admin/orgs/:id/plan", requireAuth, requireSuperAdmin, async (
   } catch (err: any) {
     await logAdminAction(req, {
       eventType: "admin_org_plan_changed",
-      orgId: req.params.id,
+      orgId: (req.params.id as string),
       success: false,
       details: { error: err?.message ?? "unknown" },
     });
@@ -209,7 +209,7 @@ router.patch("/api/admin/orgs/:id/plan", requireAuth, requireSuperAdmin, async (
   }
 });
 
-router.get("/api/admin/users", requireAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
+router.get("/api/admin/users", requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
     const allUsers = await storage.getAllUsers();
     const usersWithMemberships = await Promise.all(
@@ -243,9 +243,10 @@ router.get("/api/admin/users", requireAuth, requireSuperAdmin, async (_req: Requ
   }
 });
 
-router.patch("/api/admin/orgs/:orgId/members/:userId/role", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.patch("/api/admin/orgs/:orgId/members/:userId/role", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const { orgId, userId } = req.params;
+    const orgId = req.params.orgId as string;
+    const userId = req.params.userId as string;
     const parsed = updateRoleSchema.safeParse(req.body);
     if (!parsed.success) {
       await logAdminAction(req, {
@@ -285,8 +286,8 @@ router.patch("/api/admin/orgs/:orgId/members/:userId/role", requireAuth, require
   } catch (err: any) {
     await logAdminAction(req, {
       eventType: "admin_membership_role_changed",
-      orgId: req.params.orgId,
-      targetUserId: req.params.userId,
+      orgId: (req.params.orgId as string),
+      targetUserId: (req.params.userId as string),
       success: false,
       details: { error: err?.message ?? "unknown" },
     });
@@ -294,7 +295,7 @@ router.patch("/api/admin/orgs/:orgId/members/:userId/role", requireAuth, require
   }
 });
 
-router.get("/api/admin/billing", requireAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
+router.get("/api/admin/billing", requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
     const allOrgs = await storage.getAllOrgs();
     const rows = allOrgs.map((org) => ({
@@ -314,8 +315,8 @@ router.get("/api/admin/billing", requireAuth, requireSuperAdmin, async (_req: Re
   }
 });
 
-router.post("/api/admin/billing/sync/:orgId", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
-  const { orgId } = req.params;
+router.post("/api/admin/billing/sync/:orgId", requireAuth, requireSuperAdmin, async (req, res) => {
+  const orgId = req.params.orgId as string;
   try {
     const org = await storage.getOrg(orgId);
     if (!org) {
@@ -364,8 +365,8 @@ router.post("/api/admin/billing/sync/:orgId", requireAuth, requireSuperAdmin, as
   }
 });
 
-router.patch("/api/admin/users/:id/superadmin", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
-  const { id } = req.params;
+router.patch("/api/admin/users/:id/superadmin", requireAuth, requireSuperAdmin, async (req, res) => {
+  const id = req.params.id as string;
   try {
     const { isSuperAdmin } = req.body;
 

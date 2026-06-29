@@ -4,7 +4,7 @@ import { requireAuth, requireOrg, requireMinRole } from "../middleware";
 
 const router = Router();
 
-router.get("/api/assets", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/assets", requireAuth, requireOrg, async (req, res) => {
   try {
     const result = await storage.getAssets(req.session.orgId!);
     res.json(result);
@@ -13,9 +13,9 @@ router.get("/api/assets", requireAuth, requireOrg, async (req: Request, res: Res
   }
 });
 
-router.get("/api/assets/:id", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/assets/:id", requireAuth, requireOrg, async (req, res) => {
   try {
-    const a = await storage.getAsset(req.session.orgId!, req.params.id);
+    const a = await storage.getAsset(req.session.orgId!, (req.params.id as string));
     if (!a) return res.status(404).json({ error: "Asset not found" });
     res.json(a);
   } catch (err: any) {
@@ -23,7 +23,7 @@ router.get("/api/assets/:id", requireAuth, requireOrg, async (req: Request, res:
   }
 });
 
-router.post("/api/assets", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
+router.post("/api/assets", requireAuth, requireOrg, requireMinRole("supervisor"), async (req, res) => {
   try {
     const data = { ...req.body };
     if (!data.name?.trim()) return res.status(400).json({ error: "Asset name required" });
@@ -35,11 +35,11 @@ router.post("/api/assets", requireAuth, requireOrg, requireMinRole("supervisor")
   }
 });
 
-router.patch("/api/assets/:id", requireAuth, requireOrg, requireMinRole("technician"), async (req: Request, res: Response) => {
+router.patch("/api/assets/:id", requireAuth, requireOrg, requireMinRole("technician"), async (req, res) => {
   try {
     const data = { ...req.body };
     if ("departmentId" in data) data.departmentId = data.departmentId || null;
-    const a = await storage.updateAsset(req.session.orgId!, req.params.id, data);
+    const a = await storage.updateAsset(req.session.orgId!, (req.params.id as string), data);
     if (!a) return res.status(404).json({ error: "Asset not found" });
     res.json(a);
   } catch (err: any) {
@@ -47,9 +47,9 @@ router.patch("/api/assets/:id", requireAuth, requireOrg, requireMinRole("technic
   }
 });
 
-router.delete("/api/assets/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.delete("/api/assets/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
-    const deleted = await storage.deleteAsset(req.session.orgId!, req.params.id);
+    const deleted = await storage.deleteAsset(req.session.orgId!, (req.params.id as string));
     if (!deleted) return res.status(404).json({ error: "Asset not found" });
     res.json({ ok: true });
   } catch (err: any) {

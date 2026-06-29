@@ -82,7 +82,7 @@ const updateConnectorSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
-router.get("/api/connectors", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.get("/api/connectors", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const connectors = await db.select().from(mailConnectors).where(sql`${mailConnectors.orgId} = ${orgId}`).orderBy(desc(mailConnectors.createdAt));
@@ -92,11 +92,11 @@ router.get("/api/connectors", requireAuth, requireOrg, requireMinRole("admin"), 
   }
 });
 
-router.get("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.get("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const [connector] = await db.select().from(mailConnectors)
-      .where(connectorByIdAndOrg(req.params.id, orgId));
+      .where(connectorByIdAndOrg((req.params.id as string), orgId));
     if (!connector) return res.status(404).json({ error: "Connector not found" });
 
     const pollerStatus = getConnectorPollerStatusById(connector.id);
@@ -106,7 +106,7 @@ router.get("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("admin
   }
 });
 
-router.post("/api/connectors", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.post("/api/connectors", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const parsed = createConnectorSchema.safeParse(req.body);
@@ -156,7 +156,7 @@ router.post("/api/connectors", requireAuth, requireOrg, requireMinRole("admin"),
   }
 });
 
-router.patch("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.patch("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const parsed = updateConnectorSchema.safeParse(req.body);
@@ -165,7 +165,7 @@ router.patch("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("adm
     }
 
     const [existing] = await db.select().from(mailConnectors)
-      .where(connectorByIdAndOrg(req.params.id, orgId));
+      .where(connectorByIdAndOrg((req.params.id as string), orgId));
     if (!existing) return res.status(404).json({ error: "Connector not found" });
 
     const data = parsed.data;
@@ -195,7 +195,7 @@ router.patch("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("adm
     }
 
     const [updated] = await db.update(mailConnectors).set(updateData)
-      .where(connectorByIdAndOrg(req.params.id, orgId)).returning();
+      .where(connectorByIdAndOrg((req.params.id as string), orgId)).returning();
 
     if (updated.enabled && updated.status === "active" && updated.provider !== "forwarding") {
       startPollerForConnector(updated);
@@ -208,11 +208,11 @@ router.patch("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("adm
   }
 });
 
-router.delete("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.delete("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const [existing] = await db.select().from(mailConnectors)
-      .where(connectorByIdAndOrg(req.params.id, orgId));
+      .where(connectorByIdAndOrg((req.params.id as string), orgId));
     if (!existing) return res.status(404).json({ error: "Connector not found" });
 
     stopPollerForConnector(existing.id);
@@ -228,11 +228,11 @@ router.delete("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("ad
   }
 });
 
-router.post("/api/connectors/:id/disconnect", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.post("/api/connectors/:id/disconnect", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const [connector] = await db.select().from(mailConnectors)
-      .where(connectorByIdAndOrg(req.params.id, orgId));
+      .where(connectorByIdAndOrg((req.params.id as string), orgId));
     if (!connector) return res.status(404).json({ error: "Connector not found" });
 
     stopPollerForConnector(connector.id);
@@ -281,11 +281,11 @@ router.post("/api/connectors/:id/disconnect", requireAuth, requireOrg, requireMi
   }
 });
 
-router.post("/api/connectors/:id/test", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.post("/api/connectors/:id/test", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const [connector] = await db.select().from(mailConnectors)
-      .where(connectorByIdAndOrg(req.params.id, orgId));
+      .where(connectorByIdAndOrg((req.params.id as string), orgId));
     if (!connector) return res.status(404).json({ error: "Connector not found" });
     if (!connector.credentialsEncrypted) return res.status(400).json({ error: "No credentials configured" });
 
@@ -302,11 +302,11 @@ router.post("/api/connectors/:id/test", requireAuth, requireOrg, requireMinRole(
   }
 });
 
-router.get("/api/connectors/:id/health", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.get("/api/connectors/:id/health", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const [connector] = await db.select().from(mailConnectors)
-      .where(connectorByIdAndOrg(req.params.id, orgId));
+      .where(connectorByIdAndOrg((req.params.id as string), orgId));
     if (!connector) return res.status(404).json({ error: "Connector not found" });
 
     const service = getConnectorService(connector.provider as ConnectorProvider);
@@ -324,11 +324,11 @@ router.get("/api/connectors/:id/health", requireAuth, requireOrg, requireMinRole
   }
 });
 
-router.post("/api/connectors/:id/poll", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.post("/api/connectors/:id/poll", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const [connector] = await db.select().from(mailConnectors)
-      .where(connectorByIdAndOrg(req.params.id, orgId));
+      .where(connectorByIdAndOrg((req.params.id as string), orgId));
     if (!connector) return res.status(404).json({ error: "Connector not found" });
 
     const result = await forcePollConnector(connector.id);
@@ -338,12 +338,12 @@ router.post("/api/connectors/:id/poll", requireAuth, requireOrg, requireMinRole(
   }
 });
 
-router.get("/api/connectors/:id/events", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.get("/api/connectors/:id/events", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
     const events = await db.select().from(connectorEvents)
-      .where(sql`${connectorEvents.connectorId} = ${req.params.id} AND ${connectorEvents.orgId} = ${orgId}`)
+      .where(sql`${connectorEvents.connectorId} = ${(req.params.id as string)} AND ${connectorEvents.orgId} = ${orgId}`)
       .orderBy(desc(connectorEvents.createdAt))
       .limit(limit);
     res.json(events);
@@ -371,7 +371,7 @@ function extractMicrosoftAppCreds(settings: any): { clientId: string; clientSecr
   } catch { return null; }
 }
 
-router.get("/api/connectors/oauth/config-status", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.get("/api/connectors/oauth/config-status", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const settings = await getOrgEmailSettings(orgId);
@@ -388,11 +388,11 @@ router.get("/api/connectors/oauth/config-status", requireAuth, requireOrg, requi
   }
 });
 
-router.get("/api/connectors/:id/oauth/start", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req: Request, res: Response) => {
+router.get("/api/connectors/:id/oauth/start", requireAuth, requireOrg, requireMinRole("admin"), requireFeature("emailToTicket"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const [connector] = await db.select().from(mailConnectors)
-      .where(connectorByIdAndOrg(req.params.id, orgId));
+      .where(connectorByIdAndOrg((req.params.id as string), orgId));
     if (!connector) return res.status(404).json({ error: "Connector not found" });
 
     if (connector.provider !== "google" && connector.provider !== "microsoft") {
@@ -430,19 +430,19 @@ router.get("/api/connectors/:id/oauth/start", requireAuth, requireOrg, requireMi
 
     const result = await service.startOAuth!(connector, redirectUri, appCreds);
 
-    const sess = req.session as Record<string, unknown>;
+    const sess = req.session as unknown as Record<string, unknown>;
     sess.connectorOAuthState = result.state;
     sess.connectorOAuthId = connector.id;
     sess.connectorOAuthProvider = connector.provider;
 
     res.json({ redirectUrl: result.redirectUrl });
   } catch (err: any) {
-    console.error(`[connectors] OAuth start error for ${req.params.id}:`, err.message);
+    console.error(`[connectors] OAuth start error for ${(req.params.id as string)}:`, err.message);
     res.status(500).json({ error: safeError(err) });
   }
 });
 
-router.get("/api/connectors/oauth/callback", async (req: Request, res: Response) => {
+router.get("/api/connectors/oauth/callback", async (req, res) => {
   try {
     const { code, state, error } = req.query as Record<string, string>;
 
@@ -450,7 +450,7 @@ router.get("/api/connectors/oauth/callback", async (req: Request, res: Response)
       return res.redirect(`/email-settings?connectorError=${encodeURIComponent(error)}`);
     }
 
-    const callbackSession = req.session as Record<string, unknown>;
+    const callbackSession = req.session as unknown as Record<string, unknown>;
     const savedState = callbackSession.connectorOAuthState as string | undefined;
     const connectorId = callbackSession.connectorOAuthId as string | undefined;
     const provider = callbackSession.connectorOAuthProvider as string | undefined;
@@ -518,7 +518,7 @@ router.get("/api/connectors/oauth/callback", async (req: Request, res: Response)
   }
 });
 
-router.get("/api/admin/connectors", requireAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
+router.get("/api/admin/connectors", requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
     const allConnectors = await db.select().from(mailConnectors).orderBy(desc(mailConnectors.createdAt));
     const enriched = await Promise.all(
@@ -541,7 +541,7 @@ router.get("/api/admin/connectors", requireAuth, requireSuperAdmin, async (_req:
   }
 });
 
-router.get("/api/admin/connectors/pollers", requireAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
+router.get("/api/admin/connectors/pollers", requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
     res.json(getConnectorPollerStatus());
   } catch (err: any) {
@@ -549,9 +549,9 @@ router.get("/api/admin/connectors/pollers", requireAuth, requireSuperAdmin, asyn
   }
 });
 
-router.get("/api/admin/connectors/:id/events", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.get("/api/admin/connectors/:id/events", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const connId = String(req.params.id);
+    const connId = String((req.params.id as string));
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const events = await db.select().from(connectorEvents)
       .where(sql`${connectorEvents.connectorId} = ${connId}`)
@@ -564,7 +564,7 @@ router.get("/api/admin/connectors/:id/events", requireAuth, requireSuperAdmin, a
   }
 });
 
-router.get("/api/admin/connectors/events", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.get("/api/admin/connectors/events", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 100, 500);
     const events = await db.select().from(connectorEvents)
@@ -577,9 +577,9 @@ router.get("/api/admin/connectors/events", requireAuth, requireSuperAdmin, async
   }
 });
 
-router.post("/api/admin/connectors/:id/force-poll", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.post("/api/admin/connectors/:id/force-poll", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const connId = String(req.params.id);
+    const connId = String((req.params.id as string));
     const result = await forcePollConnector(connId);
     res.json(result);
   } catch (err: any) {
@@ -587,9 +587,9 @@ router.post("/api/admin/connectors/:id/force-poll", requireAuth, requireSuperAdm
   }
 });
 
-router.post("/api/admin/connectors/:id/disable", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.post("/api/admin/connectors/:id/disable", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const connId = String(req.params.id);
+    const connId = String((req.params.id as string));
     stopPollerForConnector(connId);
     const [updated] = await db.update(mailConnectors).set({
       enabled: false,
@@ -607,9 +607,9 @@ router.post("/api/admin/connectors/:id/disable", requireAuth, requireSuperAdmin,
   }
 });
 
-router.post("/api/admin/connectors/:id/enable", requireAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.post("/api/admin/connectors/:id/enable", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const connId = String(req.params.id);
+    const connId = String((req.params.id as string));
     const [updated] = await db.update(mailConnectors).set({
       enabled: true,
       status: "active",

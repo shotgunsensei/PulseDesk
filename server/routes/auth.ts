@@ -57,7 +57,25 @@ async function logAuthEvent(req: Request, params: {
   }
 }
 
-router.get("/api/auth/tenant/:slug", resolveTenant, async (req: Request, res: Response) => {
+function isLocalAuthEnabled(): boolean {
+  return process.env.PULSEDESK_LOCAL_AUTH_ENABLED === "true";
+}
+
+async function rejectLocalAuthDisabled(req: Request, res: Response, eventType: string, tenantResolved?: string) {
+  await logAuthEvent(req, {
+    eventType,
+    authSource: "local",
+    tenantResolved,
+    details: { reason: "Local username/password auth is disabled; launch through OperatorOS SSO" },
+    success: false,
+  });
+  return res.status(403).json({
+    code: "local_auth_disabled",
+    error: "Local username/password auth is disabled. Launch PulseDesk from OperatorOS.",
+  });
+}
+
+router.get("/api/auth/tenant/:slug", resolveTenant, async (req, res) => {
   try {
     const tenantReq = req as ResolvedTenantRequest;
     const org = tenantReq.resolvedOrg;
@@ -74,8 +92,12 @@ router.get("/api/auth/tenant/:slug", resolveTenant, async (req: Request, res: Re
   }
 });
 
-router.post("/api/auth/register", registerRateLimiter, async (req: Request, res: Response) => {
+router.post("/api/auth/register", registerRateLimiter, async (req, res) => {
   try {
+    if (!isLocalAuthEnabled()) {
+      return rejectLocalAuthDisabled(req, res, "register_rejected");
+    }
+
     const { username, password, fullName } = req.body;
     if (!username?.trim() || !password) {
       return res.status(400).json({ error: "Username and password required" });
@@ -115,9 +137,13 @@ router.post("/api/auth/register", registerRateLimiter, async (req: Request, res:
   }
 });
 
-router.post("/api/auth/login", loginRateLimiter, async (req: Request, res: Response) => {
+router.post("/api/auth/login", loginRateLimiter, async (req, res) => {
   try {
     const { username, password, orgSlug } = req.body;
+    if (!isLocalAuthEnabled()) {
+      return rejectLocalAuthDisabled(req, res, "login_rejected", orgSlug);
+    }
+
     if (!username || !password) {
       return res.status(400).json({ error: "Username and password required" });
     }
@@ -274,7 +300,7 @@ router.post("/api/auth/login", loginRateLimiter, async (req: Request, res: Respo
 
 const DEV_M365_MOCK = process.env.NODE_ENV === "development" && process.env.DEV_M365_MOCK === "true";
 
-router.get("/api/auth/m365/login", resolveTenant, async (req: Request, res: Response) => {
+router.get("/api/auth/m365/login", resolveTenant, async (req, res) => {
   try {
     const tenantReq = req as ResolvedTenantRequest;
     const org = tenantReq.resolvedOrg;
@@ -330,7 +356,7 @@ router.get("/api/auth/m365/login", resolveTenant, async (req: Request, res: Resp
   }
 });
 
-router.get("/api/auth/m365/callback", async (req: Request, res: Response) => {
+router.get("/api/auth/m365/callback", async (req, res) => {
   try {
     const orgId = req.session.entraOrgId;
     const savedState = req.session.entraState;
@@ -544,7 +570,7 @@ router.get("/api/auth/m365/callback", async (req: Request, res: Response) => {
         lastLoginAt: new Date(),
       });
 
-      await storage.createMembership(orgId, user.id, mappedRole);
+      await storage.createMembership(orgId, user.id, mappedRole ?? "staff");
 
       await logAuthEvent(req, {
         orgId,
@@ -603,7 +629,7 @@ router.get("/api/auth/m365/callback", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/api/auth/logout", (req: Request, res: Response) => {
+router.post("/api/auth/logout", (req, res) => {
   const orgId = req.session.orgId;
   const userId = req.session.userId;
   const authSource = req.session.authSource;
@@ -615,7 +641,7 @@ router.post("/api/auth/logout", (req: Request, res: Response) => {
   });
 });
 
-router.delete("/api/auth/delete-account", requireAuth, async (req: Request, res: Response) => {
+router.delete("/api/auth/delete-account", requireAuth, async (req, res) => {
   try {
     const userId = req.session.userId!;
     await storage.deleteUser(userId);
@@ -627,7 +653,7 @@ router.delete("/api/auth/delete-account", requireAuth, async (req: Request, res:
   }
 });
 
-router.get("/api/auth/me", requireAuth, async (req: Request, res: Response) => {
+router.get("/api/auth/me", requireAuth, async (req, res) => {
   try {
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(401).json({ error: "User not found" });
@@ -679,7 +705,7 @@ router.get("/api/auth/me", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.post("/api/auth/switch-org", requireAuth, async (req: Request, res: Response) => {
+router.post("/api/auth/switch-org", requireAuth, async (req, res) => {
   try {
     const { orgId } = req.body;
     const membership = await storage.getMembership(orgId, req.session.userId!);
@@ -705,7 +731,7 @@ router.post("/api/auth/switch-org", requireAuth, async (req: Request, res: Respo
   }
 });
 
-router.patch("/api/auth/profile", requireAuth, async (req: Request, res: Response) => {
+router.patch("/api/auth/profile", requireAuth, async (req, res) => {
   try {
     const { fullName, phone, email } = req.body;
     if (!fullName?.trim()) {
@@ -722,7 +748,7 @@ router.patch("/api/auth/profile", requireAuth, async (req: Request, res: Respons
   }
 });
 
-router.post("/api/auth/change-password", requireAuth, async (req: Request, res: Response) => {
+router.post("/api/auth/change-password", requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) {
@@ -746,7 +772,7 @@ router.post("/api/auth/change-password", requireAuth, async (req: Request, res: 
   }
 });
 
-router.get("/api/members", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/members", requireAuth, requireOrg, async (req, res) => {
   try {
     const mems = await storage.getOrgMemberships(req.session.orgId!);
     const result = [];
@@ -768,7 +794,7 @@ router.get("/api/members", requireAuth, requireOrg, async (req: Request, res: Re
   }
 });
 
-router.get("/api/auth/config", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.get("/api/auth/config", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const config = await storage.getOrgAuthConfig(orgId);
@@ -814,7 +840,7 @@ router.get("/api/auth/config", requireAuth, requireOrg, requireMinRole("admin"),
   }
 });
 
-router.put("/api/auth/config", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.put("/api/auth/config", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const parsed = authConfigSchema.safeParse(req.body);
@@ -897,7 +923,7 @@ router.put("/api/auth/config", requireAuth, requireOrg, requireMinRole("admin"),
   }
 });
 
-router.post("/api/auth/config/test", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.post("/api/auth/config/test", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const config = await storage.getOrgAuthConfig(orgId);
@@ -950,7 +976,7 @@ router.post("/api/auth/config/test", requireAuth, requireOrg, requireMinRole("ad
   }
 });
 
-router.get("/api/auth/role-mappings", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.get("/api/auth/role-mappings", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const mappings = await storage.getOrgRoleMappings(req.session.orgId!);
     res.json(mappings);
@@ -959,7 +985,7 @@ router.get("/api/auth/role-mappings", requireAuth, requireOrg, requireMinRole("a
   }
 });
 
-router.post("/api/auth/role-mappings", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.post("/api/auth/role-mappings", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const parsed = roleMappingSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -987,15 +1013,15 @@ router.post("/api/auth/role-mappings", requireAuth, requireOrg, requireMinRole("
   }
 });
 
-router.delete("/api/auth/role-mappings/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.delete("/api/auth/role-mappings/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
-    await storage.deleteOrgRoleMapping(req.session.orgId!, req.params.id);
+    await storage.deleteOrgRoleMapping(req.session.orgId!, (req.params.id as string));
 
     await logAuthEvent(req, {
       orgId: req.session.orgId,
       userId: req.session.userId,
       eventType: "role_mapping_deleted",
-      details: { mappingId: req.params.id },
+      details: { mappingId: (req.params.id as string) },
       success: true,
     });
 
@@ -1005,7 +1031,7 @@ router.delete("/api/auth/role-mappings/:id", requireAuth, requireOrg, requireMin
   }
 });
 
-router.get("/api/auth/audit-log", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.get("/api/auth/audit-log", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 50;
     const logs = await storage.getAuthAuditLog(req.session.orgId!, Math.min(limit, 200));

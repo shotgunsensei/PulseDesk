@@ -4,7 +4,7 @@ import { requireAuth, requireOrg, requireMinRole } from "../middleware";
 
 const router = Router();
 
-router.get("/api/vendors", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/vendors", requireAuth, requireOrg, async (req, res) => {
   try {
     const result = await storage.getVendors(req.session.orgId!);
     res.json(result);
@@ -13,9 +13,9 @@ router.get("/api/vendors", requireAuth, requireOrg, async (req: Request, res: Re
   }
 });
 
-router.get("/api/vendors/:id", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/vendors/:id", requireAuth, requireOrg, async (req, res) => {
   try {
-    const v = await storage.getVendor(req.session.orgId!, req.params.id);
+    const v = await storage.getVendor(req.session.orgId!, (req.params.id as string));
     if (!v) return res.status(404).json({ error: "Vendor not found" });
     res.json(v);
   } catch (err: any) {
@@ -23,7 +23,7 @@ router.get("/api/vendors/:id", requireAuth, requireOrg, async (req: Request, res
   }
 });
 
-router.post("/api/vendors", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
+router.post("/api/vendors", requireAuth, requireOrg, requireMinRole("supervisor"), async (req, res) => {
   try {
     if (!req.body.name?.trim()) return res.status(400).json({ error: "Vendor name required" });
     const v = await storage.createVendor(req.session.orgId!, req.body);
@@ -33,9 +33,9 @@ router.post("/api/vendors", requireAuth, requireOrg, requireMinRole("supervisor"
   }
 });
 
-router.patch("/api/vendors/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
+router.patch("/api/vendors/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req, res) => {
   try {
-    const v = await storage.updateVendor(req.session.orgId!, req.params.id, req.body);
+    const v = await storage.updateVendor(req.session.orgId!, (req.params.id as string), req.body);
     if (!v) return res.status(404).json({ error: "Vendor not found" });
     res.json(v);
   } catch (err: any) {
@@ -43,9 +43,9 @@ router.patch("/api/vendors/:id", requireAuth, requireOrg, requireMinRole("superv
   }
 });
 
-router.delete("/api/vendors/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.delete("/api/vendors/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
-    const deleted = await storage.deleteVendor(req.session.orgId!, req.params.id);
+    const deleted = await storage.deleteVendor(req.session.orgId!, (req.params.id as string));
     if (!deleted) return res.status(404).json({ error: "Vendor not found" });
     res.json({ ok: true });
   } catch (err: any) {

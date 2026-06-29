@@ -4,7 +4,7 @@ import { requireAuth, requireOrg, requireMinRole } from "../middleware";
 
 const router = Router();
 
-router.get("/api/onboarding", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/onboarding", requireAuth, requireOrg, async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     await storage.seedOnboardingItems(orgId);
@@ -49,7 +49,7 @@ router.get("/api/onboarding", requireAuth, requireOrg, async (req: Request, res:
   }
 });
 
-router.post("/api/onboarding", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.post("/api/onboarding", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const { title, description, route, sortOrder } = req.body;
@@ -67,10 +67,10 @@ router.post("/api/onboarding", requireAuth, requireOrg, requireMinRole("admin"),
   }
 });
 
-router.patch("/api/onboarding/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.patch("/api/onboarding/:id", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
     const updates: any = {};
 
     if (req.body.title !== undefined) updates.title = req.body.title;
@@ -87,10 +87,10 @@ router.patch("/api/onboarding/:id", requireAuth, requireOrg, requireMinRole("adm
   }
 });
 
-router.post("/api/onboarding/:id/complete", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.post("/api/onboarding/:id/complete", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
     const item = await storage.updateOnboardingItem(orgId, id, {
       status: "complete" as any,
       completionSource: "manual",
@@ -104,10 +104,10 @@ router.post("/api/onboarding/:id/complete", requireAuth, requireOrg, requireMinR
   }
 });
 
-router.post("/api/onboarding/:id/skip", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.post("/api/onboarding/:id/skip", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
     const item = await storage.updateOnboardingItem(orgId, id, {
       status: "skipped" as any,
       dismissedAt: new Date(),
@@ -119,7 +119,7 @@ router.post("/api/onboarding/:id/skip", requireAuth, requireOrg, requireMinRole(
   }
 });
 
-router.post("/api/onboarding/reorder", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.post("/api/onboarding/reorder", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const { order } = req.body;

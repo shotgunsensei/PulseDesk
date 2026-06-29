@@ -4,7 +4,7 @@ import { requireAuth, requireOrg, requireMinRole } from "../middleware";
 
 const router = Router();
 
-router.get("/api/supply-requests", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/supply-requests", requireAuth, requireOrg, async (req, res) => {
   try {
     const result = await storage.getSupplyRequests(req.session.orgId!);
     res.json(result);
@@ -13,9 +13,9 @@ router.get("/api/supply-requests", requireAuth, requireOrg, async (req: Request,
   }
 });
 
-router.get("/api/supply-requests/:id", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/supply-requests/:id", requireAuth, requireOrg, async (req, res) => {
   try {
-    const s = await storage.getSupplyRequest(req.session.orgId!, req.params.id);
+    const s = await storage.getSupplyRequest(req.session.orgId!, (req.params.id as string));
     if (!s) return res.status(404).json({ error: "Supply request not found" });
     res.json(s);
   } catch (err: any) {
@@ -23,7 +23,7 @@ router.get("/api/supply-requests/:id", requireAuth, requireOrg, async (req: Requ
   }
 });
 
-router.post("/api/supply-requests", requireAuth, requireOrg, requireMinRole("staff"), async (req: Request, res: Response) => {
+router.post("/api/supply-requests", requireAuth, requireOrg, requireMinRole("staff"), async (req, res) => {
   try {
     const data = { ...req.body };
     if (!data.itemName?.trim()) return res.status(400).json({ error: "Item name required" });
@@ -35,11 +35,11 @@ router.post("/api/supply-requests", requireAuth, requireOrg, requireMinRole("sta
   }
 });
 
-router.patch("/api/supply-requests/:id", requireAuth, requireOrg, requireMinRole("technician"), async (req: Request, res: Response) => {
+router.patch("/api/supply-requests/:id", requireAuth, requireOrg, requireMinRole("technician"), async (req, res) => {
   try {
     const data = { ...req.body };
     if ("departmentId" in data) data.departmentId = data.departmentId || null;
-    const s = await storage.updateSupplyRequest(req.session.orgId!, req.params.id, data);
+    const s = await storage.updateSupplyRequest(req.session.orgId!, (req.params.id as string), data);
     if (!s) return res.status(404).json({ error: "Supply request not found" });
     res.json(s);
   } catch (err: any) {
@@ -47,9 +47,9 @@ router.patch("/api/supply-requests/:id", requireAuth, requireOrg, requireMinRole
   }
 });
 
-router.delete("/api/supply-requests/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
+router.delete("/api/supply-requests/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req, res) => {
   try {
-    const deleted = await storage.deleteSupplyRequest(req.session.orgId!, req.params.id);
+    const deleted = await storage.deleteSupplyRequest(req.session.orgId!, (req.params.id as string));
     if (!deleted) return res.status(404).json({ error: "Supply request not found" });
     res.json({ ok: true });
   } catch (err: any) {

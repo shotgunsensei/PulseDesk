@@ -5,7 +5,7 @@ import { PLAN_LIMITS } from "@shared/schema";
 
 const router = Router();
 
-router.get("/api/tickets", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/tickets", requireAuth, requireOrg, async (req, res) => {
   try {
     const result = await storage.getTickets(req.session.orgId!);
     res.json(result);
@@ -14,9 +14,9 @@ router.get("/api/tickets", requireAuth, requireOrg, async (req: Request, res: Re
   }
 });
 
-router.get("/api/tickets/:id", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/tickets/:id", requireAuth, requireOrg, async (req, res) => {
   try {
-    const t = await storage.getTicket(req.session.orgId!, req.params.id);
+    const t = await storage.getTicket(req.session.orgId!, (req.params.id as string));
     if (!t) return res.status(404).json({ error: "Ticket not found" });
     res.json(t);
   } catch (err: any) {
@@ -24,16 +24,16 @@ router.get("/api/tickets/:id", requireAuth, requireOrg, async (req: Request, res
   }
 });
 
-router.get("/api/tickets/:id/events", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/tickets/:id/events", requireAuth, requireOrg, async (req, res) => {
   try {
-    const events = await storage.getTicketEvents(req.session.orgId!, req.params.id);
+    const events = await storage.getTicketEvents(req.session.orgId!, (req.params.id as string));
     res.json(events);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post("/api/tickets", requireAuth, requireOrg, requireMinRole("staff"), async (req: Request, res: Response) => {
+router.post("/api/tickets", requireAuth, requireOrg, requireMinRole("staff"), async (req, res) => {
   try {
     const org = await storage.getOrg(req.session.orgId!);
     const plan = (org as any)?.plan || "free";
@@ -78,7 +78,7 @@ router.post("/api/tickets", requireAuth, requireOrg, requireMinRole("staff"), as
   }
 });
 
-router.patch("/api/tickets/:id", requireAuth, requireOrg, requireMinRole("technician"), async (req: Request, res: Response) => {
+router.patch("/api/tickets/:id", requireAuth, requireOrg, requireMinRole("technician"), async (req, res) => {
   try {
     const data = { ...req.body };
     if ("dueDate" in data) data.dueDate = data.dueDate ? new Date(data.dueDate) : null;
@@ -86,8 +86,8 @@ router.patch("/api/tickets/:id", requireAuth, requireOrg, requireMinRole("techni
     if ("assetId" in data) data.assetId = data.assetId || null;
     if ("assignedTo" in data) data.assignedTo = data.assignedTo || null;
 
-    const oldTicket = await storage.getTicket(req.session.orgId!, req.params.id);
-    const t = await storage.updateTicket(req.session.orgId!, req.params.id, data);
+    const oldTicket = await storage.getTicket(req.session.orgId!, (req.params.id as string));
+    const t = await storage.updateTicket(req.session.orgId!, (req.params.id as string), data);
     if (!t) return res.status(404).json({ error: "Ticket not found" });
 
     if (data.status && oldTicket && data.status !== oldTicket.status) {
@@ -122,13 +122,13 @@ router.patch("/api/tickets/:id", requireAuth, requireOrg, requireMinRole("techni
   }
 });
 
-router.post("/api/tickets/:id/notes", requireAuth, requireOrg, requireMinRole("staff"), async (req: Request, res: Response) => {
+router.post("/api/tickets/:id/notes", requireAuth, requireOrg, requireMinRole("staff"), async (req, res) => {
   try {
     const { content } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: "Note content required" });
-    const event = await storage.createTicketEvent(req.session.orgId!, req.params.id, "note", content, req.session.userId!);
+    const event = await storage.createTicketEvent(req.session.orgId!, (req.params.id as string), "note", content, req.session.userId!);
 
-    const ticket = await storage.getTicket(req.session.orgId!, req.params.id);
+    const ticket = await storage.getTicket(req.session.orgId!, (req.params.id as string));
     if (ticket) {
       storage.notifyOrgMembers(
         req.session.orgId!, req.session.userId!,
@@ -146,9 +146,9 @@ router.post("/api/tickets/:id/notes", requireAuth, requireOrg, requireMinRole("s
   }
 });
 
-router.delete("/api/tickets/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
+router.delete("/api/tickets/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req, res) => {
   try {
-    const deleted = await storage.deleteTicket(req.session.orgId!, req.params.id);
+    const deleted = await storage.deleteTicket(req.session.orgId!, (req.params.id as string));
     if (!deleted) return res.status(404).json({ error: "Ticket not found" });
     res.json({ ok: true });
   } catch (err: any) {
@@ -156,7 +156,7 @@ router.delete("/api/tickets/:id", requireAuth, requireOrg, requireMinRole("super
   }
 });
 
-router.get("/api/dashboard", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/dashboard", requireAuth, requireOrg, async (req, res) => {
   try {
     const stats = await storage.getDashboardStats(req.session.orgId!);
     res.json(stats);

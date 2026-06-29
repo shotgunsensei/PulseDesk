@@ -24,7 +24,7 @@ function getBaseUrl(req: Request): string {
   return `${proto}://${host}`;
 }
 
-router.get("/api/billing/plans", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/billing/plans", requireAuth, requireOrg, async (req, res) => {
   try {
     let rows: any[] = [];
     try {
@@ -198,7 +198,7 @@ async function getApprovedPriceIds(): Promise<Set<string>> {
   }
 }
 
-router.get("/api/billing/status", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/billing/status", requireAuth, requireOrg, async (req, res) => {
   try {
     let stripeSyncStatus = "connected";
     try {
@@ -260,7 +260,7 @@ router.get("/api/billing/status", requireAuth, requireOrg, async (req: Request, 
   }
 });
 
-router.post("/api/billing/checkout", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.post("/api/billing/checkout", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const { priceId } = req.body;
     if (!priceId) return res.status(400).json({ error: "Price ID required" });
@@ -313,7 +313,7 @@ router.post("/api/billing/checkout", requireAuth, requireOrg, requireMinRole("ad
   }
 });
 
-router.post("/api/billing/portal", requireAuth, requireOrg, requireMinRole("admin"), async (req: Request, res: Response) => {
+router.post("/api/billing/portal", requireAuth, requireOrg, requireMinRole("admin"), async (req, res) => {
   try {
     const org = await storage.getOrg(req.session.orgId!);
     if (!org) return res.status(404).json({ error: "Org not found" });
@@ -335,7 +335,7 @@ router.post("/api/billing/portal", requireAuth, requireOrg, requireMinRole("admi
   }
 });
 
-router.get("/api/billing/publishable-key", requireAuth, async (req: Request, res: Response) => {
+router.get("/api/billing/publishable-key", requireAuth, async (req, res) => {
   try {
     const key = await getStripePublishableKey();
     res.json({ publishableKey: key });

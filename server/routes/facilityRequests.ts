@@ -4,7 +4,7 @@ import { requireAuth, requireOrg, requireMinRole } from "../middleware";
 
 const router = Router();
 
-router.get("/api/facility-requests", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/facility-requests", requireAuth, requireOrg, async (req, res) => {
   try {
     const result = await storage.getFacilityRequests(req.session.orgId!);
     res.json(result);
@@ -13,9 +13,9 @@ router.get("/api/facility-requests", requireAuth, requireOrg, async (req: Reques
   }
 });
 
-router.get("/api/facility-requests/:id", requireAuth, requireOrg, async (req: Request, res: Response) => {
+router.get("/api/facility-requests/:id", requireAuth, requireOrg, async (req, res) => {
   try {
-    const f = await storage.getFacilityRequest(req.session.orgId!, req.params.id);
+    const f = await storage.getFacilityRequest(req.session.orgId!, (req.params.id as string));
     if (!f) return res.status(404).json({ error: "Facility request not found" });
     res.json(f);
   } catch (err: any) {
@@ -23,7 +23,7 @@ router.get("/api/facility-requests/:id", requireAuth, requireOrg, async (req: Re
   }
 });
 
-router.post("/api/facility-requests", requireAuth, requireOrg, requireMinRole("staff"), async (req: Request, res: Response) => {
+router.post("/api/facility-requests", requireAuth, requireOrg, requireMinRole("staff"), async (req, res) => {
   try {
     const data = { ...req.body };
     if (!data.title?.trim()) return res.status(400).json({ error: "Title required" });
@@ -35,11 +35,11 @@ router.post("/api/facility-requests", requireAuth, requireOrg, requireMinRole("s
   }
 });
 
-router.patch("/api/facility-requests/:id", requireAuth, requireOrg, requireMinRole("technician"), async (req: Request, res: Response) => {
+router.patch("/api/facility-requests/:id", requireAuth, requireOrg, requireMinRole("technician"), async (req, res) => {
   try {
     const data = { ...req.body };
     if ("assignedTo" in data) data.assignedTo = data.assignedTo || null;
-    const f = await storage.updateFacilityRequest(req.session.orgId!, req.params.id, data);
+    const f = await storage.updateFacilityRequest(req.session.orgId!, (req.params.id as string), data);
     if (!f) return res.status(404).json({ error: "Facility request not found" });
     res.json(f);
   } catch (err: any) {
@@ -47,9 +47,9 @@ router.patch("/api/facility-requests/:id", requireAuth, requireOrg, requireMinRo
   }
 });
 
-router.delete("/api/facility-requests/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
+router.delete("/api/facility-requests/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req, res) => {
   try {
-    const deleted = await storage.deleteFacilityRequest(req.session.orgId!, req.params.id);
+    const deleted = await storage.deleteFacilityRequest(req.session.orgId!, (req.params.id as string));
     if (!deleted) return res.status(404).json({ error: "Facility request not found" });
     res.json({ ok: true });
   } catch (err: any) {

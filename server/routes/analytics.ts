@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 
 const router = Router();
 
-router.get("/api/analytics", requireAuth, requireOrg, requireMinRole("supervisor"), async (req: Request, res: Response) => {
+router.get("/api/analytics", requireAuth, requireOrg, requireMinRole("supervisor"), async (req, res) => {
   try {
     const orgId = req.session.orgId!;
     const allTickets = await db.select().from(tickets).where(eq(tickets.orgId, orgId));

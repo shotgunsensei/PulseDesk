@@ -6,7 +6,7 @@ import type { Org, OrgAuthConfig } from "@shared/schema";
 
 export interface ResolvedTenantRequest extends Request {
   resolvedOrg: Org;
-  resolvedAuthConfig: OrgAuthConfig | { authMode: string };
+  resolvedAuthConfig: OrgAuthConfig | { authMode: "local" };
 }
 
 export const BCRYPT_ROUNDS = 12;
@@ -78,7 +78,14 @@ export function requireRole(...allowedRoles: string[]) {
 }
 
 export async function resolveTenant(req: Request, res: Response, next: NextFunction) {
-  const slug = req.params.slug || req.query.org as string;
+  const routeSlug = req.params.slug;
+  const queryOrg = req.query.org;
+  const orgQueryParam = typeof queryOrg === "string"
+    ? queryOrg
+    : Array.isArray(queryOrg) && typeof queryOrg[0] === "string"
+      ? queryOrg[0]
+      : undefined;
+  const slug = (Array.isArray(routeSlug) ? routeSlug[0] : routeSlug) || orgQueryParam;
 
   let org: any = null;
 

@@ -47,6 +47,63 @@ import {
   type InboundEmailLog,
 } from "@shared/schema";
 import { randomBytes } from "crypto";
+import type { OperatorOsEntitlementClaims, OperatorOsRole } from "./auth/operatoros-sso";
+
+type PulseDeskMembershipRole = "owner" | "admin" | "supervisor" | "technician" | "staff" | "readonly";
+
+const DEFAULT_OPERATOROS_MASTER_ADMIN_EMAIL = "john@shotgunninjas.com";
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function isOperatorOsMasterAdminEmail(email: string): boolean {
+  const configuredEmails = [
+    DEFAULT_OPERATOROS_MASTER_ADMIN_EMAIL,
+    ...(process.env.PULSEDESK_MASTER_ADMIN_EMAIL ?? "").split(","),
+  ]
+    .map(normalizeEmail)
+    .filter(Boolean);
+
+  return configuredEmails.includes(normalizeEmail(email));
+}
+
+function normalizeRoleValue(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function roleFromEntitlement(entitlement: OperatorOsEntitlementClaims | null | undefined): PulseDeskMembershipRole | null {
+  const tenantRole = normalizeRoleValue(entitlement?.tenant_role);
+  const tenantRoleAlias = normalizeRoleValue(entitlement?.tenant_role_alias);
+  const moduleRole = normalizeRoleValue(entitlement?.target_module_role);
+  const accessLevel = normalizeRoleValue(entitlement?.target_module_access_level);
+
+  if (tenantRole === "owner" || tenantRoleAlias === "owner") return "owner";
+  if (
+    tenantRole === "admin" ||
+    tenantRoleAlias === "tenant_admin" ||
+    moduleRole === "module_admin" ||
+    accessLevel === "manager"
+  ) {
+    return "admin";
+  }
+
+  return null;
+}
+
+function mapOperatorOsRoleToPulseDeskRole(input: {
+  email: string;
+  role: OperatorOsRole;
+  entitlement?: OperatorOsEntitlementClaims | null;
+}): PulseDeskMembershipRole {
+  if (input.role === "super_admin" || isOperatorOsMasterAdminEmail(input.email)) {
+    return "owner";
+  }
+  if (input.role === "admin") {
+    return "admin";
+  }
+  return roleFromEntitlement(input.entitlement) ?? "staff";
+}
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -134,9 +191,10 @@ export interface IStorage {
     sub: string;
     email: string;
     name?: string;
-    role: "user" | "super_admin";
-    planSlug: "starter" | "pro" | "elite" | null;
+    role: OperatorOsRole;
+    planSlug: string | null;
     organizationId: string | null;
+    entitlement?: OperatorOsEntitlementClaims | null;
   }): Promise<{ user: User; org: Org; userCreated: boolean; orgCreated: boolean }>;
 
   getOrgRoleMappings(orgId: string): Promise<OrgRoleMapping[]>;
@@ -847,14 +905,18 @@ export class DatabaseStorage implements IStorage {
     sub: string;
     email: string;
     name?: string;
-    role: "user" | "super_admin";
-    planSlug: "starter" | "pro" | "elite" | null;
+    role: OperatorOsRole;
+    planSlug: string | null;
     organizationId: string | null;
+    entitlement?: OperatorOsEntitlementClaims | null;
   }): Promise<{ user: User; org: Org; userCreated: boolean; orgCreated: boolean }> {
-    const desiredOrgRole = input.role === "super_admin" ? "owner" : "admin";
-    const RANK: Record<string, number> = {
-      owner: 120, admin: 100, supervisor: 80, technician: 60, staff: 40, readonly: 10,
-    };
+    const normalizedEmail = normalizeEmail(input.email);
+    const isMasterAdmin = input.role === "super_admin" || isOperatorOsMasterAdminEmail(normalizedEmail);
+    const desiredOrgRole = mapOperatorOsRoleToPulseDeskRole({
+      email: normalizedEmail,
+      role: input.role,
+      entitlement: input.entitlement,
+    });
     const personalSlug = `oos-personal-${input.sub}`.toLowerCase().slice(0, 60);
     const tenantSlug = input.organizationId
       ? `oos-${input.organizationId}`.toLowerCase().slice(0, 60)
@@ -891,25 +953,26 @@ export class DatabaseStorage implements IStorage {
         const [created] = await tx.insert(users).values({
           username,
           password: passwordHash,
-          fullName: input.name || input.email.split("@")[0],
-          email: input.email,
+          fullName: input.name || normalizedEmail.split("@")[0],
+          email: normalizedEmail,
           authSource: "operatoros",
           operatorOsUserId: input.sub,
           operatorOsRole: input.role,
           operatorOsPlanSlug: input.planSlug ?? null,
           operatorOsOrgId: input.organizationId ?? null,
           lastSsoAt: new Date(),
-          isSuperAdmin: false,
+          isSuperAdmin: isMasterAdmin,
         }).returning();
         user = created;
         userCreated = true;
       } else {
         const update: Partial<User> = {
-          email: input.email || existingUser.email,
+          email: normalizedEmail || existingUser.email,
           operatorOsRole: input.role,
           operatorOsPlanSlug: input.planSlug ?? null,
           operatorOsOrgId: input.organizationId ?? null,
           lastSsoAt: new Date(),
+          isSuperAdmin: isMasterAdmin ? true : existingUser.isSuperAdmin,
         };
         if (input.name && !existingUser.fullName) update.fullName = input.name;
         const [updated] = await tx.update(users).set(update).where(eq(users.id, existingUser.id)).returning();
@@ -922,7 +985,7 @@ export class DatabaseStorage implements IStorage {
           org = existingPersonal;
         } else {
           const [created] = await tx.insert(orgs).values({
-            name: `${input.name || input.email.split("@")[0]}'s Workspace`,
+            name: `${input.name || normalizedEmail.split("@")[0]}'s Workspace`,
             slug: personalSlug,
           }).returning();
           org = created;
@@ -937,15 +1000,11 @@ export class DatabaseStorage implements IStorage {
 
       if (!existingMembership) {
         await tx.insert(memberships).values({ orgId: org.id, userId: user.id, role: desiredOrgRole as any });
-      } else {
-        const currentRank = RANK[existingMembership.role] ?? 0;
-        const desiredRank = RANK[desiredOrgRole] ?? 0;
-        if (desiredRank > currentRank) {
-          await tx
-            .update(memberships)
-            .set({ role: desiredOrgRole as any })
-            .where(and(eq(memberships.orgId, org.id), eq(memberships.userId, user.id)));
-        }
+      } else if (existingMembership.role !== desiredOrgRole) {
+        await tx
+          .update(memberships)
+          .set({ role: desiredOrgRole as any })
+          .where(and(eq(memberships.orgId, org.id), eq(memberships.userId, user.id)));
       }
 
       return { user, org, userCreated, orgCreated };
@@ -1081,7 +1140,7 @@ export class DatabaseStorage implements IStorage {
   async getFailedInboundEmails(limit: number = 25): Promise<InboundEmailLog[]> {
     return db.select().from(inboundEmailLog)
       .where(eq(inboundEmailLog.status, "failed"))
-      .orderBy(desc(inboundEmailLog.receivedAt))
+      .orderBy(desc(inboundEmailLog.createdAt))
       .limit(limit);
   }
 

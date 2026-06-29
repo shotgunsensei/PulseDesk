@@ -46,6 +46,10 @@ import {
   peekJti,
   getPublicConfig,
   SsoRejectError,
+  extractEntitlementClaims,
+  mergeEntitlementClaims,
+  isTargetModuleEnabled,
+  type OperatorOsEntitlementClaims,
 } from "../auth/operatoros-sso";
 import { ssoRateLimiter } from "../middleware/rateLimit";
 
@@ -81,26 +85,48 @@ function reject(
   res: Response,
   code: string,
   status: number,
-  jti: string | null
+  jti: string | null,
+  auditOutcome = code,
+  details: Record<string, unknown> = {}
 ) {
-  void logAttempt(req, code, false, jti ? { jti } : {});
+  void logAttempt(req, auditOutcome, false, jti ? { ...details, jti } : details);
   return res.status(status).json({ code });
 }
 
-router.get("/api/public/sso-config", (_req: Request, res: Response) => {
+function summarizeEntitlement(entitlement: OperatorOsEntitlementClaims | null | undefined) {
+  if (!entitlement) return null;
+  return {
+    tenantId: entitlement.operatoros_tenant_id ?? entitlement.tenant_id ?? entitlement.organization_id ?? null,
+    tenantRole: entitlement.tenant_role ?? null,
+    tenantRoleAlias: entitlement.tenant_role_alias ?? null,
+    subscriptionStatus: entitlement.subscription_status ?? null,
+    planSlug: entitlement.plan_slug ?? null,
+    targetModuleEnabled: entitlement.target_module_enabled ?? null,
+    targetModuleAccessLevel: entitlement.target_module_access_level ?? null,
+    targetModuleRole: entitlement.target_module_role ?? null,
+    featureKeys: entitlement.target_module_features ? Object.keys(entitlement.target_module_features) : [],
+    allEnabledModules: entitlement.all_enabled_modules ?? [],
+  };
+}
+
+router.get("/api/public/sso-config", (_req, res) => {
   const pub = getPublicConfig();
   if (!pub) return res.status(404).json({ error: "sso_not_configured" });
   return res.json(pub);
 });
 
-router.get("/sso", ssoRateLimiter, async (req: Request, res: Response) => {
+router.get("/sso", ssoRateLimiter, async (req, res) => {
   const tokenRaw = req.query.token;
-  const token = typeof tokenRaw === "string" ? tokenRaw : "";
+  const token = typeof tokenRaw === "string" ? tokenRaw.trim() : "";
   const earlyJti = peekJti(token);
+
+  if (!token) {
+    return reject(req, res, "missing_token", 400, earlyJti, "validation_failed", { code: "missing_token" });
+  }
 
   const cfg = loadConfig();
   if (!cfg) {
-    return reject(req, res, "sso_not_configured", 503, earlyJti);
+    return reject(req, res, "sso_not_configured", 503, earlyJti, "configuration_failed");
   }
 
   let claims;
@@ -108,18 +134,32 @@ router.get("/sso", ssoRateLimiter, async (req: Request, res: Response) => {
     claims = await verifyToken(token, cfg);
   } catch (err) {
     if (err instanceof SsoRejectError) {
-      return reject(req, res, err.code, err.httpStatus, earlyJti);
+      return reject(req, res, err.code, err.httpStatus, earlyJti, "validation_failed", { code: err.code });
     }
-    return reject(req, res, "signature_invalid", 401, earlyJti);
+    return reject(req, res, "signature_invalid", 401, earlyJti, "validation_failed", { code: "signature_invalid" });
   }
 
+  let consumeResponse = null;
   try {
-    await consumeToken(claims, cfg);
+    consumeResponse = await consumeToken(claims, cfg);
   } catch (err) {
     if (err instanceof SsoRejectError) {
-      return reject(req, res, err.code, err.httpStatus, claims.jti);
+      return reject(req, res, err.code, err.httpStatus, claims.jti, "consume_failed", { code: err.code });
     }
-    return reject(req, res, "consume_failed", 401, claims.jti);
+    return reject(req, res, "consume_failed", 401, claims.jti, "consume_failed", { code: "consume_failed" });
+  }
+
+  const entitlement = mergeEntitlementClaims(
+    extractEntitlementClaims(claims, cfg.audience),
+    extractEntitlementClaims(consumeResponse, cfg.audience)
+  );
+  const entitlementSummary = summarizeEntitlement(entitlement);
+  const targetEnabled = isTargetModuleEnabled(entitlement, cfg.audience);
+  if (targetEnabled === false) {
+    return reject(req, res, "entitlement_disabled", 403, claims.jti, "entitlement_denied", {
+      code: "entitlement_disabled",
+      entitlement: entitlementSummary,
+    });
   }
 
   let provisioned;
@@ -129,8 +169,13 @@ router.get("/sso", ssoRateLimiter, async (req: Request, res: Response) => {
       email: claims.email,
       name: claims.name ?? "",
       role: claims.role,
-      planSlug: claims.plan_slug,
-      organizationId: claims.organization_id,
+      planSlug: entitlement?.plan_slug ?? claims.plan_slug,
+      organizationId:
+        entitlement?.operatoros_tenant_id
+        ?? entitlement?.tenant_id
+        ?? entitlement?.organization_id
+        ?? claims.organization_id,
+      entitlement,
     });
   } catch (err: any) {
     console.error("[sso] provisioning failed:", err);
@@ -138,7 +183,7 @@ router.get("/sso", ssoRateLimiter, async (req: Request, res: Response) => {
       req,
       "provisioning_failed",
       false,
-      { jti: claims.jti, message: String(err?.message ?? "") }
+      { jti: claims.jti, message: String(err?.message ?? ""), entitlement: entitlementSummary }
     );
     return res.status(500).json({ code: "provisioning_failed" });
   }
@@ -164,7 +209,15 @@ router.get("/sso", ssoRateLimiter, async (req: Request, res: Response) => {
       req,
       "success",
       true,
-      { jti: claims.jti, orgCreated: provisioned.orgCreated, userCreated: provisioned.userCreated },
+      {
+        jti: claims.jti,
+        orgCreated: provisioned.orgCreated,
+        userCreated: provisioned.userCreated,
+        operatorOsRole: claims.role,
+        localSuperAdmin: provisioned.user.isSuperAdmin,
+        entitlement: entitlementSummary,
+        consumeResponseReceived: consumeResponse !== null,
+      },
       provisioned.user.id,
       provisioned.org.id
     );
