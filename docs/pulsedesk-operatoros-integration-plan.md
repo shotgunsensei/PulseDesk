@@ -116,7 +116,7 @@ Target admin behavior:
 - Add `POST /webhooks/operatoros/entitlements` with raw-body HMAC verification using `X-Operatoros-Signature: sha256=<hex>`.
 - Ignore stale snapshots where incoming `computedAt` is older than the cached value.
 - Treat a missing PulseDesk module entry or `enabled=false` as revocation.
-- Add service-token introspection through `GET {OPERATOROS_BASE_URL}/v1/sso/entitlements/introspect?user_id=...&tenant_id=...`, or `OPERATOROS_INTROSPECTION_URL` when configured.
+- Add service-token introspection through `GET {OPERATOROS_BASE_URL}/v1/sso/entitlements/introspect?user_id=...&tenant_id=...`, or `OPERATOROS_ENTITLEMENTS_INTROSPECT_URL` when configured. Legacy alias `OPERATOROS_INTROSPECTION_URL` is also accepted.
 - Register the webhook idempotently on boot when `OPERATOROS_SERVICE_TOKEN`, `OPERATOROS_BASE_URL`, and a public app base URL are configured.
 - Replace backend plan-derived gates for Entra, email-to-ticket, ticket limits, member limits, and pollers with OperatorOS snapshot checks. A valid enabled PulseDesk module unlocks core behavior unless OperatorOS sends an explicit false feature flag or numeric limit.
 
@@ -178,7 +178,7 @@ Target OperatorOS child-module env:
 - `PULSEDESK_DEMO_PASSWORD`: required when `ENABLE_DEMO_SEEDS=true`; used for seeded demo users and never logged.
 - `ENABLE_LOCAL_REVIEWER=true`: explicitly enables local reviewer account seeding.
 - `PULSEDESK_REVIEWER_PASSWORD`: required when `ENABLE_LOCAL_REVIEWER=true`; never logged.
-- `OPERATOROS_INTROSPECTION_URL`: optional full URL override for service-token introspection. Defaults to `{OPERATOROS_BASE_URL}/v1/sso/entitlements/introspect`.
+- `OPERATOROS_ENTITLEMENTS_INTROSPECT_URL`: optional full URL override for service-token introspection. Defaults to `{OPERATOROS_BASE_URL}/v1/sso/entitlements/introspect`. Legacy alias `OPERATOROS_INTROSPECTION_URL` is also accepted.
 - `OPERATOROS_ENTITLEMENT_SYNC_URL`: optional full URL override for webhook registration. Defaults to `{OPERATOROS_BASE_URL}/v1/sso/entitlements/sync`.
 - `PULSEDESK_PUBLIC_URL`, `APP_BASE_URL`, `PUBLIC_BASE_URL`, or Replit `REPLIT_DOMAINS`: public PulseDesk root used to register `{base}/webhooks/operatoros/entitlements`.
 

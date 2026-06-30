@@ -186,6 +186,8 @@ export async function ensureSchema() {
         due_date timestamp,
         internal_notes text DEFAULT '',
         vendor_reference text DEFAULT '',
+        vendor_contacted_at timestamp,
+        vendor_expected_follow_up_at timestamp,
         root_cause text DEFAULT '',
         resolution_summary text DEFAULT '',
         is_recurring boolean NOT NULL DEFAULT false,
@@ -195,6 +197,19 @@ export async function ensureSchema() {
         updated_at timestamp DEFAULT now() NOT NULL
       );
     `);
+
+    const ticketFollowUpColumns = [
+      { col: "vendor_contacted_at", def: "timestamp" },
+      { col: "vendor_expected_follow_up_at", def: "timestamp" },
+    ];
+    for (const { col, def } of ticketFollowUpColumns) {
+      await client.query(`
+        DO $$ BEGIN
+          ALTER TABLE tickets ADD COLUMN ${col} ${def};
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END $$;
+      `);
+    }
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS ticket_events (

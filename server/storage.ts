@@ -20,6 +20,8 @@ import {
   notifications,
   onboardingItems,
   inboundEmailLog,
+  emailSettings,
+  mailConnectors,
   type User,
   type InsertUser,
   type Org,
@@ -51,8 +53,10 @@ import {
 import { randomBytes } from "crypto";
 import type { OperatorOsEntitlementClaims, OperatorOsRole } from "./auth/operatoros-sso";
 import { isMasterAdminEmail, normalizeEmail } from "./config/masterAdmin";
+import { normalizeRole, type CanonicalRole } from "@shared/roles";
+import { computeTicketSla } from "./services/ticketSla";
 
-type PulseDeskMembershipRole = "owner" | "admin" | "supervisor" | "technician" | "staff" | "readonly";
+type PulseDeskMembershipRole = CanonicalRole;
 
 export interface UpsertOperatorOsEntitlementSnapshotInput {
   operatorOsUserId: string;
@@ -107,6 +111,28 @@ function mapOperatorOsRoleToPulseDeskRole(input: {
     return "admin";
   }
   return roleFromEntitlement(input.entitlement) ?? "staff";
+}
+
+function withTicketComputedFields<T extends Ticket>(ticket: T) {
+  return {
+    ...ticket,
+    ...computeTicketSla(ticket),
+  };
+}
+
+function dateOrNull(value: Date | string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isStaleVendorWait(ticket: Ticket, now: Date): boolean {
+  if (ticket.status !== "waiting_vendor") return false;
+  const expected = dateOrNull(ticket.vendorExpectedFollowUpAt);
+  if (expected && expected.getTime() < now.getTime()) return true;
+  const lastVendorTouch = dateOrNull(ticket.vendorContactedAt) ?? dateOrNull(ticket.updatedAt) ?? dateOrNull(ticket.createdAt);
+  if (!lastVendorTouch) return false;
+  return now.getTime() - lastVendorTouch.getTime() > 48 * 60 * 60 * 1000;
 }
 
 export interface IStorage {
@@ -343,7 +369,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createMembership(orgId: string, userId: string, role: string): Promise<Membership> {
-    const [mem] = await db.insert(memberships).values({ orgId, userId, role: role as any }).returning();
+    const normalizedRole = normalizeRole(role) ?? "staff";
+    const [mem] = await db.insert(memberships).values({ orgId, userId, role: normalizedRole }).returning();
     return mem;
   }
 
@@ -361,12 +388,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateMembershipRole(orgId: string, userId: string, role: string): Promise<void> {
-    await db.update(memberships).set({ role: role as any }).where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId)));
+    const normalizedRole = normalizeRole(role) ?? "staff";
+    await db.update(memberships).set({ role: normalizedRole }).where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId)));
   }
 
   async createInviteCode(orgId: string, role: string, createdBy: string): Promise<InviteCode> {
     const code = randomBytes(4).toString("hex").toUpperCase();
-    const [ic] = await db.insert(inviteCodes).values({ orgId, code, role: role as any, createdBy }).returning();
+    const normalizedRole = normalizeRole(role) ?? "staff";
+    const [ic] = await db.insert(inviteCodes).values({ orgId, code, role: normalizedRole, createdBy }).returning();
     return ic;
   }
 
@@ -423,7 +452,7 @@ export class DatabaseStorage implements IStorage {
       userMap = Object.fromEntries(usrs.map(u => [u.id, u.fullName]));
     }
 
-    return allTickets.map(t => ({
+    return allTickets.map(t => withTicketComputedFields({
       ...t,
       departmentName: t.departmentId ? deptMap[t.departmentId] : undefined,
       reportedByName: t.reportedBy ? userMap[t.reportedBy] : undefined,
@@ -453,7 +482,7 @@ export class DatabaseStorage implements IStorage {
       assignedToName = u?.fullName;
     }
 
-    return { ...t, departmentName, reportedByName, assignedToName };
+    return withTicketComputedFields({ ...t, departmentName, reportedByName, assignedToName });
   }
 
   async getNextTicketNumber(orgId: string): Promise<string> {
@@ -470,6 +499,8 @@ export class DatabaseStorage implements IStorage {
       ticketNumber,
       reportedBy,
       dueDate: data.dueDate ? new Date(data.dueDate as any) : null,
+      vendorContactedAt: data.vendorContactedAt ? new Date(data.vendorContactedAt as any) : null,
+      vendorExpectedFollowUpAt: data.vendorExpectedFollowUpAt ? new Date(data.vendorExpectedFollowUpAt as any) : null,
     }).returning();
     await this.createTicketEvent(orgId, t.id, "created", "Ticket created", reportedBy);
     return t;
@@ -479,6 +510,12 @@ export class DatabaseStorage implements IStorage {
     const updateData: any = { ...data, updatedAt: new Date() };
     if (updateData.dueDate && typeof updateData.dueDate === "string") {
       updateData.dueDate = new Date(updateData.dueDate);
+    }
+    if (updateData.vendorContactedAt && typeof updateData.vendorContactedAt === "string") {
+      updateData.vendorContactedAt = new Date(updateData.vendorContactedAt);
+    }
+    if (updateData.vendorExpectedFollowUpAt && typeof updateData.vendorExpectedFollowUpAt === "string") {
+      updateData.vendorExpectedFollowUpAt = new Date(updateData.vendorExpectedFollowUpAt);
     }
     const [t] = await db.update(tickets).set(updateData).where(and(eq(tickets.orgId, orgId), eq(tickets.id, id))).returning();
     return t;
@@ -762,9 +799,12 @@ export class DatabaseStorage implements IStorage {
     const allFacility = await db.select().from(facilityRequests).where(eq(facilityRequests.orgId, orgId));
     const allDepts = await db.select().from(departments).where(eq(departments.orgId, orgId));
     const allAssetsList = await db.select().from(assets).where(eq(assets.orgId, orgId));
+    const allConnectors = await db.select().from(mailConnectors).where(eq(mailConnectors.orgId, orgId));
+    const [emailSetting] = await db.select().from(emailSettings).where(eq(emailSettings.orgId, orgId));
 
     const openStatuses = ["new", "triage", "assigned", "waiting_department", "waiting_vendor", "in_progress", "escalated"];
-    const openTickets = allTickets.filter(t => openStatuses.includes(t.status));
+    const allTicketsWithSla = allTickets.map(withTicketComputedFields);
+    const openTickets = allTicketsWithSla.filter(t => openStatuses.includes(t.status));
     const now = new Date();
 
     const statusCounts: Record<string, number> = {};
@@ -790,36 +830,50 @@ export class DatabaseStorage implements IStorage {
     }
 
     const overdueTickets = openTickets.filter(t => t.dueDate && new Date(t.dueDate) < now);
-    const equipmentTickets = allTickets.filter(t => t.category === "medical_equipment" && openStatuses.includes(t.status));
-    const facilityTickets = allTickets.filter(t => t.category === "facilities_building" && openStatuses.includes(t.status));
+    const equipmentTickets = allTicketsWithSla.filter(t => t.category === "medical_equipment" && openStatuses.includes(t.status));
+    const facilityTickets = allTicketsWithSla.filter(t => t.category === "facilities_building" && openStatuses.includes(t.status));
     const pendingSupplies = allSupply.filter(s => s.status === "pending" || s.status === "approved");
     const criticalOpen = openTickets.filter(t => t.priority === "critical" || t.priority === "high");
     const waitingDept = openTickets.filter(t => t.status === "waiting_department");
     const waitingVendor = openTickets.filter(t => t.status === "waiting_vendor");
+    const staleVendorWaits = waitingVendor.filter(t => isStaleVendorWait(t, now));
     const escalatedTickets = openTickets.filter(t => t.status === "escalated");
     const patientImpacting = openTickets.filter(t => t.isPatientImpacting);
     const recurringIssues = openTickets.filter(t => t.isRecurring || t.isRepeatIssue);
     const unassignedOpen = openTickets.filter(t => !t.assignedTo);
+    const slaCounts = { on_track: 0, due_soon: 0, overdue: 0, blocked: 0 };
+    for (const t of openTickets) {
+      slaCounts[t.slaState] = (slaCounts[t.slaState] || 0) + 1;
+    }
 
-    const recentActivity = allTickets
+    const summarizeTicket = (t: typeof allTicketsWithSla[number]) => ({
+      id: t.id,
+      ticketNumber: t.ticketNumber,
+      title: t.title,
+      status: t.status,
+      priority: t.priority,
+      category: t.category,
+      updatedAt: t.updatedAt,
+      dueDate: t.dueDate,
+      vendorReference: t.vendorReference,
+      vendorExpectedFollowUpAt: t.vendorExpectedFollowUpAt,
+      isPatientImpacting: t.isPatientImpacting,
+      slaState: t.slaState,
+      slaDueAt: t.slaDueAt,
+      slaReason: t.slaReason,
+      assignedToName: null as string | null,
+    });
+
+    const recentActivity = [...allTicketsWithSla]
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       .slice(0, 10)
-      .map(t => ({
-        id: t.id,
-        ticketNumber: t.ticketNumber,
-        title: t.title,
-        status: t.status,
-        priority: t.priority,
-        category: t.category,
-        updatedAt: t.updatedAt,
-        assignedToName: null as string | null,
-      }));
+      .map(summarizeTicket);
 
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const ticketsThisMonth = allTickets.filter(t => new Date(t.createdAt) >= thirtyDaysAgo);
     const resolvedThisMonth = allTickets.filter(t => (t.status === "resolved" || t.status === "closed") && new Date(t.updatedAt) >= thirtyDaysAgo);
 
-    const resolvedTickets = allTickets.filter(t => t.status === "resolved" || t.status === "closed");
+    const resolvedTickets = allTicketsWithSla.filter(t => t.status === "resolved" || t.status === "closed");
     let avgResolutionHours = 0;
     if (resolvedTickets.length > 0) {
       const totalHours = resolvedTickets.reduce((sum, t) => {
@@ -828,7 +882,7 @@ export class DatabaseStorage implements IStorage {
       avgResolutionHours = Math.round(totalHours / resolvedTickets.length);
     }
 
-    const triageTickets = allTickets.filter(t => t.status !== "new");
+    const triageTickets = allTicketsWithSla.filter(t => t.status !== "new");
     let avgTriageHours = 0;
     if (triageTickets.length > 0) {
       const totalHours = triageTickets.reduce((sum, t) => {
@@ -848,6 +902,18 @@ export class DatabaseStorage implements IStorage {
     }
 
     const openFacilityCount = allFacility.filter(f => f.status !== "resolved" && f.status !== "closed").length;
+    const pendingSupplyApprovals = allSupply
+      .filter(s => s.status === "pending")
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const connectorHealth = {
+      enabledEmailSettings: emailSetting?.enabled ?? false,
+      totalConnectors: allConnectors.length,
+      activeConnectors: allConnectors.filter(c => c.enabled && c.status === "active").length,
+      errorConnectors: allConnectors.filter(c => c.status === "error" || c.consecutiveFailures > 0).length,
+      disabledConnectors: allConnectors.filter(c => !c.enabled || c.status === "disabled").length,
+      pendingAuthConnectors: allConnectors.filter(c => c.status === "pending_auth").length,
+      lastError: allConnectors.find(c => c.lastError)?.lastError ?? null,
+    };
 
     return {
       totalTickets: allTickets.length,
@@ -868,14 +934,39 @@ export class DatabaseStorage implements IStorage {
       criticalHighOpen: criticalOpen.length,
       waitingDeptCount: waitingDept.length,
       waitingVendorCount: waitingVendor.length,
+      staleVendorWaitCount: staleVendorWaits.length,
       escalatedCount: escalatedTickets.length,
       patientImpactingCount: patientImpacting.length,
       recurringCount: recurringIssues.length,
       unassignedCount: unassignedOpen.length,
+      slaCounts,
       avgResolutionHours,
       avgTriageHours,
       agingBuckets,
       openFacilityRequests: openFacilityCount,
+      connectorHealth,
+      dailyBrief: {
+        urgentTickets: criticalOpen
+          .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+          .slice(0, 5)
+          .map(summarizeTicket),
+        overdueTickets: overdueTickets
+          .sort((a, b) => new Date(a.dueDate ?? a.createdAt).getTime() - new Date(b.dueDate ?? b.createdAt).getTime())
+          .slice(0, 5)
+          .map(summarizeTicket),
+        staleVendorWaits: staleVendorWaits
+          .sort((a, b) => new Date(a.vendorExpectedFollowUpAt ?? a.updatedAt).getTime() - new Date(b.vendorExpectedFollowUpAt ?? b.updatedAt).getTime())
+          .slice(0, 5)
+          .map(summarizeTicket),
+        pendingSupplyApprovals: pendingSupplyApprovals.slice(0, 5).map(s => ({
+          id: s.id,
+          itemName: s.itemName,
+          urgency: s.urgency,
+          quantity: s.quantity,
+          createdAt: s.createdAt,
+        })),
+        connectorHealth,
+      },
       recentActivity,
       isEmpty: allTickets.length === 0,
     };

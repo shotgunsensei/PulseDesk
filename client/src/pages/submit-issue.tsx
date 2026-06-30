@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useParams, useSearch } from "wouter";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,14 +8,21 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { TICKET_CATEGORY_LABELS, TICKET_PRIORITY_LABELS, type Department, type Asset } from "@shared/schema";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Cpu } from "lucide-react";
+
+function inferRoomFromLocation(location: string): string {
+  const match = location.match(/\broom\s+([a-z0-9-]+)/i);
+  return match?.[1] ?? "";
+}
 
 export default function SubmitIssue() {
   const [, setLocation] = useLocation();
+  const { assetId: routeAssetId } = useParams<{ assetId?: string }>();
+  const search = useSearch();
   const { toast } = useToast();
 
   const [title, setTitle] = useState("");
@@ -28,12 +35,39 @@ export default function SubmitIssue() {
   const [floor, setFloor] = useState("");
   const [room, setRoom] = useState("");
   const [assetId, setAssetId] = useState("");
+  const [vendorReference, setVendorReference] = useState("");
   const [isPatientImpacting, setIsPatientImpacting] = useState(false);
   const [isRepeatIssue, setIsRepeatIssue] = useState(false);
+  const [assetPrefillApplied, setAssetPrefillApplied] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const { data: departments } = useQuery<Department[]>({ queryKey: ["/api/departments"] });
   const { data: assets } = useQuery<Asset[]>({ queryKey: ["/api/assets"] });
+  const requestedAssetId = routeAssetId || new URLSearchParams(search).get("assetId") || "";
+  const selectedAsset = useMemo(
+    () => assets?.find((asset) => asset.id === assetId),
+    [assets, assetId]
+  );
+
+  useEffect(() => {
+    if (!requestedAssetId || !assets || assetPrefillApplied) return;
+    const asset = assets.find((item) => item.id === requestedAssetId);
+    if (!asset) return;
+    setAssetId(asset.id);
+    setDepartmentId(asset.departmentId || "");
+    setLocation_(asset.location || "");
+    setRoom(inferRoomFromLocation(asset.location || ""));
+    setCategory("medical_equipment");
+    setTitle((current) => current || `Issue with ${asset.assetTag}: ${asset.name}`);
+    setDescription((current) => current || [
+      `Asset: ${asset.assetTag} - ${asset.name}`,
+      asset.assetType ? `Type: ${asset.assetType}` : "",
+      asset.serviceVendor ? `Service vendor: ${asset.serviceVendor}` : "",
+      "",
+    ].filter(Boolean).join("\n"));
+    setVendorReference(asset.serviceVendor ? `Vendor: ${asset.serviceVendor}` : "");
+    setAssetPrefillApplied(true);
+  }, [assetPrefillApplied, assets, requestedAssetId]);
 
   const submitMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/tickets", data),
@@ -66,12 +100,13 @@ export default function SubmitIssue() {
       description: description.trim(),
       category,
       priority,
-      departmentId: departmentId || null,
+      departmentId: departmentId && departmentId !== "none" ? departmentId : null,
       location: location_.trim(),
       building: building.trim(),
       floor: floor.trim(),
       room: room.trim(),
-      assetId: assetId || null,
+      assetId: assetId && assetId !== "none" ? assetId : null,
+      vendorReference: vendorReference.trim(),
       isPatientImpacting,
       isRepeatIssue,
     });
@@ -146,7 +181,7 @@ export default function SubmitIssue() {
 
               <div>
                 <Label>Department</Label>
-                <Select value={departmentId} onValueChange={setDepartmentId}>
+                <Select value={departmentId} onValueChange={(value) => setDepartmentId(value === "none" ? "" : value)}>
                   <SelectTrigger className="mt-1" data-testid="select-department">
                     <SelectValue placeholder="Select department..." />
                   </SelectTrigger>
@@ -216,7 +251,7 @@ export default function SubmitIssue() {
             <CardContent className="space-y-4">
               <div>
                 <Label>Affected Equipment</Label>
-                <Select value={assetId} onValueChange={setAssetId}>
+                <Select value={assetId} onValueChange={(value) => setAssetId(value === "none" ? "" : value)}>
                   <SelectTrigger className="mt-1" data-testid="select-asset">
                     <SelectValue placeholder="Select equipment (if applicable)..." />
                   </SelectTrigger>
@@ -227,6 +262,32 @@ export default function SubmitIssue() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {selectedAsset && (
+                <div className="rounded-lg border bg-muted/30 p-3" data-testid="asset-prefill-context">
+                  <div className="flex items-start gap-2">
+                    <Cpu className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{selectedAsset.assetTag} - {selectedAsset.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {[selectedAsset.assetType, selectedAsset.location, selectedAsset.serviceVendor].filter(Boolean).join(" · ")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <Label htmlFor="vendor-reference">Vendor Reference</Label>
+                <Input
+                  id="vendor-reference"
+                  data-testid="input-vendor-reference"
+                  value={vendorReference}
+                  onChange={(e) => setVendorReference(e.target.value)}
+                  placeholder="Vendor name, work order, or service reference"
+                  className="mt-1"
+                />
               </div>
 
               <div className="space-y-3 pt-1">

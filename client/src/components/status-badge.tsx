@@ -30,7 +30,21 @@ const FACILITY_PRIORITY_COLORS: Record<string, string> = {
   emergency: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
-type BadgeType = "ticket-status" | "ticket-priority" | "asset-status" | "supply-status" | "facility-status" | "facility-priority";
+const SLA_STATE_LABELS: Record<string, string> = {
+  on_track: "On Track",
+  due_soon: "Due Soon",
+  overdue: "Overdue",
+  blocked: "Blocked",
+};
+
+const SLA_STATE_COLORS: Record<string, string> = {
+  on_track: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  due_soon: "bg-amber-50 text-amber-700 border-amber-200",
+  overdue: "bg-rose-50 text-rose-700 border-rose-200",
+  blocked: "bg-violet-50 text-violet-700 border-violet-200",
+};
+
+type BadgeType = "ticket-status" | "ticket-priority" | "asset-status" | "supply-status" | "facility-status" | "facility-priority" | "sla-state";
 
 interface StatusBadgeProps {
   type: BadgeType;
@@ -67,6 +81,10 @@ export function StatusBadge({ type, value, size = "sm", className = "" }: Status
     case "facility-priority":
       label = value.charAt(0).toUpperCase() + value.slice(1);
       colorClass = FACILITY_PRIORITY_COLORS[value] || colorClass;
+      break;
+    case "sla-state":
+      label = SLA_STATE_LABELS[value] || value;
+      colorClass = SLA_STATE_COLORS[value] || colorClass;
       break;
   }
 

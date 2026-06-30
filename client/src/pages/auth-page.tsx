@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, Clock, BarChart3, Building2, ArrowLeft } from "lucide-react";
+import { Shield, Clock, BarChart3, Building2, ArrowLeft, ArrowRight } from "lucide-react";
 import pulsedeskLogo from "@assets/pulsedesklogo_1775753913991.png";
 import pulsedeskTitleLogo from "@assets/pulsedecktitleandlogo_1775753913991.png";
 import heroImage from "@assets/Modern_healthcare_tech_in_action_1775753913992.png";
@@ -29,6 +29,16 @@ interface TenantInfo {
   logoUrl: string | null;
 }
 
+const SSO_RELAUNCH_ERRORS = new Set([
+  "expired",
+  "consume_failed",
+  "issuer_mismatch",
+  "audience_mismatch",
+  "env_mismatch",
+  "signature_invalid",
+  "unsupported_alg",
+]);
+
 export default function AuthPage() {
   const { login, register } = useAuth();
   const { toast } = useToast();
@@ -40,28 +50,19 @@ export default function AuthPage() {
   const [tenantLoading, setTenantLoading] = useState(false);
   const [m365Loading, setM365Loading] = useState(false);
   const [operatorOsBaseUrl, setOperatorOsBaseUrl] = useState<string | null>(null);
-
-  const SSO_RELAUNCH_ERRORS = new Set([
-    "expired",
-    "consume_failed",
-    "issuer_mismatch",
-    "audience_mismatch",
-    "env_mismatch",
-    "signature_invalid",
-    "unsupported_alg",
-  ]);
+  const [showRelaunchPrompt, setShowRelaunchPrompt] = useState(false);
 
   useEffect(() => {
+    fetch("/api/public/sso-config", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.baseUrl) setOperatorOsBaseUrl(data.baseUrl);
+      })
+      .catch(() => {});
+
     const params = new URLSearchParams(window.location.search);
     const error = params.get("error");
-    if (error && SSO_RELAUNCH_ERRORS.has(error)) {
-      fetch("/api/public/sso-config", { credentials: "include" })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (data?.baseUrl) setOperatorOsBaseUrl(data.baseUrl);
-        })
-        .catch(() => {});
-    }
+    if (error && SSO_RELAUNCH_ERRORS.has(error)) setShowRelaunchPrompt(true);
     if (error) {
       const errorMessages: Record<string, string> = {
         invalid_session: "Session expired. Please sign in again.",
@@ -179,7 +180,7 @@ export default function AuthPage() {
 
         <div className="relative max-w-md text-center flex flex-col items-center">
           <img src={pulsedeskTitleLogo} alt="PulseDesk" className="h-12 mb-6 drop-shadow-lg" />
-          <p className="text-[11px] uppercase tracking-[0.2em] text-accent/80 font-medium mb-4">Operations Management</p>
+          <p className="text-[11px] uppercase tracking-[0.2em] text-accent/80 font-medium mb-4">OperatorOS Child App</p>
 
           <div className="rounded-2xl overflow-hidden shadow-2xl shadow-black/30 mb-8 border border-white/10">
             <img src={heroImage} alt="Healthcare operations dashboard" className="w-full max-w-sm object-cover" />
@@ -221,10 +222,32 @@ export default function AuthPage() {
         <div className="w-full max-w-sm space-y-6">
           <div className="lg:hidden text-center mb-2">
             <img src={pulsedeskTitleLogo} alt="PulseDesk" className="h-10 mx-auto mb-3" />
-            <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground mt-1 font-medium">Operations Management</p>
+            <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground mt-1 font-medium">OperatorOS Child App</p>
           </div>
 
-          {operatorOsBaseUrl && (
+          <Card data-testid="card-operatoros-launch">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Launch from OperatorOS</CardTitle>
+              <CardDescription>
+                Production access starts in OperatorOS. PulseDesk creates a session only after a valid launch token and entitlement check.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {operatorOsBaseUrl ? (
+                <Button asChild className="w-full gap-2" data-testid="button-launch-operatoros">
+                  <a href={operatorOsBaseUrl}>
+                    Open OperatorOS <ArrowRight className="h-4 w-4" />
+                  </a>
+                </Button>
+              ) : (
+                <Button className="w-full gap-2" disabled data-testid="button-launch-operatoros">
+                  OperatorOS launch URL unavailable
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          {showRelaunchPrompt && operatorOsBaseUrl && (
             <Card data-testid="card-relaunch-operatoros">
               <CardContent className="pt-6 space-y-3">
                 <div>
@@ -269,7 +292,7 @@ export default function AuthPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Organization Sign-In</CardTitle>
-                  <CardDescription>Enter your organization code to get started</CardDescription>
+                  <CardDescription>Local reviewer access when enabled for this environment</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
@@ -283,7 +306,7 @@ export default function AuthPage() {
                       placeholder="e.g. metro-health"
                       onKeyDown={(e) => e.key === "Enter" && handleLookupTenant()}
                     />
-                    <p className="text-[11px] text-muted-foreground mt-1">Contact your IT administrator if you don't know your code</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">Use OperatorOS for normal production access.</p>
                   </div>
                   <Button
                     className="w-full"
@@ -303,15 +326,15 @@ export default function AuthPage() {
 
               <Tabs defaultValue="login">
                 <TabsList className="w-full grid grid-cols-2">
-                  <TabsTrigger value="login" data-testid="tab-login">Direct Sign In</TabsTrigger>
-                  <TabsTrigger value="register" data-testid="tab-register">Register</TabsTrigger>
+                  <TabsTrigger value="login" data-testid="tab-login">Local Sign In</TabsTrigger>
+                  <TabsTrigger value="register" data-testid="tab-register">Reviewer Setup</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="login">
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Staff Sign-In</CardTitle>
-                      <CardDescription>Sign in without an organization code</CardDescription>
+                      <CardTitle className="text-base">Local Credentials</CardTitle>
+                      <CardDescription>Development or reviewer fallback only</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <form onSubmit={handleLogin} className="space-y-4">
@@ -324,7 +347,7 @@ export default function AuthPage() {
                           <Input id="login-pass" data-testid="input-login-password" type="password" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} className="mt-1" autoComplete="current-password" />
                         </div>
                         <Button type="submit" className="w-full" disabled={loading} data-testid="button-login">
-                          {loading ? "Signing in..." : "Sign In"}
+                          {loading ? "Signing in..." : "Sign In Locally"}
                         </Button>
                       </form>
                       <div className="mt-4 p-3 rounded-lg bg-muted/50 border text-xs text-muted-foreground">
@@ -338,8 +361,8 @@ export default function AuthPage() {
                 <TabsContent value="register">
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">New Account</CardTitle>
-                      <CardDescription>Set up your PulseDesk credentials</CardDescription>
+                      <CardTitle className="text-base">Reviewer Account</CardTitle>
+                      <CardDescription>Create local credentials only when reviewer access is enabled</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <form onSubmit={handleRegister} className="space-y-4">

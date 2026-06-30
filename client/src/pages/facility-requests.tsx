@@ -96,12 +96,12 @@ export default function FacilityRequestsPage() {
                       </Select>
                     </div>
                   </div>
-                  <div><Label>Title *</Label><Input data-testid="input-facility-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Brief description of the issue" className="mt-1" /></div>
-                  <div><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Provide additional details..." rows={3} className="mt-1 resize-none" /></div>
-                  <div><Label>Location</Label><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Building A, Floor 2, Room 204" className="mt-1" /></div>
+                  <div><Label htmlFor="facility-title">Title *</Label><Input id="facility-title" data-testid="input-facility-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Brief description of the issue" className="mt-1" /></div>
+                  <div><Label htmlFor="facility-description">Description</Label><Textarea id="facility-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Provide additional details..." rows={3} className="mt-1 resize-none" /></div>
+                  <div><Label htmlFor="facility-location">Location</Label><Input id="facility-location" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Building A, Floor 2, Room 204" className="mt-1" /></div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><Label>Building</Label><Input value={form.building} onChange={(e) => setForm({ ...form, building: e.target.value })} placeholder="A" className="mt-1" /></div>
-                    <div><Label>Floor</Label><Input value={form.floor} onChange={(e) => setForm({ ...form, floor: e.target.value })} placeholder="2" className="mt-1" /></div>
+                    <div><Label htmlFor="facility-building">Building</Label><Input id="facility-building" value={form.building} onChange={(e) => setForm({ ...form, building: e.target.value })} placeholder="A" className="mt-1" /></div>
+                    <div><Label htmlFor="facility-floor">Floor</Label><Input id="facility-floor" value={form.floor} onChange={(e) => setForm({ ...form, floor: e.target.value })} placeholder="2" className="mt-1" /></div>
                   </div>
                   <Button
                     data-testid="button-save-facility"
@@ -133,11 +133,28 @@ export default function FacilityRequestsPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-16"><PulseLoader /></div>
         ) : filtered.length === 0 ? (
-          <Card><CardContent className="flex flex-col items-center justify-center py-16"><Wrench className="h-8 w-8 text-muted-foreground mb-2" /><p className="text-sm text-muted-foreground">{requests && requests.length > 0 ? "No requests match your filters" : "No facility requests yet"}</p></CardContent></Card>
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center px-4 py-16 text-center">
+              <Wrench className="h-10 w-10 text-muted-foreground mb-3" />
+              <p className="text-base font-medium mb-1">{requests && requests.length > 0 ? "No facility requests match your filters" : "No facility requests yet"}</p>
+              <p className="text-sm text-muted-foreground max-w-md mb-4">
+                {requests && requests.length > 0
+                  ? "Clear the search or status filter to review active facility work."
+                  : "Capture maintenance, HVAC, plumbing, electrical, and room-readiness work before it gets lost in hallway conversations."}
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {requests && requests.length > 0 ? (
+                  <Button variant="outline" size="sm" onClick={() => { setSearch(""); setStatusFilter("all"); }} data-testid="button-clear-facility-filters">Clear filters</Button>
+                ) : canSubmitIssues(role) ? (
+                  <Button size="sm" onClick={() => setOpen(true)} data-testid="button-empty-add-facility">Create facility request</Button>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           <div className="space-y-2">
             {filtered.map((req) => (
-              <div key={req.id} className={`flex items-center gap-4 rounded-lg border bg-card px-4 py-3 ${req.priority === "critical" ? "border-l-2 border-l-rose-400" : ""}`} data-testid={`facility-${req.id}`}>
+              <div key={req.id} className={`flex flex-col gap-3 rounded-lg border bg-card px-4 py-3 sm:flex-row sm:items-center ${req.priority === "critical" ? "border-l-2 border-l-rose-400" : ""}`} data-testid={`facility-${req.id}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                     <span className="text-xs text-muted-foreground">{FACILITY_TYPE_LABELS[req.requestType]}</span>

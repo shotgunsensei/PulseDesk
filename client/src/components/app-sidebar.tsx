@@ -58,9 +58,13 @@ export function AppSidebar() {
       <SidebarMenuButton
         asChild
         data-active={isActive(item.url)}
-        className="data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium"
+        className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-sm data-[active=true]:font-semibold"
       >
-        <Link href={item.url} data-testid={`nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
+        <Link
+          href={item.url}
+          aria-current={isActive(item.url) ? "page" : undefined}
+          data-testid={`nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}
+        >
           <item.icon className="h-4 w-4" />
           <span>{item.title}</span>
         </Link>
@@ -90,6 +94,7 @@ export function AppSidebar() {
             <DropdownMenuTrigger asChild>
               <button
                 data-testid="button-org-switcher"
+                aria-label="Switch organization"
                 className="mt-3 flex w-full items-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/50 px-3 py-2 text-left text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent"
               >
                 <Building2 className="h-3.5 w-3.5 text-sidebar-foreground/50" />
@@ -118,30 +123,33 @@ export function AppSidebar() {
       </div>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Issue Management</SidebarGroupLabel>
+          <SidebarGroupLabel>Command Center</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {renderNavItem({ title: "Dashboard", url: "/", icon: LayoutDashboard })}
-              {renderNavItem({ title: "Ticket Queue", url: "/tickets", icon: Ticket })}
-              {canSubmitIssues(role) && renderNavItem({ title: "Report Issue", url: "/submit", icon: PlusCircle })}
+              {(canViewAnalytics(role) || role === "admin") && renderNavItem({ title: "Analytics", url: "/analytics", icon: BarChart3 })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {!isReadOnly(role) && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Requests</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
+        <SidebarGroup>
+          <SidebarGroupLabel>Work Queues</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {renderNavItem({ title: "Tickets", url: "/tickets", icon: Ticket })}
+              {canSubmitIssues(role) && renderNavItem({ title: "Report", url: "/submit", icon: PlusCircle })}
+              {!isReadOnly(role) && (
+                <>
                 {renderNavItem({ title: "Supplies", url: "/supply-requests", icon: Package })}
                 {renderNavItem({ title: "Facilities", url: "/facility-requests", icon: Wrench })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+                </>
+              )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Resources</SidebarGroupLabel>
+          <SidebarGroupLabel>Facility Data</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {renderNavItem({ title: "Departments", url: "/departments", icon: Building2 })}
@@ -152,11 +160,10 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>System</SidebarGroupLabel>
+          <SidebarGroupLabel>Admin Tools</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {(canViewAnalytics(role) || role === "admin") && renderNavItem({ title: "Analytics", url: "/analytics", icon: BarChart3 })}
-              {canManageSettings(role) && renderNavItem({ title: "Connected Inboxes", url: "/email-settings", icon: Inbox })}
+              {canManageSettings(role) && renderNavItem({ title: "Inboxes", url: "/email-settings", icon: Inbox })}
               {!isReadOnly(role) && renderNavItem({ title: "Settings", url: "/settings", icon: Settings })}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -164,7 +171,7 @@ export function AppSidebar() {
 
         {user?.isSuperAdmin && (
           <SidebarGroup>
-            <SidebarGroupLabel>Administration</SidebarGroupLabel>
+            <SidebarGroupLabel>System Admin</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {renderNavItem({ title: "System Admin", url: "/admin", icon: Shield })}
@@ -192,6 +199,7 @@ export function AppSidebar() {
               onClick={logout}
               className="text-sidebar-foreground/40 hover:text-sidebar-foreground/70 transition-colors"
               title="Sign out"
+              aria-label="Sign out"
             >
               <LogOut className="h-4 w-4" />
             </button>

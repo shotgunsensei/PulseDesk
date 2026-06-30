@@ -66,6 +66,8 @@ router.post("/api/tickets", requireAuth, requireOrg, requireMinRole("staff"), as
     data.assetId = data.assetId || null;
     data.assignedTo = data.assignedTo || null;
     data.dueDate = data.dueDate ? new Date(data.dueDate) : null;
+    data.vendorContactedAt = data.vendorContactedAt ? new Date(data.vendorContactedAt) : null;
+    data.vendorExpectedFollowUpAt = data.vendorExpectedFollowUpAt ? new Date(data.vendorExpectedFollowUpAt) : null;
     const t = await storage.createTicket(req.session.orgId!, data, req.session.userId!);
 
     storage.notifyOrgMembers(
@@ -87,6 +89,8 @@ router.patch("/api/tickets/:id", requireAuth, requireOrg, requireMinRole("techni
   try {
     const data = { ...req.body };
     if ("dueDate" in data) data.dueDate = data.dueDate ? new Date(data.dueDate) : null;
+    if ("vendorContactedAt" in data) data.vendorContactedAt = data.vendorContactedAt ? new Date(data.vendorContactedAt) : null;
+    if ("vendorExpectedFollowUpAt" in data) data.vendorExpectedFollowUpAt = data.vendorExpectedFollowUpAt ? new Date(data.vendorExpectedFollowUpAt) : null;
     if ("departmentId" in data) data.departmentId = data.departmentId || null;
     if ("assetId" in data) data.assetId = data.assetId || null;
     if ("assignedTo" in data) data.assignedTo = data.assignedTo || null;
@@ -120,6 +124,31 @@ router.patch("/api/tickets/:id", requireAuth, requireOrg, requireMinRole("techni
         data.assignedTo
       );
     }
+    if (oldTicket && "vendorReference" in data && data.vendorReference !== oldTicket.vendorReference) {
+      await storage.createTicketEvent(req.session.orgId!, t.id, "vendor_reference", `Vendor reference updated: ${data.vendorReference || "cleared"}`, req.session.userId!);
+    }
+    if (oldTicket && "vendorContactedAt" in data) {
+      await storage.createTicketEvent(
+        req.session.orgId!,
+        t.id,
+        "vendor_contacted",
+        data.vendorContactedAt
+          ? `Vendor contacted on ${new Date(data.vendorContactedAt).toLocaleDateString("en-US")}`
+          : "Vendor contacted date cleared",
+        req.session.userId!
+      );
+    }
+    if (oldTicket && "vendorExpectedFollowUpAt" in data) {
+      await storage.createTicketEvent(
+        req.session.orgId!,
+        t.id,
+        "vendor_followup",
+        data.vendorExpectedFollowUpAt
+          ? `Vendor follow-up expected ${new Date(data.vendorExpectedFollowUpAt).toLocaleDateString("en-US")}`
+          : "Vendor follow-up date cleared",
+        req.session.userId!
+      );
+    }
 
     res.json(t);
   } catch (err: any) {
@@ -131,19 +160,19 @@ router.post("/api/tickets/:id/notes", requireAuth, requireOrg, requireMinRole("s
   try {
     const { content } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: "Note content required" });
-    const event = await storage.createTicketEvent(req.session.orgId!, (req.params.id as string), "note", content, req.session.userId!);
-
     const ticket = await storage.getTicket(req.session.orgId!, (req.params.id as string));
-    if (ticket) {
-      storage.notifyOrgMembers(
-        req.session.orgId!, req.session.userId!,
-        "ticket_note_added",
-        "Note added to ticket",
-        `${ticket.ticketNumber} — New update`,
-        ticket.id,
-        ticket.assignedTo || null
-      );
-    }
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+
+    const event = await storage.createTicketEvent(req.session.orgId!, ticket.id, "note", content, req.session.userId!);
+
+    storage.notifyOrgMembers(
+      req.session.orgId!, req.session.userId!,
+      "ticket_note_added",
+      "Note added to ticket",
+      `${ticket.ticketNumber} — New update`,
+      ticket.id,
+      ticket.assignedTo || null
+    );
 
     res.json(event);
   } catch (err: any) {

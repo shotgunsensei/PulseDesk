@@ -20,6 +20,7 @@ import onboardingRouter from "./onboarding";
 import emailRouter from "./email";
 import connectorsRouter from "./connectors";
 import ssoRouter from "./sso";
+import healthRouter from "./health";
 
 declare module "express-session" {
   interface SessionData {
@@ -73,6 +74,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     })
   );
 
+  app.use(healthRouter);
   app.use(authRouter);
   app.use(orgsRouter);
   app.use(ticketsRouter);

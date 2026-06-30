@@ -15,10 +15,11 @@ import { z } from "zod";
 import { logAdminAction } from "../lib/adminAudit";
 import { getOperatorOsModuleSlug } from "../services/operatorosEntitlements";
 import { getMasterAdminEmails, isMasterAdminEmail } from "../config/masterAdmin";
+import { CANONICAL_ROLES } from "@shared/roles";
 
 const router = Router();
 
-const VALID_ROLES = ["owner", "admin", "supervisor", "staff", "technician", "readonly"] as const;
+const VALID_ROLES = CANONICAL_ROLES;
 
 const updateOrgProfileSchema = z.object({
   name: z.string().min(1).max(200).optional(),

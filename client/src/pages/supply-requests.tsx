@@ -85,9 +85,9 @@ export default function SupplyRequestsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div><Label>Item Name *</Label><Input data-testid="input-item-name" value={form.itemName} onChange={(e) => setForm({ ...form, itemName: e.target.value })} placeholder="Item name" className="mt-1" /></div>
+                  <div><Label htmlFor="supply-item-name">Item Name *</Label><Input id="supply-item-name" data-testid="input-item-name" value={form.itemName} onChange={(e) => setForm({ ...form, itemName: e.target.value })} placeholder="Item name" className="mt-1" /></div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><Label>Quantity</Label><Input type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: parseInt(e.target.value) || 1 })} className="mt-1" /></div>
+                    <div><Label htmlFor="supply-quantity">Quantity</Label><Input id="supply-quantity" type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: parseInt(e.target.value) || 1 })} className="mt-1" /></div>
                     <div>
                       <Label>Urgency</Label>
                       <Select value={form.urgency} onValueChange={(v) => setForm({ ...form, urgency: v })}>
@@ -111,7 +111,7 @@ export default function SupplyRequestsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div><Label>Justification</Label><Textarea value={form.justification} onChange={(e) => setForm({ ...form, justification: e.target.value })} placeholder="Why is this needed?" rows={2} className="mt-1 resize-none" /></div>
+                  <div><Label htmlFor="supply-justification">Justification</Label><Textarea id="supply-justification" value={form.justification} onChange={(e) => setForm({ ...form, justification: e.target.value })} placeholder="Why is this needed?" rows={2} className="mt-1 resize-none" /></div>
                   <Button
                     data-testid="button-save-supply"
                     onClick={() => form.itemName.trim() && createMutation.mutate(form)}
@@ -142,11 +142,28 @@ export default function SupplyRequestsPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-16"><PulseLoader /></div>
         ) : filtered.length === 0 ? (
-          <Card><CardContent className="flex flex-col items-center justify-center py-16"><Package className="h-8 w-8 text-muted-foreground mb-2" /><p className="text-sm text-muted-foreground">{requests && requests.length > 0 ? "No requests match your filters" : "No supply requests yet"}</p></CardContent></Card>
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center px-4 py-16 text-center">
+              <Package className="h-10 w-10 text-muted-foreground mb-3" />
+              <p className="text-base font-medium mb-1">{requests && requests.length > 0 ? "No supply requests match your filters" : "No supply requests yet"}</p>
+              <p className="text-sm text-muted-foreground max-w-md mb-4">
+                {requests && requests.length > 0
+                  ? "Clear the search or status filter to review active supply work."
+                  : "Create supply requests for clinical, office, lab, and cleaning inventory so approvals stay visible."}
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {requests && requests.length > 0 ? (
+                  <Button variant="outline" size="sm" onClick={() => { setSearch(""); setStatusFilter("all"); }} data-testid="button-clear-supply-filters">Clear filters</Button>
+                ) : canSubmitIssues(role) ? (
+                  <Button size="sm" onClick={() => setOpen(true)} data-testid="button-empty-add-supply">Request supplies</Button>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           <div className="space-y-2">
             {filtered.map((req) => (
-              <div key={req.id} className="flex items-center gap-4 rounded-lg border bg-card px-4 py-3" data-testid={`supply-${req.id}`}>
+              <div key={req.id} className="flex flex-col gap-3 rounded-lg border bg-card px-4 py-3 sm:flex-row sm:items-center" data-testid={`supply-${req.id}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                     <span className="text-xs text-muted-foreground">{req.requestType}</span>

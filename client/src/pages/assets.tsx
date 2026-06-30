@@ -10,11 +10,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo } from "react";
 import { PlusCircle, Cpu, Trash2, Search, MapPin } from "lucide-react";
+import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { StatusBadge } from "@/components/status-badge";
-import { canManageTickets, canManageSettings } from "@/lib/permissions";
+import { canManageTickets, canManageSettings, canSubmitIssues } from "@/lib/permissions";
 import { ASSET_STATUS_LABELS, type Asset, type Department } from "@shared/schema";
 
 export default function AssetsPage() {
@@ -85,11 +86,11 @@ export default function AssetsPage() {
                 <DialogHeader><DialogTitle>Register Equipment</DialogTitle></DialogHeader>
                 <div className="space-y-3 mt-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div><Label>Asset Tag *</Label><Input data-testid="input-asset-tag" value={form.assetTag} onChange={(e) => setForm({ ...form, assetTag: e.target.value })} placeholder="MRI-001" className="mt-1" /></div>
-                    <div><Label>Type</Label><Input data-testid="input-asset-type" value={form.assetType} onChange={(e) => setForm({ ...form, assetType: e.target.value })} placeholder="MRI Scanner" className="mt-1" /></div>
+                    <div><Label htmlFor="asset-tag">Asset Tag *</Label><Input id="asset-tag" data-testid="input-asset-tag" value={form.assetTag} onChange={(e) => setForm({ ...form, assetTag: e.target.value })} placeholder="MRI-001" className="mt-1" /></div>
+                    <div><Label htmlFor="asset-type">Type</Label><Input id="asset-type" data-testid="input-asset-type" value={form.assetType} onChange={(e) => setForm({ ...form, assetType: e.target.value })} placeholder="MRI Scanner" className="mt-1" /></div>
                   </div>
-                  <div><Label>Name *</Label><Input data-testid="input-asset-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Equipment name" className="mt-1" /></div>
-                  <div><Label>Location</Label><Input data-testid="input-asset-location" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Building A, Room 102" className="mt-1" /></div>
+                  <div><Label htmlFor="asset-name">Name *</Label><Input id="asset-name" data-testid="input-asset-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Equipment name" className="mt-1" /></div>
+                  <div><Label htmlFor="asset-location">Location</Label><Input id="asset-location" data-testid="input-asset-location" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Building A, Room 102" className="mt-1" /></div>
                   <div>
                     <Label>Department</Label>
                     <Select value={form.departmentId} onValueChange={(v) => setForm({ ...form, departmentId: v })}>
@@ -100,8 +101,8 @@ export default function AssetsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div><Label>Service Vendor</Label><Input value={form.serviceVendor} onChange={(e) => setForm({ ...form, serviceVendor: e.target.value })} placeholder="Vendor name" className="mt-1" /></div>
-                  <div><Label>Warranty Notes</Label><Textarea value={form.warrantyNotes} onChange={(e) => setForm({ ...form, warrantyNotes: e.target.value })} placeholder="Warranty details..." rows={2} className="mt-1 resize-none" /></div>
+                  <div><Label htmlFor="asset-vendor">Service Vendor</Label><Input id="asset-vendor" value={form.serviceVendor} onChange={(e) => setForm({ ...form, serviceVendor: e.target.value })} placeholder="Vendor name" className="mt-1" /></div>
+                  <div><Label htmlFor="asset-warranty">Warranty Notes</Label><Textarea id="asset-warranty" value={form.warrantyNotes} onChange={(e) => setForm({ ...form, warrantyNotes: e.target.value })} placeholder="Warranty details..." rows={2} className="mt-1 resize-none" /></div>
                   <div>
                     <Label>Status</Label>
                     <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
@@ -131,6 +132,8 @@ export default function AssetsPage() {
                 key={status}
                 onClick={() => setStatusFilter(statusFilter === status ? "all" : status)}
                 className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${statusFilter === status ? "bg-primary text-primary-foreground border-primary" : "bg-card hover:bg-muted/40"}`}
+                aria-pressed={statusFilter === status}
+                data-testid={`filter-asset-status-${status}`}
               >
                 {label}: {statusSummary[status] || 0}
               </button>
@@ -148,11 +151,28 @@ export default function AssetsPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-16"><PulseLoader /></div>
         ) : filtered.length === 0 ? (
-          <Card><CardContent className="flex flex-col items-center justify-center py-16"><Cpu className="h-8 w-8 text-muted-foreground mb-2" /><p className="text-sm text-muted-foreground">{assets && assets.length > 0 ? "No equipment matches your search" : "No equipment registered yet"}</p></CardContent></Card>
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center px-4 py-16 text-center">
+              <Cpu className="h-10 w-10 text-muted-foreground mb-3" />
+              <p className="text-base font-medium mb-1">{assets && assets.length > 0 ? "No equipment matches your filters" : "No equipment registered yet"}</p>
+              <p className="text-sm text-muted-foreground max-w-md mb-4">
+                {assets && assets.length > 0
+                  ? "Clear the search or status filter to get back to the full equipment registry."
+                  : "Register clinical equipment, rooms, service vendors, and warranty notes so asset issues can become tickets with context."}
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {assets && assets.length > 0 ? (
+                  <Button variant="outline" size="sm" onClick={() => { setSearch(""); setStatusFilter("all"); }} data-testid="button-clear-asset-filters">Clear filters</Button>
+                ) : canManageTickets(role) ? (
+                  <Button size="sm" onClick={() => setOpen(true)} data-testid="button-empty-register-asset">Register equipment</Button>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           <div className="space-y-2">
             {filtered.map((asset) => (
-              <div key={asset.id} className={`flex items-center gap-4 rounded-lg border bg-card px-4 py-3 ${asset.status === "offline" ? "border-l-2 border-l-rose-400" : asset.status === "under_service" ? "border-l-2 border-l-amber-400" : ""}`} data-testid={`asset-${asset.id}`}>
+              <div key={asset.id} className={`flex flex-col gap-3 rounded-lg border bg-card px-4 py-3 sm:flex-row sm:items-center ${asset.status === "offline" ? "border-l-2 border-l-rose-400" : asset.status === "under_service" ? "border-l-2 border-l-amber-400" : ""}`} data-testid={`asset-${asset.id}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                     <span className="text-xs font-mono text-muted-foreground">{asset.assetTag}</span>
@@ -166,10 +186,28 @@ export default function AssetsPage() {
                     {asset.serviceVendor && <><span className="mx-0.5">·</span>{asset.serviceVendor}</>}
                   </p>
                 </div>
-                {canManageSettings(role) && (
-                  <Button variant="ghost" size="sm" onClick={() => { if (confirm("Remove this equipment from the registry?")) deleteMutation.mutate(asset.id); }}>
-                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                  </Button>
+                {(canSubmitIssues(role) || canManageSettings(role)) && (
+                  <div className="flex flex-wrap items-center gap-1 shrink-0">
+                    {canSubmitIssues(role) && (
+                    <Link href={`/assets/${asset.id}/report-issue`}>
+                      <Button variant="outline" size="sm" data-testid={`button-create-ticket-${asset.id}`}>
+                        <PlusCircle className="h-3.5 w-3.5 mr-1.5" />
+                        Create Ticket
+                      </Button>
+                    </Link>
+                    )}
+                    {canManageSettings(role) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { if (confirm("Remove this equipment from the registry?")) deleteMutation.mutate(asset.id); }}
+                      data-testid={`button-delete-asset-${asset.id}`}
+                      aria-label={`Remove ${asset.name}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                    )}
+                  </div>
                 )}
               </div>
             ))}

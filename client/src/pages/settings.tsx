@@ -509,10 +509,10 @@ function OperatorOsAccessSettings() {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="rounded-lg border bg-muted/30 p-3">
-          <p className="text-sm font-medium">Launch and subscription control live in OperatorOS.</p>
+          <p className="text-sm font-medium">Launch, seats, and module access live in OperatorOS.</p>
           <p className="text-xs text-muted-foreground mt-1">
             PulseDesk validates your active OperatorOS module entitlement before protected app requests.
-            Subscription changes, seats, payment flows, and module assignment are handled by your OperatorOS admin.
+            Seat changes, payment flows, and module assignment are handled by your OperatorOS admin.
           </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

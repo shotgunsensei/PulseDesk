@@ -437,7 +437,7 @@ export default function AdminPage() {
     <div className="flex flex-col h-full">
       <PageHeader title="Master Admin" description="Global tenant operations, OperatorOS entitlements, and system health" />
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">Tenants</p>
@@ -484,11 +484,17 @@ export default function AdminPage() {
                 <CardContent className="space-y-3">
                   <div className="relative">
                     <Search className="h-4 w-4 absolute left-2 top-2.5 text-muted-foreground" />
-                    <Input className="pl-8" placeholder="Search tenants" value={tenantSearch} onChange={(event) => setTenantSearch(event.target.value)} />
+                    <Input aria-label="Search tenants" className="pl-8" placeholder="Search tenants" value={tenantSearch} onChange={(event) => setTenantSearch(event.target.value)} />
                   </div>
                   {orgsQuery.isLoading ? <PulseLoader /> : (
                     <div className="space-y-2 max-h-[620px] overflow-auto pr-1">
-                      {filteredOrgs.map((org) => {
+                      {filteredOrgs.length === 0 ? (
+                        <div className="rounded-md border border-dashed p-6 text-center">
+                          <Building2 className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+                          <p className="text-sm font-medium">No tenants found</p>
+                          <p className="text-xs text-muted-foreground mt-1">Adjust the search to find a tenant, slug, email, or SSO status.</p>
+                        </div>
+                      ) : filteredOrgs.map((org) => {
                         const state = entitlementState(org.entitlement);
                         return (
                           <button
@@ -549,19 +555,19 @@ export default function AdminPage() {
                     {!selectedOrg ? <p className="text-sm text-muted-foreground">No tenant selected.</p> : (
                       <>
                         <div className="grid gap-3 md:grid-cols-2">
-                          <Input value={orgForm.name} onChange={(event) => setOrgForm({ ...orgForm, name: event.target.value })} placeholder="Tenant name" />
-                          <Input value={orgForm.slug} onChange={(event) => setOrgForm({ ...orgForm, slug: event.target.value })} placeholder="Slug" />
-                          <Input value={orgForm.email} onChange={(event) => setOrgForm({ ...orgForm, email: event.target.value })} placeholder="Operations email" />
-                          <Input value={orgForm.phone} onChange={(event) => setOrgForm({ ...orgForm, phone: event.target.value })} placeholder="Phone" />
-                          <Input className="md:col-span-2" value={orgForm.address} onChange={(event) => setOrgForm({ ...orgForm, address: event.target.value })} placeholder="Address" />
+                          <Input aria-label="Tenant name" value={orgForm.name} onChange={(event) => setOrgForm({ ...orgForm, name: event.target.value })} placeholder="Tenant name" />
+                          <Input aria-label="Tenant slug" value={orgForm.slug} onChange={(event) => setOrgForm({ ...orgForm, slug: event.target.value })} placeholder="Slug" />
+                          <Input aria-label="Operations email" value={orgForm.email} onChange={(event) => setOrgForm({ ...orgForm, email: event.target.value })} placeholder="Operations email" />
+                          <Input aria-label="Tenant phone" value={orgForm.phone} onChange={(event) => setOrgForm({ ...orgForm, phone: event.target.value })} placeholder="Phone" />
+                          <Input aria-label="Tenant address" className="md:col-span-2" value={orgForm.address} onChange={(event) => setOrgForm({ ...orgForm, address: event.target.value })} placeholder="Address" />
                           <Select value={orgForm.authMode} onValueChange={(authMode) => setOrgForm({ ...orgForm, authMode })}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger aria-label="Tenant authentication mode"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               {AUTH_MODE_OPTIONS.map((mode) => <SelectItem key={mode} value={mode}>{mode}</SelectItem>)}
                             </SelectContent>
                           </Select>
                         </div>
-                        <Button size="sm" onClick={() => updateOrgMutation.mutate()} disabled={updateOrgMutation.isPending}>Save Tenant Settings</Button>
+                        <Button size="sm" onClick={() => updateOrgMutation.mutate()} disabled={updateOrgMutation.isPending} data-testid="button-save-admin-tenant">Save Tenant Settings</Button>
                       </>
                     )}
                   </CardContent>
@@ -576,7 +582,7 @@ export default function AdminPage() {
                     {selectedOrg && (
                       <div className="flex flex-wrap gap-2">
                         <Select value={inviteRole} onValueChange={setInviteRole}>
-                          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="w-40" aria-label="Invite role"><SelectValue /></SelectTrigger>
                           <SelectContent>{ROLE_OPTIONS.map((role) => <SelectItem key={role} value={role}>{role}</SelectItem>)}</SelectContent>
                         </Select>
                         <Button size="sm" variant="outline" disabled={createInviteMutation.isPending} onClick={() => createInviteMutation.mutate()}>Create Invite</Button>
@@ -584,7 +590,13 @@ export default function AdminPage() {
                     )}
                     {membersQuery.isLoading ? <PulseLoader /> : (
                       <div className="space-y-2">
-                        {(membersQuery.data || []).map((member) => (
+                        {(membersQuery.data || []).length === 0 ? (
+                          <div className="rounded-md border border-dashed p-6 text-center">
+                            <Users className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+                            <p className="text-sm font-medium">No members in this tenant</p>
+                            <p className="text-xs text-muted-foreground mt-1">Create an invite to add the first tenant member.</p>
+                          </div>
+                        ) : (membersQuery.data || []).map((member) => (
                           <div key={member.id} className="flex flex-wrap items-center gap-3 rounded-md border p-3">
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-medium truncate">{member.fullName || member.username}</p>
@@ -595,7 +607,7 @@ export default function AdminPage() {
                               disabled={member.email ? masterAdminsQuery.data?.emails.includes(member.email.toLowerCase()) : false}
                               onValueChange={(role) => updateRoleMutation.mutate({ orgId: member.orgId, userId: member.userId, role })}
                             >
-                              <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectTrigger className="w-36 h-8 text-xs" aria-label={`Role for ${member.fullName || member.username}`}><SelectValue /></SelectTrigger>
                               <SelectContent>{ROLE_OPTIONS.map((role) => <SelectItem key={role} value={role}>{role}</SelectItem>)}</SelectContent>
                             </Select>
                             <Button
@@ -628,11 +640,17 @@ export default function AdminPage() {
               <CardContent className="space-y-3">
                 <div className="relative max-w-lg">
                   <Search className="h-4 w-4 absolute left-2 top-2.5 text-muted-foreground" />
-                  <Input className="pl-8" placeholder="Search users by name, username, or email" value={userSearch} onChange={(event) => setUserSearch(event.target.value)} />
+                  <Input aria-label="Search users" className="pl-8" placeholder="Search users by name, username, or email" value={userSearch} onChange={(event) => setUserSearch(event.target.value)} />
                 </div>
                 {usersQuery.isLoading ? <PulseLoader /> : (
                   <div className="space-y-3">
-                    {filteredUsers.map((row) => (
+                    {filteredUsers.length === 0 ? (
+                      <div className="rounded-md border border-dashed p-6 text-center">
+                        <UserCog className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+                        <p className="text-sm font-medium">No users found</p>
+                        <p className="text-xs text-muted-foreground mt-1">Search by name, username, or email to find a PulseDesk user.</p>
+                      </div>
+                    ) : filteredUsers.map((row) => (
                       <div key={row.id} className="rounded-md border p-3">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div className="min-w-0">
@@ -680,7 +698,7 @@ export default function AdminPage() {
                                   disabled={row.isConfiguredMasterAdmin}
                                   onValueChange={(role) => updateRoleMutation.mutate({ orgId: membership.orgId, userId: row.id, role })}
                                 >
-                                  <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectTrigger className="w-32 h-8 text-xs" aria-label={`Role for ${membership.orgName}`}><SelectValue /></SelectTrigger>
                                   <SelectContent>{ROLE_OPTIONS.map((role) => <SelectItem key={role} value={role}>{role}</SelectItem>)}</SelectContent>
                                 </Select>
                               </div>
@@ -704,7 +722,7 @@ export default function AdminPage() {
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap gap-2">
                   <Select value={entitlementStateFilter} onValueChange={setEntitlementStateFilter}>
-                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-full sm:w-40" aria-label="Filter entitlement state"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All states</SelectItem>
                       <SelectItem value="enabled">Enabled</SelectItem>
@@ -712,7 +730,7 @@ export default function AdminPage() {
                     </SelectContent>
                   </Select>
                   <Select value={entitlementOrgFilter} onValueChange={setEntitlementOrgFilter}>
-                    <SelectTrigger className="w-72"><SelectValue placeholder="Tenant" /></SelectTrigger>
+                    <SelectTrigger className="w-full sm:w-72" aria-label="Filter entitlement tenant"><SelectValue placeholder="Tenant" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All tenants</SelectItem>
                       {orgs.map((org) => <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>)}
@@ -729,12 +747,18 @@ export default function AdminPage() {
                           <th className="px-2 py-2 font-medium">State</th>
                           <th className="px-2 py-2 font-medium">Module Role</th>
                           <th className="px-2 py-2 font-medium">Tenant Role</th>
-                          <th className="px-2 py-2 font-medium">Subscription</th>
+                          <th className="px-2 py-2 font-medium">Access Status</th>
                           <th className="px-2 py-2 font-medium">Computed</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {(entitlementsQuery.data || []).map((row) => {
+                        {(entitlementsQuery.data || []).length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                              No entitlement snapshots match these filters.
+                            </td>
+                          </tr>
+                        ) : (entitlementsQuery.data || []).map((row) => {
                           const state = entitlementState(row);
                           return (
                             <tr key={row.id} className="border-t">
@@ -764,10 +788,16 @@ export default function AdminPage() {
                   <CardDescription>Force poll, disable, or enable tenant inbox connectors.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Input placeholder="Search tenant, provider, email, or status" value={connectorSearch} onChange={(event) => setConnectorSearch(event.target.value)} />
+                  <Input aria-label="Search inbox connectors" placeholder="Search tenant, provider, email, or status" value={connectorSearch} onChange={(event) => setConnectorSearch(event.target.value)} />
                   {connectorsQuery.isLoading ? <PulseLoader /> : (
                     <div className="space-y-2 max-h-[620px] overflow-auto pr-1">
-                      {filteredConnectors.map((connector) => (
+                      {filteredConnectors.length === 0 ? (
+                        <div className="rounded-md border border-dashed p-6 text-center">
+                          <Server className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+                          <p className="text-sm font-medium">No connectors found</p>
+                          <p className="text-xs text-muted-foreground mt-1">Connected Inboxes will appear here after tenants configure Google, Microsoft, forwarding, or IMAP.</p>
+                        </div>
+                      ) : filteredConnectors.map((connector) => (
                         <div key={connector.id} className="rounded-md border p-3">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0">
@@ -806,7 +836,10 @@ export default function AdminPage() {
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground">Failed inbound emails</p>
                     {failedEmailsQuery.isLoading ? <PulseLoader /> : (failedEmailsQuery.data || []).length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No failed inbound messages.</p>
+                      <div className="rounded-md border border-dashed p-4 text-center">
+                        <p className="text-sm font-medium">No failed inbound messages</p>
+                        <p className="text-xs text-muted-foreground mt-1">Replay controls will appear here when inbound parsing needs intervention.</p>
+                      </div>
                     ) : (failedEmailsQuery.data || []).map((event) => (
                       <div key={event.id} className="rounded-md border p-3 flex items-start gap-3">
                         <div className="min-w-0 flex-1">
@@ -820,7 +853,12 @@ export default function AdminPage() {
                   </div>
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground">Legacy IMAP pollers</p>
-                    {[...(imapQuery.data?.pollers || []), ...(imapQuery.data?.dbOnlyEnabled || [])].map((poller) => (
+                    {[...(imapQuery.data?.pollers || []), ...(imapQuery.data?.dbOnlyEnabled || [])].length === 0 ? (
+                      <div className="rounded-md border border-dashed p-4 text-center">
+                        <p className="text-sm font-medium">No legacy IMAP pollers</p>
+                        <p className="text-xs text-muted-foreground mt-1">Google, Microsoft, and forwarding connectors are preferred for new tenants.</p>
+                      </div>
+                    ) : [...(imapQuery.data?.pollers || []), ...(imapQuery.data?.dbOnlyEnabled || [])].map((poller) => (
                       <div key={poller.orgId} className="rounded-md border p-3 flex flex-wrap items-center gap-3">
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium">{poller.orgName}</p>
@@ -851,7 +889,7 @@ export default function AdminPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <Select value={auditEventType} onValueChange={(value) => { setAuditEventType(value); setAuditOffset(0); }}>
-                  <SelectTrigger className="w-80"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-80" aria-label="Filter audit events"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All admin events</SelectItem>
                     {(auditQuery.data?.availableEventTypes || []).map((eventType) => (
@@ -873,7 +911,13 @@ export default function AdminPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {(auditQuery.data?.rows || []).map((row) => {
+                        {(auditQuery.data?.rows || []).length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                              No audit events match this filter.
+                            </td>
+                          </tr>
+                        ) : (auditQuery.data?.rows || []).map((row) => {
                           const open = expandedAuditRow === row.id;
                           return (
                             <Fragment key={row.id}>
@@ -883,7 +927,7 @@ export default function AdminPage() {
                                 <td className="px-2 py-2">{row.details?.actorEmail || row.actorUsername || row.actorFullName || "-"}</td>
                                 <td className="px-2 py-2">{row.orgName || row.orgSlug || row.orgId || "-"}</td>
                                 <td className="px-2 py-2">{row.success ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-rose-600" />}</td>
-                                <td className="px-2 py-2"><Button variant="ghost" size="sm" onClick={() => setExpandedAuditRow(open ? null : row.id)}>Details</Button></td>
+                                <td className="px-2 py-2"><Button variant="ghost" size="sm" onClick={() => setExpandedAuditRow(open ? null : row.id)} aria-expanded={open}>Details</Button></td>
                               </tr>
                               {open && (
                                 <tr className="border-t bg-muted/20">

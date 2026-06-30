@@ -7,11 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft, Clock, User, MapPin, Building2, AlertTriangle,
   HeartPulse, RefreshCw, ExternalLink, Cpu, FileText,
-  MessageSquare, ChevronUp, Printer,
+  MessageSquare, ChevronUp, Printer, CalendarClock,
 } from "lucide-react";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -30,7 +30,20 @@ import {
   type Membership,
 } from "@shared/schema";
 
-type TicketWithNames = Ticket & { departmentName?: string; reportedByName?: string; assignedToName?: string };
+type TicketWithNames = Ticket & {
+  departmentName?: string;
+  reportedByName?: string;
+  assignedToName?: string;
+  slaState?: "on_track" | "due_soon" | "overdue" | "blocked";
+  slaDueAt?: string | Date | null;
+  slaReason?: string;
+};
+
+function dateInputValue(value: string | Date | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : format(date, "yyyy-MM-dd");
+}
 
 function DetailRow({ icon: Icon, label, children }: { icon: any; label: string; children: React.ReactNode }) {
   return (
@@ -73,6 +86,9 @@ export default function TicketDetail() {
   const [showResolution, setShowResolution] = useState(false);
   const [rootCause, setRootCause] = useState("");
   const [resolutionSummary, setResolutionSummary] = useState("");
+  const [vendorReference, setVendorReference] = useState("");
+  const [vendorContactedAt, setVendorContactedAt] = useState("");
+  const [vendorExpectedFollowUpAt, setVendorExpectedFollowUpAt] = useState("");
 
   const { data: ticket, isLoading } = useQuery<TicketWithNames>({
     queryKey: ["/api/tickets", id],
@@ -86,6 +102,13 @@ export default function TicketDetail() {
   const { data: members } = useQuery<(Membership & { fullName?: string; username?: string })[]>({
     queryKey: ["/api/members"],
   });
+
+  useEffect(() => {
+    if (!ticket) return;
+    setVendorReference(ticket.vendorReference || "");
+    setVendorContactedAt(dateInputValue(ticket.vendorContactedAt));
+    setVendorExpectedFollowUpAt(dateInputValue(ticket.vendorExpectedFollowUpAt));
+  }, [ticket]);
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<Ticket>) =>
@@ -182,6 +205,9 @@ export default function TicketDetail() {
             <span className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-rose-200 bg-rose-50 text-rose-700 flex items-center gap-1">
               <AlertTriangle className="h-3 w-3" /> Overdue
             </span>
+          )}
+          {ticket.slaState && (
+            <StatusBadge type="sla-state" value={ticket.slaState} size="md" />
           )}
           <span className="text-[11px] text-muted-foreground ml-auto">Open {age}</span>
         </div>
@@ -342,6 +368,65 @@ export default function TicketDetail() {
                     </Button>
                   )}
 
+                  <div className="space-y-2 border-t pt-3">
+                    <Label className="text-[11px] text-muted-foreground uppercase tracking-wide">Vendor Follow-Up</Label>
+                    <Input
+                      value={vendorReference}
+                      onChange={(e) => setVendorReference(e.target.value)}
+                      placeholder="Vendor name, work order, or reference"
+                      data-testid="input-ticket-vendor-reference"
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-[11px]">Contacted</Label>
+                        <Input
+                          type="date"
+                          value={vendorContactedAt}
+                          onChange={(e) => setVendorContactedAt(e.target.value)}
+                          data-testid="input-vendor-contacted-at"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[11px]">Expected Follow-Up</Label>
+                        <Input
+                          type="date"
+                          value={vendorExpectedFollowUpAt}
+                          onChange={(e) => setVendorExpectedFollowUpAt(e.target.value)}
+                          data-testid="input-vendor-follow-up-at"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => updateMutation.mutate({
+                          vendorReference: vendorReference.trim(),
+                          vendorContactedAt: vendorContactedAt || null,
+                          vendorExpectedFollowUpAt: vendorExpectedFollowUpAt || null,
+                        } as any)}
+                        disabled={updateMutation.isPending}
+                        data-testid="button-save-vendor-follow-up"
+                      >
+                        Save Vendor
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => updateMutation.mutate({
+                          status: "waiting_vendor" as any,
+                          vendorReference: vendorReference.trim(),
+                          vendorContactedAt: vendorContactedAt || format(new Date(), "yyyy-MM-dd"),
+                          vendorExpectedFollowUpAt: vendorExpectedFollowUpAt || null,
+                        } as any)}
+                        disabled={updateMutation.isPending}
+                        data-testid="button-waiting-vendor"
+                      >
+                        Waiting Vendor
+                      </Button>
+                    </div>
+                  </div>
+
                   {canManageTickets(role) && !ticket.rootCause && !ticket.resolutionSummary && (
                     <>
                       {!showResolution ? (
@@ -414,6 +499,18 @@ export default function TicketDetail() {
                 {ticket.vendorReference && (
                   <DetailRow icon={ExternalLink} label="Vendor Reference">
                     {ticket.vendorReference}
+                  </DetailRow>
+                )}
+                {ticket.vendorContactedAt && (
+                  <DetailRow icon={CalendarClock} label="Vendor Contacted">
+                    {format(new Date(ticket.vendorContactedAt), "MMM d, yyyy")}
+                  </DetailRow>
+                )}
+                {ticket.vendorExpectedFollowUpAt && (
+                  <DetailRow icon={Clock} label="Expected Follow-Up">
+                    <span className={new Date(ticket.vendorExpectedFollowUpAt) < new Date() && ticket.status === "waiting_vendor" ? "text-rose-700 font-medium" : ""}>
+                      {format(new Date(ticket.vendorExpectedFollowUpAt), "MMM d, yyyy")}
+                    </span>
                   </DetailRow>
                 )}
                 {ticket.assetId && (

@@ -8,6 +8,11 @@ import {
   isSnapshotActive,
   snapshotAllowsFeature,
 } from "./services/operatorosEntitlements";
+import {
+  hasRole as hasCanonicalRole,
+  normalizeRole,
+  type CanonicalRole,
+} from "@shared/roles";
 
 export interface ResolvedTenantRequest extends Request {
   resolvedOrg: Org;
@@ -32,9 +37,17 @@ export async function verifyPassword(password: string, storedHash: string): Prom
   return bcrypt.compare(password, storedHash);
 }
 
-function destroyOperatorOsSession(req: Request, res: Response, code: string) {
+function codedError(res: Response, status: number, error: string, code: string, details?: Record<string, unknown>) {
+  return res.status(status).json({ error, code, ...(details ?? {}) });
+}
+
+function destroyOperatorOsSession(req: Request, res: Response, reason: string) {
   return req.session.destroy(() => {
-    res.status(403).json({ error: "OperatorOS entitlement required", code });
+    res.status(403).json({
+      error: "OperatorOS module access has been revoked",
+      code: "MODULE_ACCESS_REVOKED",
+      reason,
+    });
   });
 }
 
@@ -58,7 +71,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
 export function requireOrg(req: Request, res: Response, next: NextFunction) {
   if (!req.session.orgId) {
-    return res.status(400).json({ error: "No organization selected" });
+    return codedError(res, 400, "No organization selected", "NO_ORG_SELECTED");
   }
   next();
 }
@@ -78,31 +91,31 @@ export async function requireSuperAdmin(req: Request, res: Response, next: NextF
   }
   const user = await storage.getUser(req.session.userId);
   if (!user?.isSuperAdmin) {
-    return res.status(403).json({ error: "Forbidden: Super admin access required" });
+    return codedError(res, 403, "Forbidden: Super admin access required", "INSUFFICIENT_ROLE");
   }
   next();
 }
 
-const ROLE_HIERARCHY: Record<string, number> = {
-  owner: 120,
-  admin: 100,
-  supervisor: 80,
-  technician: 60,
-  staff: 40,
-  readonly: 10,
-};
-
 export function requireRole(...allowedRoles: string[]) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.session.userId || !req.session.orgId) {
+    if (!req.session.userId) {
       return res.status(401).json({ error: "Unauthorized", code: "SESSION_EXPIRED" });
+    }
+    if (!req.session.orgId) {
+      return codedError(res, 400, "No organization selected", "NO_ORG_SELECTED");
     }
     const membership = await storage.getMembership(req.session.orgId, req.session.userId);
     if (!membership) {
-      return res.status(403).json({ error: "Not a member of this organization" });
+      return codedError(res, 403, "Not a member of this organization", "INSUFFICIENT_ROLE");
     }
-    if (membership.role !== "owner" && !allowedRoles.includes(membership.role)) {
-      return res.status(403).json({ error: "Insufficient permissions" });
+    const membershipRole = normalizeRole(membership.role);
+    const allowed = new Set(
+      allowedRoles
+        .map((role) => normalizeRole(role))
+        .filter((role): role is CanonicalRole => role !== null)
+    );
+    if (!membershipRole || (membershipRole !== "owner" && !allowed.has(membershipRole))) {
+      return codedError(res, 403, "Insufficient permissions", "INSUFFICIENT_ROLE");
     }
     next();
   };
@@ -149,7 +162,7 @@ export async function resolveTenant(req: Request, res: Response, next: NextFunct
 export function requireFeature(feature: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.session.orgId) {
-      return res.status(400).json({ error: "No organization selected" });
+      return codedError(res, 400, "No organization selected", "NO_ORG_SELECTED");
     }
 
     const snapshot = await getCurrentEntitlementSnapshotForRequest(req, {
@@ -166,7 +179,7 @@ export function requireFeature(feature: string) {
 
     return res.status(403).json({
       error: "OperatorOS entitlement does not allow this feature",
-      code: "FEATURE_NOT_ENTITLED",
+      code: "MODULE_ACCESS_REVOKED",
       feature,
     });
   };
@@ -214,9 +227,7 @@ export function requireOperatorOsModuleRole(requiredRole: string) {
       const actualLevel = MODULE_ROLE_HIERARCHY[snapshot.moduleRole] ?? 0;
       const requiredLevel = MODULE_ROLE_HIERARCHY[requiredRole] ?? MODULE_ROLE_HIERARCHY.module_admin;
       if (actualLevel < requiredLevel) {
-        return res.status(403).json({
-          error: "OperatorOS module role is insufficient",
-          code: "OPERATOROS_MODULE_ROLE_REQUIRED",
+        return codedError(res, 403, "OperatorOS module role is insufficient", "INSUFFICIENT_ROLE", {
           requiredRole,
         });
       }
@@ -227,17 +238,19 @@ export function requireOperatorOsModuleRole(requiredRole: string) {
 
 export function requireMinRole(minRole: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.session.userId || !req.session.orgId) {
+    if (!req.session.userId) {
       return res.status(401).json({ error: "Unauthorized", code: "SESSION_EXPIRED" });
+    }
+    if (!req.session.orgId) {
+      return codedError(res, 400, "No organization selected", "NO_ORG_SELECTED");
     }
     const membership = await storage.getMembership(req.session.orgId, req.session.userId);
     if (!membership) {
-      return res.status(403).json({ error: "Not a member of this organization" });
+      return codedError(res, 403, "Not a member of this organization", "INSUFFICIENT_ROLE");
     }
-    const userLevel = ROLE_HIERARCHY[membership.role] ?? 0;
-    const requiredLevel = ROLE_HIERARCHY[minRole] ?? 0;
-    if (userLevel < requiredLevel) {
-      return res.status(403).json({ error: "Insufficient permissions" });
+    const requiredRole = normalizeRole(minRole);
+    if (!requiredRole || !hasCanonicalRole(membership.role, requiredRole)) {
+      return codedError(res, 403, "Insufficient permissions", "INSUFFICIENT_ROLE");
     }
     next();
   };

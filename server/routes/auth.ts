@@ -13,6 +13,12 @@ import {
   getCurrentEntitlementSnapshotForRequest,
   snapshotAllowsFeature,
 } from "../services/operatorosEntitlements";
+import {
+  CANONICAL_ROLES,
+  ROLE_HIERARCHY,
+  hasRole,
+  normalizeRole,
+} from "@shared/roles";
 
 const authConfigSchema = z.object({
   authMode: z.enum(["local", "m365", "hybrid"]),
@@ -29,7 +35,7 @@ const authConfigSchema = z.object({
 
 const roleMappingSchema = z.object({
   entraGroupId: z.string().min(1, "Entra Group Object ID is required").trim(),
-  pulsedeskRole: z.enum(["readonly", "staff", "technician", "supervisor", "admin", "owner"]),
+  pulsedeskRole: z.enum(CANONICAL_ROLES),
   displayLabel: z.string().optional(),
 });
 
@@ -175,7 +181,7 @@ router.post("/api/auth/login", loginRateLimiter, async (req, res) => {
         const userToCheck = await storage.getUserByUsername(username);
         if (userToCheck) {
           const mem = await storage.getMembership(org.id, userToCheck.id);
-          if (mem && !["admin", "owner"].includes(mem.role)) {
+          if (mem && !hasRole(mem.role, "admin")) {
             await logAuthEvent(req, {
               orgId: org.id,
               userId: userToCheck.id,
@@ -261,7 +267,7 @@ router.post("/api/auth/login", loginRateLimiter, async (req, res) => {
       }
       if (finalAuthConfig?.authMode === "hybrid") {
         const mem = await storage.getMembership(selectedOrgId, user.id);
-        if (mem && !["admin", "owner"].includes(mem.role)) {
+        if (mem && !hasRole(mem.role, "admin")) {
           await logAuthEvent(req, {
             orgId: selectedOrgId,
             userId: user.id,
@@ -491,18 +497,16 @@ router.get("/api/auth/m365/callback", async (req, res) => {
     const hasMappings = roleMappings.length > 0;
 
     if (result.groups && hasMappings) {
-      const roleHierarchy: Record<string, number> = {
-        owner: 120, admin: 100, supervisor: 80, technician: 60, staff: 40, readonly: 10,
-      };
       let highestLevel = 0;
 
       for (const mapping of roleMappings) {
         if (result.groups.includes(mapping.entraGroupId)) {
           matchedGroups.push(mapping.entraGroupId);
-          const level = roleHierarchy[mapping.pulsedeskRole] || 0;
+          const normalizedMappedRole = normalizeRole(mapping.pulsedeskRole);
+          const level = normalizedMappedRole ? ROLE_HIERARCHY[normalizedMappedRole] : 0;
           if (level > highestLevel) {
             highestLevel = level;
-            mappedRole = mapping.pulsedeskRole;
+            mappedRole = normalizedMappedRole;
           }
         }
       }
@@ -713,7 +717,9 @@ router.post("/api/auth/switch-org", requireAuth, async (req, res) => {
   try {
     const { orgId } = req.body;
     const membership = await storage.getMembership(orgId, req.session.userId!);
-    if (!membership) return res.status(403).json({ error: "Not a member of this organization" });
+    if (!membership) {
+      return res.status(403).json({ error: "Not a member of this organization", code: "INSUFFICIENT_ROLE" });
+    }
 
     const targetAuthConfig = await storage.getOrgAuthConfig(orgId);
     const sessionAuthSource = req.session.authSource || "local";
@@ -723,8 +729,11 @@ router.post("/api/auth/switch-org", requireAuth, async (req, res) => {
     }
 
     if (targetAuthConfig?.authMode === "hybrid" && sessionAuthSource === "local") {
-      if (!["admin", "owner"].includes(membership.role)) {
-        return res.status(403).json({ error: "This organization requires Microsoft 365 sign-in. Local login is available only for administrators." });
+      if (!hasRole(membership.role, "admin")) {
+        return res.status(403).json({
+          error: "This organization requires Microsoft 365 sign-in. Local login is available only for administrators.",
+          code: "INSUFFICIENT_ROLE",
+        });
       }
     }
 
@@ -864,6 +873,7 @@ router.put("/api/auth/config", requireAuth, requireOrg, requireMinRole("admin"),
       if (!devLocalBypass && !snapshotAllowsFeature(snapshot, "entraEnabled")) {
         return res.status(403).json({
           error: "Microsoft 365/Entra login is not enabled by the current OperatorOS entitlement.",
+          code: "MODULE_ACCESS_REVOKED",
         });
       }
     }

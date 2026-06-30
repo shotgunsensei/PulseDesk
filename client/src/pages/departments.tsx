@@ -66,12 +66,12 @@ export default function DepartmentsPage() {
               </DialogHeader>
               <div className="space-y-4 mt-4">
                 <div>
-                  <Label>Department Name</Label>
-                  <Input data-testid="input-dept-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Radiology" className="mt-1" />
+                  <Label htmlFor="dept-name">Department Name</Label>
+                  <Input id="dept-name" data-testid="input-dept-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Radiology" className="mt-1" />
                 </div>
                 <div>
-                  <Label>Description (optional)</Label>
-                  <Input data-testid="input-dept-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description..." className="mt-1" />
+                  <Label htmlFor="dept-desc">Description (optional)</Label>
+                  <Input id="dept-desc" data-testid="input-dept-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description..." className="mt-1" />
                 </div>
                 <Button
                   data-testid="button-save-dept"
@@ -95,7 +95,7 @@ export default function DepartmentsPage() {
             <CardContent className="flex flex-col items-center justify-center py-12 px-4 text-center">
               <Building2 className="h-10 w-10 text-muted-foreground mb-3" />
               <p className="text-base font-medium mb-1">No departments yet</p>
-              <p className="text-sm text-muted-foreground max-w-md mb-4">Departments help you route tickets, assign supply requests, and track performance by team. Add your first department to get started.</p>
+              <p className="text-sm text-muted-foreground max-w-md mb-4">Departments keep clinical work routed to the right team and make supply, ticket, and performance reporting easier to scan.</p>
               {canManageSettings(role) && (
                 <Button size="sm" onClick={() => setOpen(true)} data-testid="button-empty-add-department">Add your first department</Button>
               )}
@@ -114,6 +114,7 @@ export default function DepartmentsPage() {
                     variant="ghost"
                     size="sm"
                     data-testid={`button-delete-dept-${dept.id}`}
+                    aria-label={`Delete ${dept.name}`}
                     onClick={() => {
                       if (confirm(`Delete "${dept.name}"?`)) deleteMutation.mutate(dept.id);
                     }}

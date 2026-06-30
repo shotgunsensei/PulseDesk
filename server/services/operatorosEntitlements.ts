@@ -315,6 +315,9 @@ export async function handleOperatorOsEntitlementWebhook(req: Request, res: Resp
 }
 
 function resolveIntrospectionUrl(): string | null {
+  if (process.env.OPERATOROS_ENTITLEMENTS_INTROSPECT_URL?.trim()) {
+    return normalizeBaseUrl(process.env.OPERATOROS_ENTITLEMENTS_INTROSPECT_URL);
+  }
   if (process.env.OPERATOROS_INTROSPECTION_URL?.trim()) {
     return normalizeBaseUrl(process.env.OPERATOROS_INTROSPECTION_URL);
   }

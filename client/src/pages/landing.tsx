@@ -55,17 +55,24 @@ export default function LandingPage() {
       </header>
 
       <main className="flex-1">
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-12 sm:pt-20 pb-12">
-          <div className="grid md:grid-cols-2 gap-10 items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs text-muted-foreground mb-4">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Live for healthcare ops teams
+        <section className="relative overflow-hidden">
+          <img
+            src={heroImage}
+            alt="Healthcare operations dashboard"
+            className="absolute inset-0 h-full w-full object-cover"
+            loading="eager"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-900/70 to-slate-900/25" />
+          <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20 lg:py-24 min-h-[560px] flex items-center">
+            <div className="max-w-2xl text-white">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs text-white/80 mb-4 backdrop-blur-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> OperatorOS child app for healthcare ops
               </div>
-              <h1 className="text-4xl sm:text-5xl font-bold tracking-tight leading-tight mb-4">
-                The operational heartbeat of your facility.
+              <h1 className="text-4xl sm:text-6xl font-bold tracking-tight leading-tight mb-4">
+                PulseDesk
               </h1>
-              <p className="text-base sm:text-lg text-muted-foreground mb-6 leading-relaxed">
-                PulseDesk gives clinics and hospitals one place to triage every facilities, supply, IT, and vendor request — with email-to-ticket, role gates, and analytics built in.
+              <p className="text-base sm:text-xl text-white/80 mb-6 leading-relaxed">
+                Coordinate facilities, supplies, IT, equipment, vendors, and patient-impacting work from one clinical operations console. Access starts in OperatorOS and stays governed by module entitlements.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link href="/login" data-testid="cta-primary">
@@ -74,15 +81,10 @@ export default function LandingPage() {
                   </Button>
                 </Link>
                 <Link href="/login" data-testid="cta-signin">
-                  <Button size="lg" variant="outline" className="min-h-[48px]">Sign in</Button>
+                  <Button size="lg" variant="secondary" className="min-h-[48px]">Sign in</Button>
                 </Link>
               </div>
-              <PulseLine variant="divider" width="100%" height={6} color="hsl(var(--accent))" animate className="opacity-30 mt-8" />
-            </div>
-            <div className="relative">
-              <div className="rounded-2xl overflow-hidden border shadow-xl">
-                <img src={heroImage} alt="Healthcare operations" className="w-full h-auto" loading="eager" />
-              </div>
+              <PulseLine variant="divider" width="100%" height={6} color="white" animate className="opacity-30 mt-8" />
             </div>
           </div>
         </section>

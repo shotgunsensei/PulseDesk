@@ -220,7 +220,7 @@ router.delete("/api/connectors/:id", requireAuth, requireOrg, requireMinRole("ad
 
     await db.execute(sql`UPDATE inbound_email_log SET connector_id = NULL WHERE connector_id = ${existing.id}`);
     await db.delete(connectorEvents).where(sql`${connectorEvents.connectorId} = ${existing.id}`);
-    await db.delete(mailConnectors).where(connectorById(existing.id));
+    await db.delete(mailConnectors).where(connectorByIdAndOrg(existing.id, orgId));
 
     res.json({ deleted: true });
   } catch (err: unknown) {
@@ -262,7 +262,7 @@ router.post("/api/connectors/:id/disconnect", requireAuth, requireOrg, requireMi
       lastError: null,
       consecutiveFailures: 0,
       updatedAt: new Date(),
-    }).where(connectorById(connector.id));
+    }).where(connectorByIdAndOrg(connector.id, orgId));
 
     const eventMessage = revokeError
       ? `Connector disconnected (provider revocation warning: ${revokeError})`
@@ -455,8 +455,9 @@ router.get("/api/connectors/oauth/callback", async (req, res) => {
     const savedState = callbackSession.connectorOAuthState as string | undefined;
     const connectorId = callbackSession.connectorOAuthId as string | undefined;
     const provider = callbackSession.connectorOAuthProvider as string | undefined;
+    const orgId = req.session.orgId;
 
-    if (!savedState || !connectorId || !provider) {
+    if (!savedState || !connectorId || !provider || !orgId) {
       return res.redirect("/email-settings?connectorError=Invalid+session");
     }
 
@@ -468,7 +469,7 @@ router.get("/api/connectors/oauth/callback", async (req, res) => {
     delete callbackSession.connectorOAuthId;
     delete callbackSession.connectorOAuthProvider;
 
-    const [connector] = await db.select().from(mailConnectors).where(connectorById(connectorId));
+    const [connector] = await db.select().from(mailConnectors).where(connectorByIdAndOrg(connectorId, orgId));
     if (!connector) {
       return res.redirect("/email-settings?connectorError=Connector+not+found");
     }
@@ -504,7 +505,7 @@ router.get("/api/connectors/oauth/callback", async (req, res) => {
       updateData.credentialsEncrypted = encryptSecret(JSON.stringify(result.credentials));
     }
 
-    const [updated] = await db.update(mailConnectors).set(updateData).where(connectorById(connectorId)).returning();
+    const [updated] = await db.update(mailConnectors).set(updateData).where(connectorByIdAndOrg(connectorId, orgId)).returning();
 
     await logEvent(connectorId, connector.orgId, "auth_success", `OAuth completed: ${result.emailAddress || "unknown"}`);
 

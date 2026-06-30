@@ -60,14 +60,14 @@ export default function VendorsPage() {
             <DialogContent>
               <DialogHeader><DialogTitle>Add Vendor</DialogTitle></DialogHeader>
               <div className="space-y-3 mt-4">
-                <div><Label>Company Name *</Label><Input data-testid="input-vendor-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Vendor name" className="mt-1" /></div>
-                <div><Label>Service Type</Label><Input value={form.serviceType} onChange={(e) => setForm({ ...form, serviceType: e.target.value })} placeholder="e.g., HVAC Maintenance" className="mt-1" /></div>
+                <div><Label htmlFor="vendor-name">Company Name *</Label><Input id="vendor-name" data-testid="input-vendor-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Vendor name" className="mt-1" /></div>
+                <div><Label htmlFor="vendor-service">Service Type</Label><Input id="vendor-service" value={form.serviceType} onChange={(e) => setForm({ ...form, serviceType: e.target.value })} placeholder="e.g., HVAC Maintenance" className="mt-1" /></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="(555) 123-4567" className="mt-1" /></div>
-                  <div><Label>Email</Label><Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="support@vendor.com" className="mt-1" /></div>
+                  <div><Label htmlFor="vendor-phone">Phone</Label><Input id="vendor-phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="(555) 123-4567" className="mt-1" /></div>
+                  <div><Label htmlFor="vendor-email">Email</Label><Input id="vendor-email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="support@vendor.com" className="mt-1" /></div>
                 </div>
-                <div><Label>Emergency Contact</Label><Input value={form.emergencyContact} onChange={(e) => setForm({ ...form, emergencyContact: e.target.value })} placeholder="After-hours number" className="mt-1" /></div>
-                <div><Label>Contract Notes</Label><Textarea value={form.contractNotes} onChange={(e) => setForm({ ...form, contractNotes: e.target.value })} placeholder="Contract terms, SLA details..." rows={2} className="mt-1" /></div>
+                <div><Label htmlFor="vendor-emergency">Emergency Contact</Label><Input id="vendor-emergency" value={form.emergencyContact} onChange={(e) => setForm({ ...form, emergencyContact: e.target.value })} placeholder="After-hours number" className="mt-1" /></div>
+                <div><Label htmlFor="vendor-notes">Contract Notes</Label><Textarea id="vendor-notes" value={form.contractNotes} onChange={(e) => setForm({ ...form, contractNotes: e.target.value })} placeholder="Contract terms, SLA details..." rows={2} className="mt-1" /></div>
                 <Button
                   data-testid="button-save-vendor"
                   onClick={() => form.name.trim() && createMutation.mutate(form)}
@@ -88,7 +88,7 @@ export default function VendorsPage() {
             <CardContent className="flex flex-col items-center justify-center py-12 px-4 text-center">
               <Users2 className="h-10 w-10 text-muted-foreground mb-3" />
               <p className="text-base font-medium mb-1">No vendors yet</p>
-              <p className="text-sm text-muted-foreground max-w-md mb-4">Track service contractors, biomed providers, and external partners so tickets can be linked to the right vendor for follow-up.</p>
+              <p className="text-sm text-muted-foreground max-w-md mb-4">Track service contractors, biomed providers, after-hours contacts, and contract notes so vendor waits have clear ownership.</p>
               {canManageSettings(role) && (
                 <Button size="sm" onClick={() => setOpen(true)} data-testid="button-empty-add-vendor">Add your first vendor</Button>
               )}
@@ -104,7 +104,7 @@ export default function VendorsPage() {
                     {vendor.serviceType && <p className="text-xs text-muted-foreground mt-0.5">{vendor.serviceType}</p>}
                   </div>
                   {canManageSettings(role) && (
-                    <Button variant="ghost" size="sm" onClick={() => { if (confirm("Remove this vendor?")) deleteMutation.mutate(vendor.id); }}>
+                    <Button variant="ghost" size="sm" aria-label={`Remove ${vendor.name}`} onClick={() => { if (confirm("Remove this vendor?")) deleteMutation.mutate(vendor.id); }}>
                       <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
                   )}

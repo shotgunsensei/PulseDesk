@@ -5,8 +5,10 @@ import { DEFAULT_DEPARTMENTS } from "@shared/schema";
 import { logAdminAction } from "../lib/adminAudit";
 import { getOperatorOsNumericLimitForOrg } from "../services/operatorosEntitlements";
 import { isMasterAdminEmail } from "../config/masterAdmin";
+import { normalizeRole, type CanonicalRole } from "@shared/roles";
 
 const router = Router();
+const TENANT_MANAGED_ROLES: CanonicalRole[] = ["admin", "supervisor", "technician", "staff", "readonly"];
 
 router.post("/api/orgs", requireAuth, async (req, res) => {
   try {
@@ -83,7 +85,11 @@ router.get("/api/invite-codes", requireAuth, requireOrg, requireRole("admin", "s
 router.post("/api/invite-codes", requireAuth, requireOrg, requireRole("admin", "supervisor"), async (req, res) => {
   try {
     const { role } = req.body;
-    const code = await storage.createInviteCode(req.session.orgId!, role || "staff", req.session.userId!);
+    const normalizedRole = normalizeRole(role) ?? "staff";
+    if (!TENANT_MANAGED_ROLES.includes(normalizedRole)) {
+      return res.status(400).json({ error: "Invalid role", code: "INVALID_ROLE", validRoles: TENANT_MANAGED_ROLES });
+    }
+    const code = await storage.createInviteCode(req.session.orgId!, normalizedRole, req.session.userId!);
     res.json(code);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -110,7 +116,8 @@ router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, requireRo
     const userId = (req.params.userId as string);
     const orgId = req.session.orgId!;
     const { role } = req.body;
-    if (!["admin", "supervisor", "staff", "technician", "readonly"].includes(role)) {
+    const normalizedRole = normalizeRole(role);
+    if (!normalizedRole || !TENANT_MANAGED_ROLES.includes(normalizedRole)) {
       await logAdminAction(req, {
         eventType: "org_membership_role_changed",
         orgId,
@@ -118,7 +125,7 @@ router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, requireRo
         success: false,
         details: { reason: "invalid_role", requestedRole: role },
       });
-      return res.status(400).json({ error: "Invalid role" });
+      return res.status(400).json({ error: "Invalid role", code: "INVALID_ROLE", validRoles: TENANT_MANAGED_ROLES });
     }
     if (userId === req.session.userId) {
       await logAdminAction(req, {
@@ -126,7 +133,7 @@ router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, requireRo
         orgId,
         targetUserId: userId,
         success: false,
-        details: { reason: "self_role_change_blocked", requestedRole: role },
+        details: { reason: "self_role_change_blocked", requestedRole: normalizedRole },
       });
       return res.status(400).json({ error: "Cannot change your own role" });
     }
@@ -151,12 +158,12 @@ router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, requireRo
         details: {
           reason: "configured_master_admin_role_protected",
           before: { role: existing.role },
-          requestedRole: role,
+          requestedRole: normalizedRole,
         },
       });
       return res.status(400).json({ error: "Configured master admin role cannot be changed from tenant settings" });
     }
-    await storage.updateMembershipRole(orgId, userId, role);
+    await storage.updateMembershipRole(orgId, userId, normalizedRole);
     await logAdminAction(req, {
       eventType: "org_membership_role_changed",
       orgId,
@@ -164,7 +171,7 @@ router.patch("/api/memberships/:userId/role", requireAuth, requireOrg, requireRo
       success: true,
       details: {
         before: { role: existing.role },
-        after: { role },
+        after: { role: normalizedRole },
       },
     });
     res.json({ ok: true });

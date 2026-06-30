@@ -40,7 +40,7 @@ import {
   TICKET_PRIORITY_LABELS,
   TICKET_CATEGORY_LABELS,
 } from "@shared/schema";
-import { canSubmitIssues, isReadOnly, ROLE_LABELS } from "@/lib/permissions";
+import { canSubmitIssues, hasRole, isReadOnly, ROLE_LABELS } from "@/lib/permissions";
 
 interface DashboardStats {
   totalTickets: number;
@@ -61,14 +61,18 @@ interface DashboardStats {
   criticalHighOpen: number;
   waitingDeptCount: number;
   waitingVendorCount: number;
+  staleVendorWaitCount: number;
   escalatedCount: number;
   patientImpactingCount: number;
   recurringCount: number;
   unassignedCount: number;
   avgResolutionHours: number;
   avgTriageHours: number;
+  slaCounts: Record<"on_track" | "due_soon" | "overdue" | "blocked", number>;
   agingBuckets: { under24h: number; "1to3days": number; "3to7days": number; over7days: number };
   openFacilityRequests: number;
+  connectorHealth: ConnectorHealth;
+  dailyBrief: DailyBrief;
   recentActivity: Array<{
     id: string;
     ticketNumber: string;
@@ -77,9 +81,54 @@ interface DashboardStats {
     priority: string;
     category: string;
     updatedAt: string;
+    dueDate?: string | null;
+    vendorExpectedFollowUpAt?: string | null;
+    isPatientImpacting?: boolean;
+    slaState?: "on_track" | "due_soon" | "overdue" | "blocked";
     assignedToName: string | null;
   }>;
   isEmpty: boolean;
+}
+
+interface BriefTicket {
+  id: string;
+  ticketNumber: string;
+  title: string;
+  status: string;
+  priority: string;
+  category: string;
+  updatedAt: string;
+  dueDate?: string | null;
+  vendorReference?: string | null;
+  vendorExpectedFollowUpAt?: string | null;
+  isPatientImpacting?: boolean;
+  slaState?: "on_track" | "due_soon" | "overdue" | "blocked";
+}
+
+interface PendingSupplyBrief {
+  id: string;
+  itemName: string;
+  urgency: string;
+  quantity: number;
+  createdAt: string;
+}
+
+interface ConnectorHealth {
+  enabledEmailSettings: boolean;
+  totalConnectors: number;
+  activeConnectors: number;
+  errorConnectors: number;
+  disabledConnectors: number;
+  pendingAuthConnectors: number;
+  lastError: string | null;
+}
+
+interface DailyBrief {
+  urgentTickets: BriefTicket[];
+  overdueTickets: BriefTicket[];
+  staleVendorWaits: BriefTicket[];
+  pendingSupplyApprovals: PendingSupplyBrief[];
+  connectorHealth: ConnectorHealth;
 }
 
 function KpiCard({ label, value, sub, icon: Icon, iconColor = "text-muted-foreground", href, alert }: {
@@ -213,6 +262,7 @@ function AdminOnboarding() {
                       onClick={(e) => { e.stopPropagation(); completeMutation.mutate(item.id); }}
                       disabled={completeMutation.isPending}
                       data-testid={`button-complete-${item.id}`}
+                      aria-label={`Mark ${item.title} complete`}
                     >
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                     </Button>
@@ -223,6 +273,7 @@ function AdminOnboarding() {
                       onClick={(e) => { e.stopPropagation(); skipMutation.mutate(item.id); }}
                       disabled={skipMutation.isPending}
                       data-testid={`button-skip-${item.id}`}
+                      aria-label={`Skip ${item.title}`}
                     >
                       <SkipForward className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>
@@ -303,6 +354,123 @@ function RoleGuidance({ role }: { role: string | undefined }) {
   );
 }
 
+function BriefTicketRow({ ticket }: { ticket: BriefTicket }) {
+  return (
+    <Link href={`/tickets/${ticket.id}`}>
+      <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 cursor-pointer" data-testid={`brief-ticket-${ticket.id}`}>
+        <div className="min-w-0">
+          <p className="text-xs font-medium truncate">{ticket.ticketNumber}: {ticket.title}</p>
+          <p className="text-[10px] text-muted-foreground">
+            {TICKET_CATEGORY_LABELS[ticket.category] || ticket.category}
+          </p>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <StatusBadge type="ticket-priority" value={ticket.priority} size="xs" />
+          {ticket.slaState && <StatusBadge type="sla-state" value={ticket.slaState} size="xs" />}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function DailyBriefCard({ stats, canManageInbox }: { stats: DashboardStats; canManageInbox: boolean }) {
+  const brief = stats.dailyBrief;
+  const inboxNeedsAttention =
+    brief.connectorHealth.errorConnectors > 0
+    || brief.connectorHealth.pendingAuthConnectors > 0
+    || !brief.connectorHealth.enabledEmailSettings;
+
+  return (
+    <Card data-testid="daily-brief">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <ClipboardList className="h-4 w-4 text-muted-foreground" />
+          Daily Brief
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+          <Link href="/tickets?view=high_critical">
+            <div className="rounded-lg border p-2 hover-elevate cursor-pointer" data-testid="brief-urgent-count">
+              <p className="text-lg font-bold tabular-nums">{brief.urgentTickets.length}</p>
+              <p className="text-[11px] text-muted-foreground">Urgent</p>
+            </div>
+          </Link>
+          <Link href="/tickets?view=overdue">
+            <div className="rounded-lg border p-2 hover-elevate cursor-pointer" data-testid="brief-overdue-count">
+              <p className="text-lg font-bold tabular-nums text-rose-700">{stats.overdueCount}</p>
+              <p className="text-[11px] text-muted-foreground">Overdue</p>
+            </div>
+          </Link>
+          <Link href="/tickets?view=waiting_vendor">
+            <div className="rounded-lg border p-2 hover-elevate cursor-pointer" data-testid="brief-vendor-count">
+              <p className="text-lg font-bold tabular-nums text-fuchsia-700">{stats.staleVendorWaitCount}</p>
+              <p className="text-[11px] text-muted-foreground">Stale Vendor</p>
+            </div>
+          </Link>
+          <Link href="/supply-requests">
+            <div className="rounded-lg border p-2 hover-elevate cursor-pointer" data-testid="brief-supply-count">
+              <p className="text-lg font-bold tabular-nums text-amber-700">{brief.pendingSupplyApprovals.length}</p>
+              <p className="text-[11px] text-muted-foreground">Supply Review</p>
+            </div>
+          </Link>
+          {canManageInbox ? (
+            <Link href="/email-settings">
+              <div className={`rounded-lg border p-2 hover-elevate cursor-pointer ${inboxNeedsAttention ? "border-amber-200 bg-amber-50/60 dark:bg-amber-950/20" : ""}`} data-testid="brief-inbox-health">
+                <p className={`text-lg font-bold tabular-nums ${inboxNeedsAttention ? "text-amber-700" : "text-emerald-700"}`}>
+                  {brief.connectorHealth.activeConnectors}
+                </p>
+                <p className="text-[11px] text-muted-foreground">Active Inboxes</p>
+              </div>
+            </Link>
+          ) : (
+            <div className={`rounded-lg border p-2 ${inboxNeedsAttention ? "border-amber-200 bg-amber-50/60 dark:bg-amber-950/20" : ""}`} data-testid="brief-inbox-health">
+              <p className={`text-lg font-bold tabular-nums ${inboxNeedsAttention ? "text-amber-700" : "text-emerald-700"}`}>
+                {brief.connectorHealth.activeConnectors}
+              </p>
+              <p className="text-[11px] text-muted-foreground">Active Inboxes</p>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div className="rounded-lg border p-2">
+            <p className="text-xs font-medium mb-1">Urgent Tickets</p>
+            {brief.urgentTickets.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2">No urgent tickets waiting.</p>
+            ) : (
+              brief.urgentTickets.slice(0, 3).map((ticket) => <BriefTicketRow key={ticket.id} ticket={ticket} />)
+            )}
+          </div>
+          <div className="rounded-lg border p-2">
+            <p className="text-xs font-medium mb-1">Vendor Follow-Up</p>
+            {brief.staleVendorWaits.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2">No stale vendor waits.</p>
+            ) : (
+              brief.staleVendorWaits.slice(0, 3).map((ticket) => <BriefTicketRow key={ticket.id} ticket={ticket} />)
+            )}
+          </div>
+          <div className="rounded-lg border p-2">
+            <p className="text-xs font-medium mb-1">Pending Supply Review</p>
+            {brief.pendingSupplyApprovals.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2">No supply approvals waiting.</p>
+            ) : (
+              brief.pendingSupplyApprovals.slice(0, 3).map((item) => (
+                <Link key={item.id} href="/supply-requests">
+                  <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 cursor-pointer" data-testid={`brief-supply-${item.id}`}>
+                    <span className="text-xs truncate">{item.itemName}</span>
+                    <StatusBadge type="ticket-priority" value={item.urgency} size="xs" />
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function getGreeting(): string {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
@@ -345,11 +513,12 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <KpiCard label="Intake" value={stats.statusCounts.new || 0} sub="awaiting triage" icon={Ticket} iconColor="text-primary" href="/tickets?status=new" />
           <KpiCard label="Open Issues" value={stats.openTickets} sub="active" icon={Activity} iconColor="text-accent" href="/tickets" />
-          <KpiCard label="Overdue" value={stats.overdueCount} sub={stats.overdueCount > 0 ? "requires attention" : "all current"} icon={AlertTriangle} alert={stats.overdueCount > 0} />
-          <KpiCard label="Critical / High" value={stats.criticalHighOpen} sub="unresolved" icon={ShieldAlert} iconColor="text-amber-600" alert={stats.criticalHighOpen > 3} />
+          <KpiCard label="Overdue" value={stats.overdueCount} sub={stats.overdueCount > 0 ? "requires attention" : "all current"} icon={AlertTriangle} alert={stats.overdueCount > 0} href="/tickets?view=overdue" />
+          <KpiCard label="Critical / High" value={stats.criticalHighOpen} sub="unresolved" icon={ShieldAlert} iconColor="text-amber-600" alert={stats.criticalHighOpen > 3} href="/tickets?view=high_critical" />
           <KpiCard label="Resolved" value={stats.resolvedThisMonth} sub="this month" icon={CheckCircle2} iconColor="text-emerald-600" />
         </div>
 
+        {hasRole(role, "supervisor") && <DailyBriefCard stats={stats} canManageInbox={hasRole(role, "admin")} />}
         {role === "admin" && <AdminOnboarding />}
         {role !== "admin" && <RoleGuidance role={role} />}
         {(stats.waitingDeptCount > 0 || stats.waitingVendorCount > 0 || stats.escalatedCount > 0 || stats.patientImpactingCount > 0 || stats.unassignedCount > 0) && (
@@ -360,14 +529,17 @@ export default function Dashboard() {
             {stats.waitingVendorCount > 0 && (
               <KpiCard label="Vendor Pending" value={stats.waitingVendorCount} icon={Users} iconColor="text-fuchsia-600" href="/tickets?status=waiting_vendor" />
             )}
+            {stats.staleVendorWaitCount > 0 && (
+              <KpiCard label="Vendor Stale" value={stats.staleVendorWaitCount} icon={Timer} iconColor="text-rose-600" alert href="/tickets?view=waiting_vendor" />
+            )}
             {stats.escalatedCount > 0 && (
               <KpiCard label="Escalated" value={stats.escalatedCount} icon={Bell} iconColor="text-rose-600" href="/tickets?status=escalated" />
             )}
             {stats.patientImpactingCount > 0 && (
-              <KpiCard label="Patient Impact" value={stats.patientImpactingCount} icon={HeartPulse} iconColor="text-rose-600" alert />
+              <KpiCard label="Patient Impact" value={stats.patientImpactingCount} icon={HeartPulse} iconColor="text-rose-600" alert href="/tickets?view=patient_impacting" />
             )}
             {stats.unassignedCount > 0 && (
-              <KpiCard label="Unassigned" value={stats.unassignedCount} icon={UserX} iconColor="text-amber-600" />
+              <KpiCard label="Unassigned" value={stats.unassignedCount} icon={UserX} iconColor="text-amber-600" href="/tickets?view=unassigned" />
             )}
             {stats.recurringCount > 0 && (
               <KpiCard label="Recurring" value={stats.recurringCount} icon={RefreshCw} iconColor="text-violet-600" />
@@ -377,6 +549,27 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 space-y-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Timer className="h-4 w-4 text-muted-foreground" />
+                  SLA Health
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {(["on_track", "due_soon", "overdue", "blocked"] as const).map((state) => (
+                    <Link key={state} href={state === "blocked" ? "/tickets?view=waiting_vendor" : state === "overdue" ? "/tickets?view=overdue" : "/tickets"}>
+                      <div className="rounded-lg border p-3 text-center hover-elevate cursor-pointer" data-testid={`sla-count-${state}`}>
+                        <p className="text-lg font-bold tabular-nums">{stats.slaCounts?.[state] ?? 0}</p>
+                        <StatusBadge type="sla-state" value={state} size="xs" className="mt-1" />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -594,7 +787,10 @@ export default function Dashboard() {
                             <p className="text-xs font-medium truncate">{item.ticketNumber}: {item.title}</p>
                             <p className="text-[10px] text-muted-foreground">{TICKET_CATEGORY_LABELS[item.category] || item.category}</p>
                           </div>
-                          <StatusBadge type="ticket-status" value={item.status} size="xs" />
+                          <div className="flex items-center gap-1 shrink-0">
+                            {item.slaState && <StatusBadge type="sla-state" value={item.slaState} size="xs" />}
+                            <StatusBadge type="ticket-status" value={item.status} size="xs" />
+                          </div>
                         </div>
                       </Link>
                     ))}

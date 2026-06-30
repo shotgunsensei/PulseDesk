@@ -109,6 +109,11 @@ function AppContent() {
                 </Route>
                 <Route path="/departments" component={DepartmentsPage} />
                 <Route path="/assets" component={AssetsPage} />
+                <Route path="/assets/:assetId/report-issue">
+                  <RoleGate check={canSubmitIssues(role)}>
+                    <SubmitIssue />
+                  </RoleGate>
+                </Route>
                 <Route path="/supply-requests">
                   <RoleGate check={!isReadOnly(role)}>
                     <SupplyRequestsPage />

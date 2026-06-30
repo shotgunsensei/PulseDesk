@@ -1,10 +1,16 @@
-# Stripe Setup
+# Archived Stripe Setup Reference
 
-> OperatorOS-owned billing reference.
+> Archived legacy reference.
 >
-> This file describes the parent OperatorOS Stripe setup. PulseDesk must not
-> create Stripe checkout or billing portal sessions directly. PulseDesk receives
+> PulseDesk is no longer deployed with local Stripe billing. Do not configure
+> Stripe price IDs, Stripe webhook secrets, checkout sessions, or billing portal
+> sessions in PulseDesk production. OperatorOS owns pricing, checkout,
+> subscriptions, seats, and PulseDesk module entitlements. PulseDesk receives
 > access through OperatorOS SSO and entitlement snapshots.
+
+This document is retained only to preserve historical OperatorOS billing context
+and rollback notes. For current PulseDesk deployment, use
+[`pulsedesk-operatoros-deployment.md`](./pulsedesk-operatoros-deployment.md).
 
 OperatorOS uses Stripe Checkout Sessions in subscription mode. Create five
 recurring monthly Prices in Stripe and set these deployment secrets:

@@ -6,7 +6,7 @@ import { HelpCircle } from "lucide-react";
 const FAQ = [
   {
     q: "How is access managed?",
-    a: "PulseDesk access is managed by OperatorOS. Launch PulseDesk from OperatorOS, and contact your OperatorOS admin for subscription, seat, or module entitlement changes.",
+    a: "PulseDesk access is managed by OperatorOS. Launch PulseDesk from OperatorOS, and contact your OperatorOS admin for seat or module entitlement changes.",
   },
   {
     q: "How do I invite teammates?",
@@ -30,7 +30,7 @@ const FAQ = [
   },
   {
     q: "What happens if I cancel?",
-    a: "OperatorOS controls subscription cancellation and entitlement state. If your PulseDesk module access is removed, protected app access is revoked while your operational data remains governed by the current retention policy.",
+    a: "OperatorOS controls entitlement state. If your PulseDesk module access is removed, protected app access is revoked while operational data remains governed by the current retention policy.",
   },
 ];
 

@@ -2,7 +2,11 @@
 
 **The operational heartbeat of your healthcare facility.**
 
-PulseDesk is a multi-tenant healthcare operations coordination platform: ticketing, departments, assets, supply requests, facility requests, vendors, analytics, and email-to-ticket — all role-gated and ready for HIPAA-conscious workflows.
+PulseDesk is a multi-tenant healthcare operations coordination platform and OperatorOS child app: ticketing, departments, assets, supply requests, facility requests, vendors, analytics, and email-to-ticket - all role-gated and ready for HIPAA-conscious workflows.
+
+PulseDesk is launched from OperatorOS in production. OperatorOS owns pricing,
+checkout, subscriptions, seats, and module entitlements. PulseDesk owns the
+healthcare operations workflows and tenant-local operational data.
 
 Live: [pulsedesk.support](https://pulsedesk.support)
 
@@ -70,6 +74,9 @@ node scripts/check-bundle-size.mjs   # post-build size guard
 
 ## Environment variables
 
+For full deployment details, see
+[`docs/pulsedesk-operatoros-deployment.md`](./docs/pulsedesk-operatoros-deployment.md).
+
 | Variable | Required | Purpose |
 |---|---|---|
 | `DATABASE_URL` | yes | Postgres connection string |
@@ -79,7 +86,11 @@ node scripts/check-bundle-size.mjs   # post-build size guard
 | `OPERATOROS_SSO_AUDIENCE` | recommended | SSO audience, defaults to `pulsedesk` |
 | `OPERATOROS_SSO_ENV` | yes | Expected SSO environment claim |
 | `OPERATOROS_SSO_CONSUME_URL` | yes in production | Full OperatorOS token-consume URL |
+| `OPERATOROS_API_URL` | fallback only | Used only when `OPERATOROS_SSO_CONSUME_URL` is absent. Can be a full consume URL or API base URL. |
 | `OPERATOROS_SERVICE_TOKEN` | recommended | Server-to-server entitlement introspection and webhook registration |
+| `OPERATOROS_ENTITLEMENTS_INTROSPECT_URL` | optional | Full entitlement introspection override. Legacy alias `OPERATOROS_INTROSPECTION_URL` is also accepted. |
+| `OPERATOROS_ENTITLEMENT_SYNC_URL` | optional | Full entitlement webhook registration override |
+| `APP_BASE_URL` | yes in production | Public PulseDesk base URL for OAuth callbacks and OperatorOS webhook registration |
 | `PULSEDESK_MASTER_ADMIN_EMAIL` | optional | Comma-separated master-admin emails; defaults to `john@shotgunninjas.com` |
 | `PULSEDESK_LOCAL_AUTH_ENABLED` | development/reviewer only | Enables local username/password login and registration |
 | `SENDGRID_API_KEY` | optional | For Inbound Parse provider |
@@ -91,14 +102,23 @@ node scripts/check-bundle-size.mjs   # post-build size guard
 
 OAuth credentials are stored **per-org** in `org_email_connectors` and `org_auth_config`. The env-level Google/Microsoft secrets only act as fallbacks for development convenience. New customers should configure their own OAuth apps in Settings → Authentication or Connected Inboxes.
 
+Deprecated for PulseDesk deployment: Stripe price IDs, Stripe webhook secrets,
+Stripe checkout secrets, and PulseDesk-owned billing variables. Configure those
+in OperatorOS, not in the child app.
+
 ## Deployment
 
 - Replit Deployments (autoscale or reserved VM). Build runs `npm run build`,
   start runs `npm run start` (esbuild server bundle in `dist/index.cjs`).
+- OperatorOS launch: `GET /sso?token=<jwt>`.
 - OperatorOS entitlement webhook endpoint: `POST /webhooks/operatoros/entitlements` (raw body, HMAC signature verified).
 - SendGrid Inbound Parse: `POST /api/email/inbound/sendgrid` (alias routes
   to org).
 - Health: `GET /api/health`.
+- Final deployment guide:
+  [`docs/pulsedesk-operatoros-deployment.md`](./docs/pulsedesk-operatoros-deployment.md).
+- Release notes:
+  [`docs/pulsedesk-operatoros-release-notes.md`](./docs/pulsedesk-operatoros-release-notes.md).
 
 ## Project conventions
 

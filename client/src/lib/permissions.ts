@@ -1,17 +1,14 @@
-export type Role = "owner" | "admin" | "supervisor" | "staff" | "technician" | "readonly";
+import {
+  ROLE_LABELS as CANONICAL_ROLE_LABELS,
+  hasRole as hasCanonicalRole,
+  normalizeRole,
+  type CanonicalRole,
+} from "@shared/roles";
 
-const ROLE_HIERARCHY: Record<Role, number> = {
-  owner: 120,
-  admin: 100,
-  supervisor: 80,
-  technician: 60,
-  staff: 40,
-  readonly: 10,
-};
+export type Role = CanonicalRole;
 
 export function hasRole(userRole: string | undefined, minRole: Role): boolean {
-  if (!userRole) return false;
-  return (ROLE_HIERARCHY[userRole as Role] || 0) >= ROLE_HIERARCHY[minRole];
+  return hasCanonicalRole(userRole, minRole);
 }
 
 export function canManageTickets(role: string | undefined): boolean {
@@ -27,11 +24,13 @@ export function canManageSettings(role: string | undefined): boolean {
 }
 
 export function canSubmitIssues(role: string | undefined): boolean {
-  return role !== "readonly";
+  const normalizedRole = normalizeRole(role);
+  return !!normalizedRole && normalizedRole !== "readonly";
 }
 
 export function canAddNotes(role: string | undefined): boolean {
-  return role !== "readonly";
+  const normalizedRole = normalizeRole(role);
+  return !!normalizedRole && normalizedRole !== "readonly";
 }
 
 export function canEscalate(role: string | undefined): boolean {
@@ -39,7 +38,8 @@ export function canEscalate(role: string | undefined): boolean {
 }
 
 export function canViewAnalytics(role: string | undefined): boolean {
-  return hasRole(role, "supervisor") || role === "readonly";
+  const normalizedRole = normalizeRole(role);
+  return hasRole(role, "supervisor") || normalizedRole === "readonly";
 }
 
 export function canManageUsers(role: string | undefined): boolean {
@@ -47,14 +47,12 @@ export function canManageUsers(role: string | undefined): boolean {
 }
 
 export function isReadOnly(role: string | undefined): boolean {
-  return role === "readonly";
+  return normalizeRole(role) === "readonly";
 }
 
 export const ROLE_LABELS: Record<string, string> = {
-  owner: "Owner",
-  admin: "Administrator",
-  supervisor: "Supervisor",
-  staff: "Staff",
-  technician: "Technician",
-  readonly: "Executive (Read-Only)",
+  ...CANONICAL_ROLE_LABELS,
+  tech: CANONICAL_ROLE_LABELS.technician,
+  viewer: CANONICAL_ROLE_LABELS.readonly,
+  "": "Unknown",
 };
