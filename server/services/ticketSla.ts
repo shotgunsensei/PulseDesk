@@ -4,6 +4,7 @@ export interface TicketSlaInput {
   priority: string;
   status: string;
   dueDate?: Date | string | null;
+  resolutionDueAt?: Date | string | null;
   createdAt?: Date | string | null;
   isPatientImpacting?: boolean | null;
 }
@@ -39,7 +40,7 @@ function targetHours(priority: string, isPatientImpacting?: boolean | null): num
 
 export function computeTicketSla(input: TicketSlaInput, now = new Date()): TicketSlaResult {
   const target = targetHours(input.priority, input.isPatientImpacting);
-  const explicitDueDate = asDate(input.dueDate);
+  const explicitDueDate = asDate(input.dueDate) ?? asDate(input.resolutionDueAt);
   const createdAt = asDate(input.createdAt);
   const slaDueAt = explicitDueDate ?? (createdAt ? new Date(createdAt.getTime() + target * 60 * 60 * 1000) : null);
 

@@ -5,6 +5,11 @@ import {
   getCurrentEntitlementSnapshotForRequest,
   snapshotNumericLimit,
 } from "../services/operatorosEntitlements";
+import { validateTicketTenantReferences } from "./serviceDesk";
+import { db } from "../db";
+import { activityEvents, slaEvents, slaPolicies, ticketInternalNotes } from "@shared/schema";
+import { hasRole } from "@shared/roles";
+import { and, eq } from "drizzle-orm";
 
 const router = Router();
 
@@ -30,7 +35,9 @@ router.get("/api/tickets/:id", requireAuth, requireOrg, async (req, res) => {
 router.get("/api/tickets/:id/events", requireAuth, requireOrg, async (req, res) => {
   try {
     const events = await storage.getTicketEvents(req.session.orgId!, (req.params.id as string));
-    res.json(events);
+    const membership = await storage.getMembership(req.session.orgId!, req.session.userId!);
+    const canSeeInternal = !!membership && hasRole(membership.role, "technician");
+    res.json(canSeeInternal ? events : events.filter((event) => event.type !== "note" && event.type !== "internal_note"));
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -68,7 +75,25 @@ router.post("/api/tickets", requireAuth, requireOrg, requireMinRole("staff"), as
     data.dueDate = data.dueDate ? new Date(data.dueDate) : null;
     data.vendorContactedAt = data.vendorContactedAt ? new Date(data.vendorContactedAt) : null;
     data.vendorExpectedFollowUpAt = data.vendorExpectedFollowUpAt ? new Date(data.vendorExpectedFollowUpAt) : null;
+    await validateTicketTenantReferences(req.session.orgId!, data);
+
+    const [slaPolicy] = data.slaPolicyId
+      ? await db.select().from(slaPolicies).where(and(eq(slaPolicies.orgId, req.session.orgId!), eq(slaPolicies.id, data.slaPolicyId), eq(slaPolicies.isActive, true))).limit(1)
+      : await db.select().from(slaPolicies).where(and(eq(slaPolicies.orgId, req.session.orgId!), eq(slaPolicies.isDefault, true), eq(slaPolicies.isActive, true))).limit(1);
+    if (slaPolicy) {
+      const openedAt = new Date();
+      data.slaPolicyId = slaPolicy.id;
+      data.responseDueAt = new Date(openedAt.getTime() + slaPolicy.responseMinutes * 60_000);
+      data.resolutionDueAt = new Date(openedAt.getTime() + slaPolicy.resolutionMinutes * 60_000);
+    }
     const t = await storage.createTicket(req.session.orgId!, data, req.session.userId!);
+    if (slaPolicy) {
+      await db.insert(slaEvents).values([
+        { orgId: req.session.orgId!, ticketId: t.id, slaPolicyId: slaPolicy.id, eventType: "response_target_started", targetAt: data.responseDueAt, metadata: { targetMinutes: slaPolicy.responseMinutes } },
+        { orgId: req.session.orgId!, ticketId: t.id, slaPolicyId: slaPolicy.id, eventType: "resolution_target_started", targetAt: data.resolutionDueAt, metadata: { targetMinutes: slaPolicy.resolutionMinutes } },
+      ]);
+    }
+    await db.insert(activityEvents).values({ orgId: req.session.orgId!, actorUserId: req.session.userId!, entityType: "ticket", entityId: t.id, action: "created", summary: `${t.ticketNumber} created`, after: t as any, ipAddress: req.ip ?? null });
 
     storage.notifyOrgMembers(
       req.session.orgId!, req.session.userId!,
@@ -81,7 +106,7 @@ router.post("/api/tickets", requireAuth, requireOrg, requireMinRole("staff"), as
 
     res.json(t);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message, code: err.code });
   }
 });
 
@@ -94,10 +119,30 @@ router.patch("/api/tickets/:id", requireAuth, requireOrg, requireMinRole("techni
     if ("departmentId" in data) data.departmentId = data.departmentId || null;
     if ("assetId" in data) data.assetId = data.assetId || null;
     if ("assignedTo" in data) data.assignedTo = data.assignedTo || null;
+    if ("clientId" in data) data.clientId = data.clientId || null;
+    if ("siteId" in data) data.siteId = data.siteId || null;
+    if ("contactId" in data) data.contactId = data.contactId || null;
+    if ("queueId" in data) data.queueId = data.queueId || null;
+    if ("teamId" in data) data.teamId = data.teamId || null;
+    if ("slaPolicyId" in data) data.slaPolicyId = data.slaPolicyId || null;
+    await validateTicketTenantReferences(req.session.orgId!, data);
 
     const oldTicket = await storage.getTicket(req.session.orgId!, (req.params.id as string));
+    if (oldTicket && data.slaPolicyId && data.slaPolicyId !== oldTicket.slaPolicyId) {
+      const [slaPolicy] = await db.select().from(slaPolicies).where(and(eq(slaPolicies.orgId, req.session.orgId!), eq(slaPolicies.id, data.slaPolicyId), eq(slaPolicies.isActive, true))).limit(1);
+      if (slaPolicy) {
+        const openedAt = new Date(oldTicket.createdAt);
+        data.responseDueAt = new Date(openedAt.getTime() + slaPolicy.responseMinutes * 60_000);
+        data.resolutionDueAt = new Date(openedAt.getTime() + slaPolicy.resolutionMinutes * 60_000);
+        await db.insert(slaEvents).values({
+          orgId: req.session.orgId!, ticketId: oldTicket.id, slaPolicyId: slaPolicy.id, eventType: "policy_changed",
+          targetAt: data.resolutionDueAt, metadata: { responseMinutes: slaPolicy.responseMinutes, resolutionMinutes: slaPolicy.resolutionMinutes },
+        });
+      }
+    }
     const t = await storage.updateTicket(req.session.orgId!, (req.params.id as string), data);
     if (!t) return res.status(404).json({ error: "Ticket not found" });
+    await db.insert(activityEvents).values({ orgId: req.session.orgId!, actorUserId: req.session.userId!, entityType: "ticket", entityId: t.id, action: "updated", summary: `${t.ticketNumber} updated`, before: oldTicket as any, after: t as any, ipAddress: req.ip ?? null });
 
     if (data.status && oldTicket && data.status !== oldTicket.status) {
       await storage.createTicketEvent(req.session.orgId!, t.id, "status_change", `Status changed from ${oldTicket.status} to ${data.status}`, req.session.userId!);
@@ -152,18 +197,21 @@ router.patch("/api/tickets/:id", requireAuth, requireOrg, requireMinRole("techni
 
     res.json(t);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message, code: err.code });
   }
 });
 
-router.post("/api/tickets/:id/notes", requireAuth, requireOrg, requireMinRole("staff"), async (req, res) => {
+router.post("/api/tickets/:id/notes", requireAuth, requireOrg, requireMinRole("technician"), async (req, res) => {
   try {
     const { content } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: "Note content required" });
     const ticket = await storage.getTicket(req.session.orgId!, (req.params.id as string));
     if (!ticket) return res.status(404).json({ error: "Ticket not found" });
 
-    const event = await storage.createTicketEvent(req.session.orgId!, ticket.id, "note", content, req.session.userId!);
+    const sanitized = String(content).replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<[^>]+>/g, "").trim().slice(0, 20000);
+    const [note] = await db.insert(ticketInternalNotes).values({ orgId: req.session.orgId!, ticketId: ticket.id, body: sanitized, createdBy: req.session.userId! }).returning();
+    await storage.createTicketEvent(req.session.orgId!, ticket.id, "internal_note", "Internal note added", req.session.userId!);
+    await db.insert(activityEvents).values({ orgId: req.session.orgId!, actorUserId: req.session.userId!, entityType: "ticket", entityId: ticket.id, action: "internal_note_added", summary: `Internal note added to ${ticket.ticketNumber}`, after: { noteId: note.id }, ipAddress: req.ip ?? null });
 
     storage.notifyOrgMembers(
       req.session.orgId!, req.session.userId!,
@@ -174,7 +222,7 @@ router.post("/api/tickets/:id/notes", requireAuth, requireOrg, requireMinRole("s
       ticket.assignedTo || null
     );
 
-    res.json(event);
+    res.json(note);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -182,9 +230,12 @@ router.post("/api/tickets/:id/notes", requireAuth, requireOrg, requireMinRole("s
 
 router.delete("/api/tickets/:id", requireAuth, requireOrg, requireMinRole("supervisor"), async (req, res) => {
   try {
-    const deleted = await storage.deleteTicket(req.session.orgId!, (req.params.id as string));
-    if (!deleted) return res.status(404).json({ error: "Ticket not found" });
-    res.json({ ok: true });
+    const ticket = await storage.getTicket(req.session.orgId!, (req.params.id as string));
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+    const archived = await storage.updateTicket(req.session.orgId!, ticket.id, { archivedAt: new Date(), archivedBy: req.session.userId! });
+    await storage.createTicketEvent(req.session.orgId!, ticket.id, "archive", "Ticket archived", req.session.userId!);
+    await db.insert(activityEvents).values({ orgId: req.session.orgId!, actorUserId: req.session.userId!, entityType: "ticket", entityId: ticket.id, action: "archive", summary: `${ticket.ticketNumber} archived`, before: ticket as any, after: archived as any, ipAddress: req.ip ?? null });
+    res.json({ ok: true, archived });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

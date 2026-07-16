@@ -1,5 +1,6 @@
 import { pool } from "./db";
 import { encryptSecret, decryptSecret } from "./auth/crypto";
+import { ensureServiceDeskSchema } from "./serviceDeskMigration";
 
 async function migrateEnums() {
   const client = await pool.connect();
@@ -76,6 +77,7 @@ async function migrateStaleRoles() {
     }
 
     console.log(`[migration] Stale role migration and defaults update complete`);
+    await ensureServiceDeskSchema(client);
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK");

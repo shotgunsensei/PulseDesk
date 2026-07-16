@@ -16,6 +16,8 @@ Set these on the PulseDesk deployment. Do not commit real values.
 | `SESSION_SECRET` | yes | High-entropy express-session secret. Required in production. |
 | `MODULE_SSO_SECRET` | yes | Shared HS256 secret used for OperatorOS SSO JWT verification and entitlement webhook HMAC. Never log it. |
 | `OPERATOROS_BASE_URL` | yes | OperatorOS issuer and parent launch URL, for example `https://operatoros.net`. PulseDesk normalizes trailing slashes. |
+| `OPERATOROS_MY_APPS_URL` | optional | Canonical OperatorOS My Apps return URL. Defaults to `{OPERATOROS_BASE_URL}/app`. |
+| `OPERATOROS_LOGOUT_URL` | optional | Coordinated OperatorOS logout URL. Defaults to `{OPERATOROS_BASE_URL}/logout`. |
 | `OPERATOROS_SSO_AUDIENCE` | yes | `pulsedesk`. Must match token `aud` and `module_slug`. |
 | `OPERATOROS_SSO_ENV` | yes | `prod`, `staging`, or `dev`. Must match token `env`. |
 | `OPERATOROS_SSO_CONSUME_URL` | production | Preferred full token-consume URL. Current validated production value: `https://operatoros.net/api/modules/sso/consume`. If the versioned route is active, use `https://operatoros.net/api/v1/modules/sso/consume`. |
@@ -25,7 +27,8 @@ Set these on the PulseDesk deployment. Do not commit real values.
 | `OPERATOROS_ENTITLEMENT_SYNC_URL` | optional | Full webhook registration URL override. Defaults to `{OPERATOROS_BASE_URL}/v1/sso/entitlements/sync`. |
 | `APP_BASE_URL` | yes | Public PulseDesk root, for example `https://pulsedesk.support`. Used for OAuth callbacks and OperatorOS webhook registration. Accepted aliases for webhook registration: `PULSEDESK_PUBLIC_URL`, `PUBLIC_BASE_URL`, `PULSEDESK_URL`, or first `REPLIT_DOMAINS` value. |
 | `PULSEDESK_MASTER_ADMIN_EMAIL` | recommended | Comma-separated configured master admins. Defaults to `john@shotgunninjas.com`; keep John present unless intentionally adding more emails. |
-| `PULSEDESK_LOCAL_AUTH_ENABLED` | dev only | Enables local username/password fallback. Leave unset or false in production unless an approved reviewer workflow needs it. |
+| `PULSEDESK_LOCAL_AUTH_ENABLED` | dev only | Enables local username/password fallback only outside production. Leave unset or false in production. |
+| `ATTACHMENT_STORAGE_DIR` | production | Durable, private writable storage for ticket attachments. Defaults to `data/attachments`; mount persistent storage in production and do not serve this directory statically. |
 
 ## Mail And Connector Environment
 
@@ -106,13 +109,24 @@ Rules:
 
 ## Runtime Verification
 
+Back up the production database, then apply the committed Drizzle migrations before starting the new build:
+
+```bash
+npx drizzle-kit migrate
+```
+
+The server also runs an idempotent compatibility migration at startup so existing PulseDesk databases receive the restored service-desk tables, columns, indexes, and default workflow configuration.
+
 Run locally or in CI:
 
 ```bash
 npm run check
 npm run build
 npm run smoke
+npm run test:e2e:service-desk
 ```
+
+The end-to-end command requires `PULSEDESK_E2E_BASE_URL` and a fresh one-time `PULSEDESK_E2E_SSO_TOKEN`. To verify role boundaries and cross-tenant denial, also provide `PULSEDESK_E2E_STAFF_SSO_TOKEN` and `PULSEDESK_E2E_SECOND_TENANT_SSO_TOKEN`.
 
 Optional live webhook check:
 
@@ -151,14 +165,17 @@ The live webhook check posts an intentionally bad signature and expects `401`.
 
 ## Deployment Order
 
-1. Set env vars on the PulseDesk host.
-2. Deploy code and run `npm run build`.
-3. Start the server with `npm run start`.
-4. Hit `GET /api/health`; expect `databaseOk`, `sessionConfigured`,
+1. Back up the existing PostgreSQL database.
+2. Set env vars and mount durable private attachment storage on the PulseDesk host.
+3. Apply migrations with `npx drizzle-kit migrate`.
+4. Deploy code and run `npm run build`.
+5. Start the server with `npm run start`.
+6. Hit `GET /api/health`; expect `databaseOk`, `sessionConfigured`,
    `ssoConfigured`, `operatorOsConsumeConfigured`,
    `entitlementWebhookConfigured`, and `masterAdminConfigured` to be true for
    production.
-5. Launch John from OperatorOS and verify System Admin access.
-6. Launch a regular tenant user and verify dashboard, ticket queue, and role
+7. Launch John from OperatorOS and verify System Admin access at `/app`.
+8. Launch a regular tenant user and verify dashboard, ticket queue, and role
    gates.
-7. Send an OperatorOS disabled entitlement snapshot and verify access revokes.
+9. Run the live service-desk E2E with fresh OperatorOS one-time tokens.
+10. Send an OperatorOS disabled entitlement snapshot and verify access revokes.

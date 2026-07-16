@@ -9,11 +9,13 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:push": "drizzle-kit push",
-    "smoke": "npm run smoke:routes && npm run smoke:auth && npm run smoke:sso && npm run smoke:webhook",
+    "smoke": "npm run smoke:routes && npm run smoke:service-desk && npm run smoke:auth && npm run smoke:sso && npm run smoke:webhook",
     "smoke:routes": "node scripts/smoke-route-manifest.mjs",
     "smoke:auth": "node scripts/smoke-unauthenticated-routes.mjs",
     "smoke:sso": "node scripts/smoke-sso-config.mjs",
-    "smoke:webhook": "node scripts/smoke-entitlement-webhook.mjs"
+    "smoke:webhook": "node scripts/smoke-entitlement-webhook.mjs",
+    "smoke:service-desk": "node scripts/smoke-service-desk.mjs",
+    "test:e2e:service-desk": "node scripts/e2e-service-desk.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { PulseLoader } from "@/components/pulse-line";
@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Link, useSearch } from "wouter";
 import { useState, useMemo, useEffect } from "react";
-import { Search, PlusCircle, AlertTriangle, HeartPulse, Clock, UserX, ShieldAlert, Hourglass, Users, Inbox, UserCheck } from "lucide-react";
+import { Search, PlusCircle, AlertTriangle, HeartPulse, Clock, UserX, ShieldAlert, Hourglass, Users, Inbox, UserCheck, Bookmark } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { canSubmitIssues } from "@/lib/permissions";
 import { useAuth } from "@/lib/auth";
@@ -16,7 +16,9 @@ import {
   TICKET_PRIORITY_LABELS,
   TICKET_CATEGORY_LABELS,
   type Ticket,
+  type SavedView,
 } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format, formatDistanceToNow } from "date-fns";
 
 type SlaState = "on_track" | "due_soon" | "overdue" | "blocked";
@@ -30,6 +32,7 @@ type TicketWithNames = Ticket & {
   slaReason?: string;
   vendorExpectedFollowUpAt?: string | Date | null;
 };
+type TicketPage = { items: TicketWithNames[]; page: number; pageSize: number; total: number };
 
 const OPEN_STATUSES = new Set(["new", "triage", "assigned", "waiting_department", "waiting_vendor", "in_progress", "escalated"]);
 
@@ -66,15 +69,39 @@ export default function TicketsPage() {
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [triageView, setTriageView] = useState<TriageView>(urlView || "all");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     if (urlStatus) setStatusFilter(urlStatus);
     if (urlView) setTriageView(urlView);
   }, [urlStatus, urlView]);
 
-  const { data: tickets, isLoading } = useQuery<TicketWithNames[]>({
-    queryKey: ["/api/tickets"],
+  const { data: ticketPage, isLoading } = useQuery<TicketPage>({
+    queryKey: ["/api/service-desk/tickets", { page, search, statusFilter, priorityFilter, categoryFilter, triageView }],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: String(page), pageSize: "50" });
+      if (search) params.set("q", search);
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (priorityFilter !== "all") params.set("priority", priorityFilter);
+      if (categoryFilter !== "all") params.set("category", categoryFilter);
+      if (triageView === "new_intake") params.set("status", "new");
+      if (triageView === "waiting_vendor") params.set("status", "waiting_vendor");
+      if (triageView === "waiting_department") params.set("status", "waiting_department");
+      if (triageView === "unassigned") params.set("unassigned", "true");
+      if (triageView === "my_tickets" && user?.id) params.set("assignedTo", user.id);
+      const response = await fetch(`/api/service-desk/tickets?${params}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to load ticket queue");
+      return response.json();
+    },
   });
+  const tickets = ticketPage?.items;
+  const { data: savedViews = [] } = useQuery<SavedView[]>({ queryKey: ["/api/saved-views"] });
+  const saveView = useMutation({
+    mutationFn: (name: string) => apiRequest("POST", "/api/saved-views", { name, filters: { statusFilter, priorityFilter, categoryFilter, triageView, search }, sort: { field: "updatedAt", order: "desc" } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/saved-views"] }),
+  });
+
+  useEffect(() => { setPage(1); }, [search, statusFilter, priorityFilter, categoryFilter, triageView]);
 
   const filtered = useMemo(() => {
     if (!tickets) return [];
@@ -229,7 +256,10 @@ export default function TicketsPage() {
               Clear filters
             </Button>
           )}
+          <Button variant="outline" size="sm" onClick={() => { const name = window.prompt("Saved view name"); if (name?.trim()) saveView.mutate(name.trim()); }} disabled={saveView.isPending}><Bookmark className="mr-1.5 h-3.5 w-3.5" />Save view</Button>
         </div>
+
+        {savedViews.length > 0 && <div className="flex flex-wrap items-center gap-2"><span className="text-xs text-muted-foreground">Saved:</span>{savedViews.map((view) => <Button key={view.id} variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { const filters = (view.filters || {}) as any; setStatusFilter(filters.statusFilter || "all"); setPriorityFilter(filters.priorityFilter || "all"); setCategoryFilter(filters.categoryFilter || "all"); setTriageView(filters.triageView || "all"); setSearch(filters.search || ""); }}>{view.name}</Button>)}</div>}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
@@ -306,6 +336,13 @@ export default function TicketsPage() {
                 </Link>
               );
             })}
+            {(ticketPage?.total ?? 0) > ticketPage!.pageSize && (
+              <div className="flex items-center justify-between pt-3">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</Button>
+                <span className="text-xs text-muted-foreground">Page {page} of {Math.ceil((ticketPage?.total ?? 0) / (ticketPage?.pageSize ?? 50))}</span>
+                <Button variant="outline" size="sm" disabled={page >= Math.ceil((ticketPage?.total ?? 0) / (ticketPage?.pageSize ?? 50))} onClick={() => setPage((value) => value + 1)}>Next</Button>
+              </div>
+            )}
           </div>
         )}
       </div>

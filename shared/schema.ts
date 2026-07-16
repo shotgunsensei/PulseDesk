@@ -179,6 +179,135 @@ export const departments = pgTable("departments", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const clients = pgTable("clients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id").notNull().references(() => orgs.id),
+  name: text("name").notNull(),
+  clientCode: text("client_code").notNull(),
+  status: text("status").notNull().default("active"),
+  phone: text("phone").default(""),
+  email: text("email").default(""),
+  website: text("website").default(""),
+  address: text("address").default(""),
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  archivedAt: timestamp("archived_at"),
+}, (table) => ({
+  uniqueOrgClientCode: uniqueIndex("idx_clients_org_code").on(table.orgId, table.clientCode),
+}));
+
+export const sites = pgTable("sites", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id").notNull().references(() => orgs.id),
+  clientId: varchar("client_id").notNull().references(() => clients.id),
+  name: text("name").notNull(),
+  siteCode: text("site_code").notNull(),
+  address1: text("address_1").default(""),
+  address2: text("address_2").default(""),
+  city: text("city").default(""),
+  state: text("state").default(""),
+  postalCode: text("postal_code").default(""),
+  country: text("country").default("US"),
+  phone: text("phone").default(""),
+  timezone: text("timezone").default("America/New_York"),
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  archivedAt: timestamp("archived_at"),
+}, (table) => ({
+  uniqueOrgSiteCode: uniqueIndex("idx_sites_org_code").on(table.orgId, table.siteCode),
+}));
+
+export const contacts = pgTable("contacts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id").notNull().references(() => orgs.id),
+  clientId: varchar("client_id").notNull().references(() => clients.id),
+  siteId: varchar("site_id").references(() => sites.id),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").default(""),
+  title: text("title").default(""),
+  email: text("email").default(""),
+  phone: text("phone").default(""),
+  mobile: text("mobile").default(""),
+  isPrimary: boolean("is_primary").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const queues = pgTable("queues", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id").notNull().references(() => orgs.id),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  emailAlias: text("email_alias"),
+  color: text("color").default("#2563eb"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({ uniqueOrgQueueName: uniqueIndex("idx_queues_org_name").on(table.orgId, table.name) }));
+
+export const teams = pgTable("teams", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id").notNull().references(() => orgs.id),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  queueId: varchar("queue_id").references(() => queues.id),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({ uniqueOrgTeamName: uniqueIndex("idx_teams_org_name").on(table.orgId, table.name) }));
+
+export const teamMembers = pgTable("team_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id").notNull().references(() => orgs.id),
+  teamId: varchar("team_id").notNull().references(() => teams.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  isLead: boolean("is_lead").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({ uniqueTeamMember: uniqueIndex("idx_team_members_unique").on(table.orgId, table.teamId, table.userId) }));
+
+export const ticketStatuses = pgTable("ticket_statuses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id").notNull().references(() => orgs.id),
+  key: text("key").notNull(), name: text("name").notNull(), color: text("color").default("#64748b"),
+  sortOrder: integer("sort_order").default(0).notNull(), isClosedState: boolean("is_closed_state").default(false).notNull(),
+  isDefault: boolean("is_default").default(false).notNull(), isActive: boolean("is_active").default(true).notNull(),
+}, (table) => ({ uniqueOrgKey: uniqueIndex("idx_ticket_statuses_org_key").on(table.orgId, table.key) }));
+
+export const ticketPriorities = pgTable("ticket_priorities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  key: text("key").notNull(), name: text("name").notNull(), color: text("color").default("#64748b"), sortOrder: integer("sort_order").default(0).notNull(),
+  responseMinutes: integer("response_minutes"), resolutionMinutes: integer("resolution_minutes"), isActive: boolean("is_active").default(true).notNull(),
+}, (table) => ({ uniqueOrgKey: uniqueIndex("idx_ticket_priorities_org_key").on(table.orgId, table.key) }));
+
+export const ticketTypes = pgTable("ticket_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  key: text("key").notNull(), name: text("name").notNull(), description: text("description").default(""), isActive: boolean("is_active").default(true).notNull(),
+}, (table) => ({ uniqueOrgKey: uniqueIndex("idx_ticket_types_org_key").on(table.orgId, table.key) }));
+
+export const ticketCategories = pgTable("ticket_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  key: text("key").notNull(), name: text("name").notNull(), parentId: varchar("parent_id"), description: text("description").default(""),
+  isActive: boolean("is_active").default(true).notNull(),
+}, (table) => ({ uniqueOrgKey: uniqueIndex("idx_ticket_categories_org_key").on(table.orgId, table.key) }));
+
+export const slaPolicies = pgTable("sla_policies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  name: text("name").notNull(), description: text("description").default(""), responseMinutes: integer("response_minutes").notNull().default(240),
+  resolutionMinutes: integer("resolution_minutes").notNull().default(1440), businessHours: jsonb("business_hours").default({}).notNull(),
+  pauseStatuses: text("pause_statuses").array().default(sql`ARRAY[]::text[]`), isDefault: boolean("is_default").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({ uniqueOrgName: uniqueIndex("idx_sla_policies_org_name").on(table.orgId, table.name) }));
+
+export const ticketCounters = pgTable("ticket_counters", {
+  orgId: varchar("org_id").primaryKey().references(() => orgs.id),
+  nextNumber: integer("next_number").notNull().default(1),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const ticketSourceEnum = pgEnum("ticket_source", [
   "manual",
   "email",
@@ -196,6 +325,16 @@ export const tickets = pgTable("tickets", {
   category: ticketCategoryEnum("category").notNull().default("other"),
   priority: ticketPriorityEnum("priority").notNull().default("normal"),
   status: ticketStatusEnum("status").notNull().default("new"),
+  clientId: varchar("client_id").references(() => clients.id),
+  siteId: varchar("site_id").references(() => sites.id),
+  contactId: varchar("contact_id").references(() => contacts.id),
+  queueId: varchar("queue_id").references(() => queues.id),
+  teamId: varchar("team_id").references(() => teams.id),
+  slaPolicyId: varchar("sla_policy_id").references(() => slaPolicies.id),
+  ticketTypeId: varchar("ticket_type_id").references(() => ticketTypes.id),
+  statusConfigId: varchar("status_config_id").references(() => ticketStatuses.id),
+  priorityConfigId: varchar("priority_config_id").references(() => ticketPriorities.id),
+  categoryConfigId: varchar("category_config_id").references(() => ticketCategories.id),
   departmentId: varchar("department_id").references(() => departments.id),
   location: text("location").default(""),
   building: text("building").default(""),
@@ -214,9 +353,17 @@ export const tickets = pgTable("tickets", {
   isRecurring: boolean("is_recurring").default(false).notNull(),
   isPatientImpacting: boolean("is_patient_impacting").default(false).notNull(),
   isRepeatIssue: boolean("is_repeat_issue").default(false).notNull(),
+  responseDueAt: timestamp("response_due_at"),
+  resolutionDueAt: timestamp("resolution_due_at"),
+  firstRespondedAt: timestamp("first_responded_at"),
+  resolvedAt: timestamp("resolved_at"),
+  closedAt: timestamp("closed_at"),
+  reopenedAt: timestamp("reopened_at"),
+  archivedAt: timestamp("archived_at"),
+  archivedBy: varchar("archived_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({ uniqueOrgTicketNumber: uniqueIndex("idx_tickets_org_number").on(table.orgId, table.ticketNumber) }));
 
 export const ticketEvents = pgTable("ticket_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -232,6 +379,60 @@ export const ticketEvents = pgTable("ticket_events", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const ticketComments = pgTable("ticket_comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  ticketId: varchar("ticket_id").notNull().references(() => tickets.id), body: text("body").notNull(), bodyFormat: text("body_format").notNull().default("plain"),
+  createdBy: varchar("created_by").references(() => users.id), createdAt: timestamp("created_at").defaultNow().notNull(), editedAt: timestamp("edited_at"),
+});
+
+export const ticketInternalNotes = pgTable("ticket_internal_notes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  ticketId: varchar("ticket_id").notNull().references(() => tickets.id), body: text("body").notNull(), bodyFormat: text("body_format").notNull().default("plain"),
+  createdBy: varchar("created_by").references(() => users.id), createdAt: timestamp("created_at").defaultNow().notNull(), editedAt: timestamp("edited_at"),
+});
+
+export const ticketAssignments = pgTable("ticket_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  ticketId: varchar("ticket_id").notNull().references(() => tickets.id), technicianId: varchar("technician_id").references(() => users.id),
+  queueId: varchar("queue_id").references(() => queues.id), teamId: varchar("team_id").references(() => teams.id),
+  assignedBy: varchar("assigned_by").references(() => users.id), assignedAt: timestamp("assigned_at").defaultNow().notNull(), unassignedAt: timestamp("unassigned_at"),
+});
+
+export const slaEvents = pgTable("sla_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  ticketId: varchar("ticket_id").notNull().references(() => tickets.id), slaPolicyId: varchar("sla_policy_id").references(() => slaPolicies.id),
+  eventType: text("event_type").notNull(), targetAt: timestamp("target_at"), occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+  metadata: jsonb("metadata").default({}).notNull(),
+});
+
+export const timeEntries = pgTable("time_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  ticketId: varchar("ticket_id").notNull().references(() => tickets.id), userId: varchar("user_id").notNull().references(() => users.id),
+  minutes: integer("minutes").notNull(), workType: text("work_type").notNull().default("remote"), description: text("description").default(""),
+  billable: boolean("billable").default(false).notNull(), startedAt: timestamp("started_at"), endedAt: timestamp("ended_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const attachments = pgTable("attachments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  ticketId: varchar("ticket_id").references(() => tickets.id), commentId: varchar("comment_id").references(() => ticketComments.id),
+  internalNoteId: varchar("internal_note_id").references(() => ticketInternalNotes.id), uploadedBy: varchar("uploaded_by").references(() => users.id),
+  originalName: text("original_name").notNull(), storageKey: text("storage_key").notNull(), mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(), checksumSha256: text("checksum_sha256").notNull(), isInternal: boolean("is_internal").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const tags = pgTable("tags", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  name: text("name").notNull(), color: text("color").default("#64748b"), createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({ uniqueOrgTag: uniqueIndex("idx_tags_org_name").on(table.orgId, table.name) }));
+
+export const ticketTags = pgTable("ticket_tags", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  ticketId: varchar("ticket_id").notNull().references(() => tickets.id), tagId: varchar("tag_id").notNull().references(() => tags.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({ uniqueTicketTag: uniqueIndex("idx_ticket_tags_unique").on(table.orgId, table.ticketId, table.tagId) }));
+
 export const assets = pgTable("assets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orgId: varchar("org_id")
@@ -240,14 +441,32 @@ export const assets = pgTable("assets", {
   assetTag: text("asset_tag").notNull(),
   name: text("name").notNull(),
   assetType: text("asset_type").default(""),
+  serialNumber: text("serial_number").default(""),
+  clientId: varchar("client_id").references(() => clients.id),
+  siteId: varchar("site_id").references(() => sites.id),
   location: text("location").default(""),
   departmentId: varchar("department_id").references(() => departments.id),
   serviceVendor: text("service_vendor").default(""),
   warrantyNotes: text("warranty_notes").default(""),
   maintenanceNotes: text("maintenance_notes").default(""),
+  assignedUserId: varchar("assigned_user_id").references(() => users.id),
+  purchaseDate: timestamp("purchase_date"),
+  warrantyStart: timestamp("warranty_start"),
+  warrantyEnd: timestamp("warranty_end"),
+  notes: text("notes").default(""),
   status: assetStatusEnum("status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  archivedAt: timestamp("archived_at"),
+}, (table) => ({ uniqueOrgAssetTag: uniqueIndex("idx_assets_org_tag").on(table.orgId, table.assetTag) }));
+
+export const devices = pgTable("devices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  assetId: varchar("asset_id").notNull().references(() => assets.id), hostname: text("hostname").notNull(), deviceType: text("device_type").default("workstation"),
+  operatingSystem: text("operating_system").default(""), ipAddress: text("ip_address").default(""), macAddress: text("mac_address").default(""),
+  manufacturer: text("manufacturer").default(""), model: text("model").default(""), lastSeenAt: timestamp("last_seen_at"), metadata: jsonb("metadata").default({}).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({ uniqueOrgHostname: uniqueIndex("idx_devices_org_hostname").on(table.orgId, table.hostname) }));
 
 export const supplyRequests = pgTable("supply_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -298,6 +517,49 @@ export const vendors = pgTable("vendors", {
   emergencyContact: text("emergency_contact").default(""),
   contractNotes: text("contract_notes").default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const contracts = pgTable("contracts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  clientId: varchar("client_id").references(() => clients.id), vendorId: varchar("vendor_id").references(() => vendors.id),
+  name: text("name").notNull(), contractNumber: text("contract_number").default(""), status: text("status").notNull().default("active"),
+  startDate: timestamp("start_date"), endDate: timestamp("end_date"), renewalDate: timestamp("renewal_date"), terms: text("terms").default(""), notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const knowledgeCategories = pgTable("knowledge_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  name: text("name").notNull(), slug: text("slug").notNull(), description: text("description").default(""), parentId: varchar("parent_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({ uniqueOrgSlug: uniqueIndex("idx_kb_categories_org_slug").on(table.orgId, table.slug) }));
+
+export const knowledgeArticles = pgTable("knowledge_articles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  categoryId: varchar("category_id").references(() => knowledgeCategories.id), title: text("title").notNull(), slug: text("slug").notNull(),
+  summary: text("summary").default(""), body: text("body").notNull(), status: text("status").notNull().default("draft"), visibility: text("visibility").notNull().default("internal"),
+  authorId: varchar("author_id").notNull().references(() => users.id), publishedAt: timestamp("published_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({ uniqueOrgSlug: uniqueIndex("idx_kb_articles_org_slug").on(table.orgId, table.slug) }));
+
+export const savedViews = pgTable("saved_views", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  userId: varchar("user_id").notNull().references(() => users.id), name: text("name").notNull(), resource: text("resource").notNull().default("tickets"),
+  filters: jsonb("filters").default({}).notNull(), sort: jsonb("sort").default({}).notNull(), isShared: boolean("is_shared").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const notificationPreferences = pgTable("notification_preferences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  userId: varchar("user_id").notNull().references(() => users.id), emailEnabled: boolean("email_enabled").default(true).notNull(),
+  inAppEnabled: boolean("in_app_enabled").default(true).notNull(), eventPreferences: jsonb("event_preferences").default({}).notNull(),
+  quietHours: jsonb("quiet_hours").default({}).notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({ uniqueOrgUser: uniqueIndex("idx_notification_preferences_org_user").on(table.orgId, table.userId) }));
+
+export const activityEvents = pgTable("activity_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), orgId: varchar("org_id").notNull().references(() => orgs.id),
+  actorUserId: varchar("actor_user_id").references(() => users.id), entityType: text("entity_type").notNull(), entityId: varchar("entity_id").notNull(),
+  action: text("action").notNull(), summary: text("summary").default(""), before: jsonb("before"), after: jsonb("after"), metadata: jsonb("metadata").default({}).notNull(),
+  ipAddress: text("ip_address"), createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const orgAuthConfig = pgTable("org_auth_config", {
@@ -437,6 +699,16 @@ export const insertTicketSchema = createInsertSchema(tickets).pick({
   category: true,
   priority: true,
   status: true,
+  clientId: true,
+  siteId: true,
+  contactId: true,
+  queueId: true,
+  teamId: true,
+  slaPolicyId: true,
+  ticketTypeId: true,
+  statusConfigId: true,
+  priorityConfigId: true,
+  categoryConfigId: true,
   departmentId: true,
   location: true,
   building: true,
@@ -460,13 +732,32 @@ export const insertAssetSchema = createInsertSchema(assets).pick({
   assetTag: true,
   name: true,
   assetType: true,
+  serialNumber: true,
+  clientId: true,
+  siteId: true,
   location: true,
   departmentId: true,
   serviceVendor: true,
   warrantyNotes: true,
   maintenanceNotes: true,
+  assignedUserId: true,
+  purchaseDate: true,
+  warrantyStart: true,
+  warrantyEnd: true,
+  notes: true,
   status: true,
 });
+
+export const insertClientSchema = createInsertSchema(clients).omit({ id: true, orgId: true, createdAt: true, updatedAt: true, archivedAt: true });
+export const insertSiteSchema = createInsertSchema(sites).omit({ id: true, orgId: true, createdAt: true, updatedAt: true, archivedAt: true });
+export const insertContactSchema = createInsertSchema(contacts).omit({ id: true, orgId: true, createdAt: true, updatedAt: true });
+export const insertQueueSchema = createInsertSchema(queues).omit({ id: true, orgId: true, createdAt: true, updatedAt: true });
+export const insertTeamSchema = createInsertSchema(teams).omit({ id: true, orgId: true, createdAt: true, updatedAt: true });
+export const insertSlaPolicySchema = createInsertSchema(slaPolicies).omit({ id: true, orgId: true, createdAt: true, updatedAt: true });
+export const insertTimeEntrySchema = createInsertSchema(timeEntries).omit({ id: true, orgId: true, userId: true, createdAt: true, updatedAt: true });
+export const insertContractSchema = createInsertSchema(contracts).omit({ id: true, orgId: true, createdAt: true, updatedAt: true });
+export const insertKnowledgeArticleSchema = createInsertSchema(knowledgeArticles).omit({ id: true, orgId: true, authorId: true, createdAt: true, updatedAt: true });
+export const insertSavedViewSchema = createInsertSchema(savedViews).omit({ id: true, orgId: true, userId: true, createdAt: true, updatedAt: true });
 
 export const insertSupplyRequestSchema = createInsertSchema(supplyRequests).pick({
   requestType: true,
@@ -525,6 +816,36 @@ export type OrgAuthConfig = typeof orgAuthConfig.$inferSelect;
 export type OrgRoleMapping = typeof orgRoleMappings.$inferSelect;
 export type AuthAuditLogEntry = typeof authAuditLog.$inferSelect;
 export type OperatorOsEntitlementSnapshot = typeof operatorOsEntitlementSnapshots.$inferSelect;
+export type Client = typeof clients.$inferSelect;
+export type InsertClient = z.infer<typeof insertClientSchema>;
+export type Site = typeof sites.$inferSelect;
+export type InsertSite = z.infer<typeof insertSiteSchema>;
+export type Contact = typeof contacts.$inferSelect;
+export type InsertContact = z.infer<typeof insertContactSchema>;
+export type Queue = typeof queues.$inferSelect;
+export type InsertQueue = z.infer<typeof insertQueueSchema>;
+export type Team = typeof teams.$inferSelect;
+export type InsertTeam = z.infer<typeof insertTeamSchema>;
+export type SlaPolicy = typeof slaPolicies.$inferSelect;
+export type InsertSlaPolicy = z.infer<typeof insertSlaPolicySchema>;
+export type TicketComment = typeof ticketComments.$inferSelect;
+export type TicketInternalNote = typeof ticketInternalNotes.$inferSelect;
+export type TicketAssignment = typeof ticketAssignments.$inferSelect;
+export type SlaEvent = typeof slaEvents.$inferSelect;
+export type TimeEntry = typeof timeEntries.$inferSelect;
+export type InsertTimeEntry = z.infer<typeof insertTimeEntrySchema>;
+export type Attachment = typeof attachments.$inferSelect;
+export type Tag = typeof tags.$inferSelect;
+export type Device = typeof devices.$inferSelect;
+export type Contract = typeof contracts.$inferSelect;
+export type InsertContract = z.infer<typeof insertContractSchema>;
+export type KnowledgeCategory = typeof knowledgeCategories.$inferSelect;
+export type KnowledgeArticle = typeof knowledgeArticles.$inferSelect;
+export type InsertKnowledgeArticle = z.infer<typeof insertKnowledgeArticleSchema>;
+export type SavedView = typeof savedViews.$inferSelect;
+export type InsertSavedView = z.infer<typeof insertSavedViewSchema>;
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+export type ActivityEvent = typeof activityEvents.$inferSelect;
 
 export const insertOrgAuthConfigSchema = createInsertSchema(orgAuthConfig).omit({
   id: true,

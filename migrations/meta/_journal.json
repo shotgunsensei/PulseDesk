@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1784132290826,
+      "tag": "0000_service-desk-restoration",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784132585252,
+      "tag": "0001_ticket-counter",
+      "breakpoints": true
+    }
+  ]
+}

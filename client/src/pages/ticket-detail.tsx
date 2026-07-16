@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, useLocation } from "wouter";
+import { useParams } from "wouter";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,11 +7,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft, Clock, User, MapPin, Building2, AlertTriangle,
   HeartPulse, RefreshCw, ExternalLink, Cpu, FileText,
   MessageSquare, ChevronUp, Printer, CalendarClock,
+  Paperclip, Timer, ShieldCheck,
 } from "lucide-react";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -28,6 +30,11 @@ import {
   type Ticket,
   type TicketEvent,
   type Membership,
+  type TicketComment,
+  type TicketInternalNote,
+  type TimeEntry,
+  type Attachment,
+  type ActivityEvent,
 } from "@shared/schema";
 
 type TicketWithNames = Ticket & {
@@ -37,6 +44,15 @@ type TicketWithNames = Ticket & {
   slaState?: "on_track" | "due_soon" | "overdue" | "blocked";
   slaDueAt?: string | Date | null;
   slaReason?: string;
+};
+
+type TicketWorkspace = {
+  ticket: TicketWithNames;
+  comments: TicketComment[];
+  internalNotes: TicketInternalNote[];
+  timeEntries: TimeEntry[];
+  attachments: Pick<Attachment, "id" | "originalName" | "mimeType" | "sizeBytes" | "isInternal" | "createdAt">[];
+  auditHistory: ActivityEvent[];
 };
 
 function dateInputValue(value: string | Date | null | undefined): string {
@@ -78,11 +94,13 @@ function TimelineEvent({ event }: { event: TicketEvent }) {
 
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { membership } = useAuth();
   const role = membership?.role;
   const [noteContent, setNoteContent] = useState("");
+  const [replyContent, setReplyContent] = useState("");
+  const [timeMinutes, setTimeMinutes] = useState("30");
+  const [timeDescription, setTimeDescription] = useState("");
   const [showResolution, setShowResolution] = useState(false);
   const [rootCause, setRootCause] = useState("");
   const [resolutionSummary, setResolutionSummary] = useState("");
@@ -101,6 +119,11 @@ export default function TicketDetail() {
 
   const { data: members } = useQuery<(Membership & { fullName?: string; username?: string })[]>({
     queryKey: ["/api/members"],
+  });
+
+  const { data: workspace } = useQuery<TicketWorkspace>({
+    queryKey: ["/api/tickets", id, "workspace"],
+    enabled: !!id,
   });
 
   useEffect(() => {
@@ -124,21 +147,42 @@ export default function TicketDetail() {
 
   const addNoteMutation = useMutation({
     mutationFn: (content: string) =>
-      apiRequest("POST", `/api/tickets/${id}/notes`, { content }),
+      apiRequest("POST", `/api/tickets/${id}/internal-notes`, { body: content }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "workspace"] });
       setNoteContent("");
       toast({ title: "Note added" });
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: () => apiRequest("DELETE", `/api/tickets/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
-      setLocation("/tickets");
-      toast({ title: "Ticket deleted" });
+  const addReplyMutation = useMutation({
+    mutationFn: (body: string) => apiRequest("POST", `/api/tickets/${id}/replies`, { body }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "workspace"] }); setReplyContent(""); toast({ title: "Public reply added" }); },
+  });
+
+  const addTimeMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/tickets/${id}/time-entries`, { minutes: Number(timeMinutes), description: timeDescription, workType: "remote" }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "workspace"] }); setTimeDescription(""); toast({ title: "Time entry added" }); },
+  });
+
+  const actionMutation = useMutation({
+    mutationFn: (action: string) => apiRequest("POST", `/api/tickets/${id}/actions/${action}`, action === "resolve" ? { rootCause, resolutionSummary } : {}),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/tickets", id] }); queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "workspace"] }); queryClient.invalidateQueries({ queryKey: ["/api/tickets"] }); toast({ title: "Ticket workflow updated" }); },
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const dataBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+        reader.onerror = () => reject(new Error("Unable to read file"));
+        reader.readAsDataURL(file);
+      });
+      return apiRequest("POST", `/api/tickets/${id}/attachments`, { originalName: file.name, mimeType: file.type || "application/octet-stream", dataBase64, isInternal: canManageTickets(role) });
     },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "workspace"] }); toast({ title: "Attachment added" }); },
+    onError: (error: Error) => toast({ title: "Attachment failed", description: error.message, variant: "destructive" }),
   });
 
   if (isLoading) {
@@ -252,43 +296,39 @@ export default function TicketDetail() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                  Timeline & Notes
-                  {events && events.length > 0 && (
-                    <span className="text-[11px] text-muted-foreground font-normal ml-auto">{events.length} entries</span>
-                  )}
+                  Ticket workspace
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {!events || events.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">No activity recorded yet</p>
-                ) : (
-                  <div className="space-y-4">
-                    {events.map((event) => (
-                      <TimelineEvent key={event.id} event={event} />
-                    ))}
-                  </div>
-                )}
+                <Tabs defaultValue="conversation">
+                  <TabsList className="flex h-auto flex-wrap justify-start">
+                    <TabsTrigger value="conversation">Conversation ({workspace?.comments.length ?? 0})</TabsTrigger>
+                    {canManageTickets(role) && <TabsTrigger value="internal">Internal ({workspace?.internalNotes.length ?? 0})</TabsTrigger>}
+                    {canManageTickets(role) && <TabsTrigger value="time">Time ({workspace?.timeEntries.length ?? 0})</TabsTrigger>}
+                    <TabsTrigger value="audit">Audit ({events?.length ?? 0})</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="conversation" className="space-y-3">
+                    {workspace?.comments.length ? workspace.comments.map((comment) => <div key={comment.id} className="rounded-lg border bg-muted/20 p-3"><p className="whitespace-pre-wrap text-sm">{comment.body}</p><p className="mt-2 text-[11px] text-muted-foreground">{format(new Date(comment.createdAt), "MMM d, yyyy 'at' h:mm a")}</p></div>) : <p className="py-4 text-center text-sm text-muted-foreground">No public replies yet.</p>}
+                    {canAddNotes(role) && <div className="space-y-2 border-t pt-3"><Textarea value={replyContent} onChange={(e) => setReplyContent(e.target.value)} rows={3} placeholder="Write a public reply visible to the requester…" data-testid="input-public-reply" /><Button size="sm" disabled={!replyContent.trim() || addReplyMutation.isPending} onClick={() => addReplyMutation.mutate(replyContent.trim())}>Add public reply</Button></div>}
+                  </TabsContent>
+                  <TabsContent value="internal" className="space-y-3">
+                    {workspace?.internalNotes.length ? workspace.internalNotes.map((note) => <div key={note.id} className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/20"><div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-amber-700"><ShieldCheck className="h-3.5 w-3.5" />Internal only</div><p className="whitespace-pre-wrap text-sm">{note.body}</p><p className="mt-2 text-[11px] text-muted-foreground">{format(new Date(note.createdAt), "MMM d, yyyy 'at' h:mm a")}</p></div>) : <p className="py-4 text-center text-sm text-muted-foreground">No internal notes.</p>}
+                    {canManageTickets(role) && <div className="space-y-2 border-t pt-3"><Textarea data-testid="input-note" placeholder="Add an internal note (never shown to client-facing roles)…" value={noteContent} onChange={(e) => setNoteContent(e.target.value)} rows={3} /><Button data-testid="button-add-note" size="sm" onClick={() => noteContent.trim() && addNoteMutation.mutate(noteContent.trim())} disabled={!noteContent.trim() || addNoteMutation.isPending}>{addNoteMutation.isPending ? "Adding…" : "Add internal note"}</Button></div>}
+                  </TabsContent>
+                  <TabsContent value="time" className="space-y-3">
+                    {workspace?.timeEntries.map((entry) => <div key={entry.id} className="flex items-start justify-between rounded-lg border p-3"><div><p className="text-sm font-medium">{entry.description || "Service work"}</p><p className="text-xs text-muted-foreground">{entry.workType} · {entry.billable ? "Billable" : "Non-billable"}</p></div><span className="text-sm font-semibold">{entry.minutes}m</span></div>)}
+                    {canManageTickets(role) && <div className="grid gap-2 border-t pt-3 sm:grid-cols-[110px_1fr_auto]"><Input type="number" min="1" max="1440" value={timeMinutes} onChange={(e) => setTimeMinutes(e.target.value)} aria-label="Minutes" /><Input value={timeDescription} onChange={(e) => setTimeDescription(e.target.value)} placeholder="Work performed" /><Button size="sm" disabled={!Number(timeMinutes) || addTimeMutation.isPending} onClick={() => addTimeMutation.mutate()}><Timer className="mr-1 h-3.5 w-3.5" />Log time</Button></div>}
+                  </TabsContent>
+                  <TabsContent value="audit"><div className="space-y-4">{events?.length ? events.map((event) => <TimelineEvent key={event.id} event={event} />) : <p className="py-4 text-center text-sm text-muted-foreground">No audit activity recorded.</p>}</div></TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
 
-                {canAddNotes(role) && (
-                  <div className="mt-4 space-y-2 border-t pt-4">
-                    <Textarea
-                      data-testid="input-note"
-                      placeholder="Add an internal note..."
-                      value={noteContent}
-                      onChange={(e) => setNoteContent(e.target.value)}
-                      rows={2}
-                      className="resize-none"
-                    />
-                    <Button
-                      data-testid="button-add-note"
-                      size="sm"
-                      onClick={() => noteContent.trim() && addNoteMutation.mutate(noteContent.trim())}
-                      disabled={!noteContent.trim() || addNoteMutation.isPending}
-                    >
-                      {addNoteMutation.isPending ? "Adding..." : "Add Note"}
-                    </Button>
-                  </div>
-                )}
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-sm font-medium"><Paperclip className="h-4 w-4 text-muted-foreground" />Attachments ({workspace?.attachments.length ?? 0})</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {workspace?.attachments.map((file) => <a key={file.id} href={`/api/attachments/${file.id}/download`} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted/40"><span className="truncate">{file.originalName}</span><span className="ml-3 shrink-0 text-xs text-muted-foreground">{Math.ceil(file.sizeBytes / 1024)} KB{file.isInternal ? " · Internal" : ""}</span></a>)}
+                {canAddNotes(role) && <label className="flex cursor-pointer items-center justify-center rounded-md border border-dashed px-3 py-3 text-sm text-muted-foreground hover:bg-muted/30"><Paperclip className="mr-2 h-4 w-4" />{uploadMutation.isPending ? "Uploading…" : "Add attachment (10 MB max)"}<input type="file" className="sr-only" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.docx,.xlsx" onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadMutation.mutate(file); event.currentTarget.value = ""; }} /></label>}
               </CardContent>
             </Card>
           </div>
@@ -452,7 +492,7 @@ export default function TicketDetail() {
                             size="sm"
                             className="w-full"
                             onClick={() => {
-                              updateMutation.mutate({ rootCause: rootCause || undefined, resolutionSummary: resolutionSummary || undefined, status: "resolved" as any });
+                              actionMutation.mutate("resolve");
                               setShowResolution(false);
                             }}
                           >
@@ -462,6 +502,9 @@ export default function TicketDetail() {
                       )}
                     </>
                   )}
+                  {ticket.status === "resolved" && <Button size="sm" className="w-full" onClick={() => actionMutation.mutate("close")} disabled={actionMutation.isPending}>Close ticket</Button>}
+                  {ticket.status === "closed" && <Button size="sm" variant="outline" className="w-full" onClick={() => actionMutation.mutate("reopen")} disabled={actionMutation.isPending}>Reopen ticket</Button>}
+                  {canEscalate(role) && !ticket.archivedAt && <Button size="sm" variant="outline" className="w-full" onClick={() => actionMutation.mutate("archive")} disabled={actionMutation.isPending}>Archive ticket</Button>}
                 </CardContent>
               </Card>
             )}
@@ -543,22 +586,6 @@ export default function TicketDetail() {
               </CardContent>
             </Card>
 
-            {canManageTickets(role) && (
-              <Button
-                variant="destructive"
-                size="sm"
-                className="w-full"
-                data-testid="button-delete-ticket"
-                onClick={() => {
-                  if (confirm("Delete this ticket permanently? This action cannot be undone.")) {
-                    deleteMutation.mutate();
-                  }
-                }}
-                disabled={deleteMutation.isPending}
-              >
-                Delete Ticket
-              </Button>
-            )}
           </div>
         </div>
       </div>

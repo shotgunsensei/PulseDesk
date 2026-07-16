@@ -91,6 +91,9 @@ function reject(
   details: Record<string, unknown> = {}
 ) {
   void logAttempt(req, auditOutcome, false, jti ? { ...details, jti } : details);
+  if (req.headers.accept?.includes("text/html")) {
+    return res.redirect(302, `/login?error=${encodeURIComponent(code)}`);
+  }
   return res.status(status).json({ code });
 }
 
@@ -261,7 +264,7 @@ router.get("/sso", ssoRateLimiter, async (req, res) => {
       provisioned.user.id,
       provisioned.org.id
     );
-    res.redirect(302, "/dashboard");
+    res.redirect(302, "/app");
   });
 });
 

@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { TICKET_CATEGORY_LABELS, TICKET_PRIORITY_LABELS, type Department, type Asset } from "@shared/schema";
+import { TICKET_CATEGORY_LABELS, TICKET_PRIORITY_LABELS, type Department, type Asset, type Client, type Site, type Contact, type Queue } from "@shared/schema";
 import { AlertCircle, Cpu } from "lucide-react";
 
 function inferRoomFromLocation(location: string): string {
@@ -30,6 +30,10 @@ export default function SubmitIssue() {
   const [category, setCategory] = useState("other");
   const [priority, setPriority] = useState("normal");
   const [departmentId, setDepartmentId] = useState("");
+  const [clientId, setClientId] = useState(() => new URLSearchParams(search).get("clientId") || "");
+  const [siteId, setSiteId] = useState("");
+  const [contactId, setContactId] = useState("");
+  const [queueId, setQueueId] = useState("");
   const [location_, setLocation_] = useState("");
   const [building, setBuilding] = useState("");
   const [floor, setFloor] = useState("");
@@ -43,6 +47,9 @@ export default function SubmitIssue() {
 
   const { data: departments } = useQuery<Department[]>({ queryKey: ["/api/departments"] });
   const { data: assets } = useQuery<Asset[]>({ queryKey: ["/api/assets"] });
+  const { data: clientPage } = useQuery<{ items: Client[] }>({ queryKey: ["/api/clients", { pageSize: 100 }], queryFn: async () => { const response = await fetch("/api/clients?pageSize=100", { credentials: "include" }); if (!response.ok) throw new Error("Failed to load clients"); return response.json(); } });
+  const { data: clientWorkspace } = useQuery<Client & { sites: Site[]; contacts: Contact[] }>({ queryKey: ["/api/clients", clientId], enabled: !!clientId });
+  const { data: queues } = useQuery<Queue[]>({ queryKey: ["/api/queues"] });
   const requestedAssetId = routeAssetId || new URLSearchParams(search).get("assetId") || "";
   const selectedAsset = useMemo(
     () => assets?.find((asset) => asset.id === assetId),
@@ -100,6 +107,10 @@ export default function SubmitIssue() {
       description: description.trim(),
       category,
       priority,
+      clientId: clientId || null,
+      siteId: siteId || null,
+      contactId: contactId || null,
+      queueId: queueId || null,
       departmentId: departmentId && departmentId !== "none" ? departmentId : null,
       location: location_.trim(),
       building: building.trim(),
@@ -207,6 +218,16 @@ export default function SubmitIssue() {
                 />
                 <FieldError field="description" />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-sm font-medium">Client & routing</CardTitle><CardDescription>Associate the requester and route the work to the correct service queue.</CardDescription></CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <div><Label>Client</Label><Select value={clientId || "none"} onValueChange={(value) => { setClientId(value === "none" ? "" : value); setSiteId(""); setContactId(""); }}><SelectTrigger className="mt-1" data-testid="select-client"><SelectValue placeholder="Select client" /></SelectTrigger><SelectContent><SelectItem value="none">No client</SelectItem>{clientPage?.items.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label>Queue</Label><Select value={queueId || "none"} onValueChange={(value) => setQueueId(value === "none" ? "" : value)}><SelectTrigger className="mt-1" data-testid="select-queue"><SelectValue placeholder="Select queue" /></SelectTrigger><SelectContent><SelectItem value="none">Unassigned queue</SelectItem>{queues?.map((queue) => <SelectItem key={queue.id} value={queue.id}>{queue.name}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label>Site</Label><Select value={siteId || "none"} onValueChange={(value) => setSiteId(value === "none" ? "" : value)} disabled={!clientId}><SelectTrigger className="mt-1" data-testid="select-site"><SelectValue placeholder="Select site" /></SelectTrigger><SelectContent><SelectItem value="none">No site</SelectItem>{clientWorkspace?.sites.map((site) => <SelectItem key={site.id} value={site.id}>{site.name}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label>Contact</Label><Select value={contactId || "none"} onValueChange={(value) => setContactId(value === "none" ? "" : value)} disabled={!clientId}><SelectTrigger className="mt-1" data-testid="select-contact"><SelectValue placeholder="Select contact" /></SelectTrigger><SelectContent><SelectItem value="none">No contact</SelectItem>{clientWorkspace?.contacts.map((contact) => <SelectItem key={contact.id} value={contact.id}>{contact.firstName} {contact.lastName}</SelectItem>)}</SelectContent></Select></div>
             </CardContent>
           </Card>
 

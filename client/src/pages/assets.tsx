@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { StatusBadge } from "@/components/status-badge";
 import { canManageTickets, canManageSettings, canSubmitIssues } from "@/lib/permissions";
-import { ASSET_STATUS_LABELS, type Asset, type Department } from "@shared/schema";
+import { ASSET_STATUS_LABELS, type Asset, type Department, type Client, type Site } from "@shared/schema";
 
 export default function AssetsPage() {
   const { toast } = useToast();
@@ -25,10 +25,13 @@ export default function AssetsPage() {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [form, setForm] = useState({ assetTag: "", name: "", assetType: "", location: "", departmentId: "", serviceVendor: "", warrantyNotes: "", maintenanceNotes: "", status: "active" });
+  const emptyForm = { assetTag: "", name: "", assetType: "", serialNumber: "", clientId: "", siteId: "", location: "", departmentId: "", serviceVendor: "", warrantyNotes: "", maintenanceNotes: "", warrantyStart: "", warrantyEnd: "", notes: "", status: "active" };
+  const [form, setForm] = useState(emptyForm);
 
   const { data: assets, isLoading } = useQuery<(Asset & { departmentName?: string })[]>({ queryKey: ["/api/assets"] });
   const { data: departments } = useQuery<Department[]>({ queryKey: ["/api/departments"] });
+  const { data: clientPage } = useQuery<{ items: Client[] }>({ queryKey: ["/api/clients", { pageSize: 100 }], queryFn: async () => { const response = await fetch("/api/clients?pageSize=100", { credentials: "include" }); if (!response.ok) throw new Error("Failed to load clients"); return response.json(); } });
+  const { data: clientWorkspace } = useQuery<Client & { sites: Site[] }>({ queryKey: ["/api/clients", form.clientId], enabled: !!form.clientId });
 
   const filtered = useMemo(() => {
     if (!assets) return [];
@@ -49,7 +52,7 @@ export default function AssetsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding"] });
       setOpen(false);
-      setForm({ assetTag: "", name: "", assetType: "", location: "", departmentId: "", serviceVendor: "", warrantyNotes: "", maintenanceNotes: "", status: "active" });
+      setForm(emptyForm);
       toast({ title: "Equipment registered" });
     },
   });
@@ -90,6 +93,11 @@ export default function AssetsPage() {
                     <div><Label htmlFor="asset-type">Type</Label><Input id="asset-type" data-testid="input-asset-type" value={form.assetType} onChange={(e) => setForm({ ...form, assetType: e.target.value })} placeholder="MRI Scanner" className="mt-1" /></div>
                   </div>
                   <div><Label htmlFor="asset-name">Name *</Label><Input id="asset-name" data-testid="input-asset-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Equipment name" className="mt-1" /></div>
+                  <div><Label htmlFor="asset-serial">Serial number</Label><Input id="asset-serial" value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} placeholder="Manufacturer serial" className="mt-1" /></div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div><Label>Client</Label><Select value={form.clientId || "none"} onValueChange={(value) => setForm({ ...form, clientId: value === "none" ? "" : value, siteId: "" })}><SelectTrigger className="mt-1"><SelectValue placeholder="Select client" /></SelectTrigger><SelectContent><SelectItem value="none">No client</SelectItem>{clientPage?.items.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>)}</SelectContent></Select></div>
+                    <div><Label>Site</Label><Select value={form.siteId || "none"} onValueChange={(value) => setForm({ ...form, siteId: value === "none" ? "" : value })} disabled={!form.clientId}><SelectTrigger className="mt-1"><SelectValue placeholder="Select site" /></SelectTrigger><SelectContent><SelectItem value="none">No site</SelectItem>{clientWorkspace?.sites.map((site) => <SelectItem key={site.id} value={site.id}>{site.name}</SelectItem>)}</SelectContent></Select></div>
+                  </div>
                   <div><Label htmlFor="asset-location">Location</Label><Input id="asset-location" data-testid="input-asset-location" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Building A, Room 102" className="mt-1" /></div>
                   <div>
                     <Label>Department</Label>
@@ -103,6 +111,8 @@ export default function AssetsPage() {
                   </div>
                   <div><Label htmlFor="asset-vendor">Service Vendor</Label><Input id="asset-vendor" value={form.serviceVendor} onChange={(e) => setForm({ ...form, serviceVendor: e.target.value })} placeholder="Vendor name" className="mt-1" /></div>
                   <div><Label htmlFor="asset-warranty">Warranty Notes</Label><Textarea id="asset-warranty" value={form.warrantyNotes} onChange={(e) => setForm({ ...form, warrantyNotes: e.target.value })} placeholder="Warranty details..." rows={2} className="mt-1 resize-none" /></div>
+                  <div className="grid grid-cols-2 gap-3"><div><Label>Warranty start</Label><Input type="date" value={form.warrantyStart} onChange={(e) => setForm({ ...form, warrantyStart: e.target.value })} /></div><div><Label>Warranty end</Label><Input type="date" value={form.warrantyEnd} onChange={(e) => setForm({ ...form, warrantyEnd: e.target.value })} /></div></div>
+                  <div><Label>Asset notes</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
                   <div>
                     <Label>Status</Label>
                     <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>

@@ -2,7 +2,7 @@
 
 **The operational heartbeat of your healthcare facility.**
 
-PulseDesk is a multi-tenant healthcare operations coordination platform and OperatorOS child app: ticketing, departments, assets, supply requests, facility requests, vendors, analytics, and email-to-ticket - all role-gated and ready for HIPAA-conscious workflows.
+PulseDesk is a multi-tenant healthcare service desk and operations coordination platform and OperatorOS child app: clients, contacts, sites, ticketing, queues, SLAs, time entries, assets, knowledge, departments, supply requests, facility requests, vendors, analytics, and email-to-ticket - all role-gated and ready for HIPAA-conscious workflows.
 
 PulseDesk is launched from OperatorOS in production. OperatorOS owns pricing,
 checkout, subscriptions, seats, and module entitlements. PulseDesk owns the
@@ -34,7 +34,7 @@ PulseDesk is most often paired with **TechDeck** (for the IT teams that keep hea
 
 - **Frontend:** React 18 + Vite + TypeScript + wouter + TanStack Query v5 + shadcn/ui + Tailwind
 - **Backend:** Express + tsx + Drizzle ORM + PostgreSQL
-- **Auth:** OperatorOS SSO + local development/reviewer fallback + Microsoft 365 Entra ID (per-org OAuth, multi-tenant) + Google Workspace OAuth
+- **Auth:** OperatorOS SSO in production; optional local development/reviewer fallback; tenant connector OAuth for Microsoft 365 and Google Workspace
 - **Email:** SendGrid Inbound Parse + IMAP polling + Google/Microsoft connector OAuth
 - **Access:** OperatorOS owns pricing, checkout, subscriptions, seats, and PulseDesk module entitlements
 - **PWA:** installable, theme-aware, offline-capable shell
@@ -52,7 +52,7 @@ server/             Express API
   routes/           Feature routes (tickets, SSO, email, admin, ...)
   auth/             Argon2id-style password hashing + Entra OAuth + crypto
   email/            Inbound parsers + IMAP poller + processor pipeline
-  storage.ts        Single source of truth for all DB access (IStorage)
+  storage.ts        Shared storage service for established product workflows
   db.ts             Drizzle client + Neon connection
 
 shared/             Code shared between client + server
@@ -61,7 +61,7 @@ shared/             Code shared between client + server
   permissions.ts    Role helpers
 ```
 
-Every request flows through `requireAuth → requireOrg → requireMinRole(?)` middleware. All data access goes through `storage` (an `IStorage` implementation), never direct table queries from routes. This keeps multi-tenant scoping in one auditable place.
+Protected requests flow through `requireAuth → requireOrg → requireMinRole(?)` middleware. Established workflows use the shared storage service; service-desk routes use explicit `orgId` predicates and tenant-reference validation at every data boundary.
 
 ## Develop
 
@@ -83,6 +83,8 @@ For full deployment details, see
 | `SESSION_SECRET` | yes | Session signing + Entra secret encryption |
 | `MODULE_SSO_SECRET` | yes | OperatorOS SSO JWT verification and entitlement webhook HMAC |
 | `OPERATOROS_BASE_URL` | yes | Expected OperatorOS issuer and parent launch URL |
+| `OPERATOROS_MY_APPS_URL` | optional | Canonical OperatorOS My Apps return URL; defaults to `{OPERATOROS_BASE_URL}/app` |
+| `OPERATOROS_LOGOUT_URL` | optional | Coordinated OperatorOS logout URL; defaults to `{OPERATOROS_BASE_URL}/logout` |
 | `OPERATOROS_SSO_AUDIENCE` | recommended | SSO audience, defaults to `pulsedesk` |
 | `OPERATOROS_SSO_ENV` | yes | Expected SSO environment claim |
 | `OPERATOROS_SSO_CONSUME_URL` | yes in production | Full OperatorOS token-consume URL |
@@ -93,6 +95,7 @@ For full deployment details, see
 | `APP_BASE_URL` | yes in production | Public PulseDesk base URL for OAuth callbacks and OperatorOS webhook registration |
 | `PULSEDESK_MASTER_ADMIN_EMAIL` | optional | Comma-separated master-admin emails; defaults to `john@shotgunninjas.com` |
 | `PULSEDESK_LOCAL_AUTH_ENABLED` | development/reviewer only | Enables local username/password login and registration |
+| `ATTACHMENT_STORAGE_DIR` | production | Durable, private writable directory for uploaded ticket attachments; defaults to `data/attachments` |
 | `SENDGRID_API_KEY` | optional | For Inbound Parse provider |
 | `SENDGRID_INBOUND_BASIC_AUTH` | recommended in prod | `user:pass` expected in the `Authorization: Basic …` header of inbound POSTs. Configure SendGrid Inbound Parse to use a URL like `https://user:pass@your-host/api/email/inbound/sendgrid`. |
 | `SENDGRID_INBOUND_IP_ALLOWLIST` | alternative to basic auth | Comma-separated list of allowed source IPs (exact match, no CIDR). Compared against the Express-resolved `req.ip` only — `X-Forwarded-For` is intentionally not consulted directly, so the deployment must have `trust proxy` configured for the upstream proxy. Use the explicit IPs SendGrid publishes for inbound parse. |
@@ -115,6 +118,10 @@ in OperatorOS, not in the child app.
 - SendGrid Inbound Parse: `POST /api/email/inbound/sendgrid` (alias routes
   to org).
 - Health: `GET /api/health`.
+- Authenticated application and OperatorOS launch target: `GET /app`.
+- Canonical return/logout: `GET /operatoros/return`, `GET /logout`.
+- Service-desk implementation report:
+  [`docs/service-desk-implementation-report.md`](./docs/service-desk-implementation-report.md).
 - Final deployment guide:
   [`docs/pulsedesk-operatoros-deployment.md`](./docs/pulsedesk-operatoros-deployment.md).
 - Release notes:

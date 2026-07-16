@@ -51,6 +51,7 @@ export default function AuthPage() {
   const [m365Loading, setM365Loading] = useState(false);
   const [operatorOsBaseUrl, setOperatorOsBaseUrl] = useState<string | null>(null);
   const [showRelaunchPrompt, setShowRelaunchPrompt] = useState(false);
+  const [localAuthEnabled, setLocalAuthEnabled] = useState(false);
 
   useEffect(() => {
     fetch("/api/public/sso-config", { credentials: "include" })
@@ -59,6 +60,13 @@ export default function AuthPage() {
         if (data?.baseUrl) setOperatorOsBaseUrl(data.baseUrl);
       })
       .catch(() => {});
+    fetch("/api/public/operatoros-navigation", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.myAppsUrl) setOperatorOsBaseUrl(data.myAppsUrl);
+        setLocalAuthEnabled(data?.localAuthEnabled === true);
+      })
+      .catch(() => setLocalAuthEnabled(false));
 
     const params = new URLSearchParams(window.location.search);
     const error = params.get("error");
@@ -161,9 +169,9 @@ export default function AuthPage() {
     }
   };
 
-  const showM365 = tenant && (tenant.authMode === "m365" || tenant.authMode === "hybrid");
-  const showLocal = !tenant || tenant.authMode === "local" || tenant.authMode === "hybrid";
-  const m365Only = tenant?.authMode === "m365";
+  const showM365 = localAuthEnabled && tenant && (tenant.authMode === "m365" || tenant.authMode === "hybrid");
+  const showLocal = localAuthEnabled && (!tenant || tenant.authMode === "local" || tenant.authMode === "hybrid");
+  const m365Only = localAuthEnabled && tenant?.authMode === "m365";
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -287,7 +295,7 @@ export default function AuthPage() {
             </div>
           )}
 
-          {!tenant ? (
+          {localAuthEnabled && (!tenant ? (
             <div className="space-y-4">
               <Card>
                 <CardHeader>
@@ -451,7 +459,7 @@ export default function AuthPage() {
                 </div>
               )}
             </div>
-          )}
+          ))}
         </div>
       </div>
       </div>

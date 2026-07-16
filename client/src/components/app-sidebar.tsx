@@ -25,6 +25,9 @@ import {
   ChevronDown,
   Shield,
   Inbox,
+  BookOpen,
+  SlidersHorizontal,
+  ExternalLink,
 } from "lucide-react";
 import pulsedeskLogo from "@assets/pulsedesklogo_1775753913991.png";
 import { useLocation, Link } from "wouter";
@@ -49,7 +52,7 @@ export function AppSidebar() {
   const role = membership?.role;
 
   const isActive = (url: string) => {
-    if (url === "/") return location === "/";
+    if (url === "/app") return location === "/" || location === "/app" || location === "/dashboard";
     return location.startsWith(url);
   };
 
@@ -126,7 +129,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Command Center</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {renderNavItem({ title: "Dashboard", url: "/", icon: LayoutDashboard })}
+              {renderNavItem({ title: "Dashboard", url: "/app", icon: LayoutDashboard })}
               {(canViewAnalytics(role) || role === "admin") && renderNavItem({ title: "Analytics", url: "/analytics", icon: BarChart3 })}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -149,11 +152,13 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Facility Data</SidebarGroupLabel>
+          <SidebarGroupLabel>Service Data</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
+              {renderNavItem({ title: "Clients", url: "/clients", icon: Building2 })}
+              {renderNavItem({ title: "Assets", url: "/assets", icon: Cpu })}
+              {renderNavItem({ title: "Knowledge", url: "/knowledge", icon: BookOpen })}
               {renderNavItem({ title: "Departments", url: "/departments", icon: Building2 })}
-              {renderNavItem({ title: "Equipment", url: "/assets", icon: Cpu })}
               {renderNavItem({ title: "Vendors", url: "/vendors", icon: Users2 })}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -164,6 +169,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {canManageSettings(role) && renderNavItem({ title: "Inboxes", url: "/email-settings", icon: Inbox })}
+              {canManageSettings(role) && renderNavItem({ title: "Service Desk", url: "/service-desk-admin", icon: SlidersHorizontal })}
               {!isReadOnly(role) && renderNavItem({ title: "Settings", url: "/settings", icon: Settings })}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -181,6 +187,9 @@ export function AppSidebar() {
         )}
       </SidebarContent>
       <SidebarFooter className="p-4">
+        <a href="/operatoros/return" className="mb-2 flex items-center gap-2 rounded-md border border-sidebar-border px-3 py-2 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent" data-testid="return-to-operatoros">
+          <ExternalLink className="h-3.5 w-3.5" /> Return to OperatorOS My Apps
+        </a>
         {user && (
           <div className="flex items-center gap-3">
             <Avatar className="h-8 w-8">

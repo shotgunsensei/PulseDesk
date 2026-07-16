@@ -8,6 +8,7 @@ const routesDir = path.join(root, "server", "routes");
 const publicRoutePatterns = [
   /^GET \/api\/health$/,
   /^GET \/api\/public\/sso-config$/,
+  /^GET \/api\/public\/operatoros-navigation$/,
   /^GET \/api\/auth\/tenant\/:slug$/,
   /^POST \/api\/auth\/register$/,
   /^POST \/api\/auth\/login$/,

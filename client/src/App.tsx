@@ -27,6 +27,10 @@ import AssetsPage from "@/pages/assets";
 import SupplyRequestsPage from "@/pages/supply-requests";
 import FacilityRequestsPage from "@/pages/facility-requests";
 import VendorsPage from "@/pages/vendors";
+import ClientsPage from "@/pages/clients";
+import ClientDetailPage from "@/pages/client-detail";
+import KnowledgePage from "@/pages/knowledge";
+import ServiceDeskAdminPage from "@/pages/service-desk-admin";
 const AnalyticsPage = lazy(() => import("@/pages/analytics"));
 const SettingsPage = lazy(() => import("@/pages/settings"));
 const EmailSettingsPage = lazy(() => import("@/pages/email-settings"));
@@ -99,6 +103,7 @@ function AppContent() {
                 <Route path="/privacy" component={PrivacyPolicy} />
                 <Route path="/terms" component={TermsOfService} />
                 <Route path="/" component={Dashboard} />
+                <Route path="/app" component={Dashboard} />
                 <Route path="/dashboard" component={Dashboard} />
                 <Route path="/tickets" component={TicketsPage} />
                 <Route path="/tickets/:id" component={TicketDetail} />
@@ -125,6 +130,14 @@ function AppContent() {
                   </RoleGate>
                 </Route>
                 <Route path="/vendors" component={VendorsPage} />
+                <Route path="/clients" component={ClientsPage} />
+                <Route path="/clients/:id" component={ClientDetailPage} />
+                <Route path="/knowledge" component={KnowledgePage} />
+                <Route path="/service-desk-admin">
+                  <RoleGate check={canManageSettings(role)}>
+                    <ServiceDeskAdminPage />
+                  </RoleGate>
+                </Route>
                 <Route path="/analytics">
                   <RoleGate check={canViewAnalytics(role) || role === "admin"}>
                     <AnalyticsPage />

@@ -1,5 +1,5 @@
 import { eq, and, desc, sql, inArray, count, ilike, or, gte, lte, type SQL } from "drizzle-orm";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { DEFAULT_DEPARTMENTS } from "@shared/schema";
 import {
   users,
@@ -486,9 +486,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNextTicketNumber(orgId: string): Promise<string> {
-    const [result] = await db.select({ cnt: count() }).from(tickets).where(eq(tickets.orgId, orgId));
-    const num = (result?.cnt || 0) as number;
-    return `PD-${String(num + 1).padStart(5, "0")}`;
+    const result = await pool.query<{ next_number: number; slug: string }>(`
+      WITH tenant AS (
+        SELECT slug FROM orgs WHERE id = $1
+      ), counter AS (
+        INSERT INTO ticket_counters (org_id, next_number, updated_at)
+        VALUES ($1, 1, now())
+        ON CONFLICT (org_id) DO UPDATE
+          SET next_number = ticket_counters.next_number + 1, updated_at = now()
+        RETURNING next_number
+      )
+      SELECT counter.next_number, tenant.slug FROM counter CROSS JOIN tenant
+    `, [orgId]);
+    const row = result.rows[0];
+    if (!row) throw new Error("Unable to allocate tenant ticket number");
+    const tenantCode = row.slug.replace(/[^a-z0-9]/gi, "").slice(0, 6).toUpperCase() || "TENANT";
+    return `PD-${tenantCode}-${String(row.next_number).padStart(6, "0")}`;
   }
 
   async createTicket(orgId: string, data: InsertTicket, reportedBy: string): Promise<Ticket> {
